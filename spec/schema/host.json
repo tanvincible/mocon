@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tanvincible/mocon/spec/1.0/schema/host.json",
+  "title": "mocon host record",
+  "description": "core.md section 5.1. The capabilities declaration. Key (host, \"host\"). No id. A host MUST emit this before any other record for that host in every stream it opens.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "host"
+    },
+    "host": {
+      "type": "string",
+      "description": "Opaque string identifying the declaring host. Recommended form vendor/product[/profile]."
+    },
+    "spec_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "MAJOR.MINOR, currently \"1.0\"."
+    },
+    "observes_crossings": {
+      "enum": ["all", "some", "none"],
+      "description": "Absent reads as \"none\"."
+    },
+    "unmediated_egress": {
+      "type": "boolean",
+      "description": "Absent reads as unknown, which consumers treat like true."
+    },
+    "crossing_edge": {
+      "enum": ["invocation", "dispatch"],
+      "description": "Absent reads as unknown."
+    },
+    "attested": {
+      "type": "array",
+      "description": "Entries from the list in provenance.md section 4, which grows by minor version (core.md section 8). Absent reads as []. This schema validates the shape (a string array), not membership in a specific version's list, so a 1.0 schema does not reject a future minor version's entries; a consumer ignores an entry it does not know. The 1.0 list is: crossing.target, crossing.input, crossing.output, crossing.error, execution.error.class.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ext": {
+      "type": "object",
+      "description": "Open map of namespaced keys, vendor.key. Core consumers ignore it; relays preserve it."
+    }
+  },
+  "required": ["kind", "host"],
+  "additionalProperties": true
+}

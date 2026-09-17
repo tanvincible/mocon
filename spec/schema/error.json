@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tanvincible/mocon/spec/1.0/schema/error.json",
+  "title": "mocon Error",
+  "description": "core.md section 5.5. Atomic. class is required. message and value are optional.",
+  "type": "object",
+  "properties": {
+    "class": {
+      "type": "string",
+      "description": "Open string; recommended values in vocabulary.md. Program-determined unless the host attests execution.error.class or crossing.error."
+    },
+    "message": {
+      "type": "string"
+    },
+    "value": {
+      "$ref": "payload.json",
+      "description": "Payload: the raw error object as the host or target produced it."
+    }
+  },
+  "required": ["class"],
+  "additionalProperties": true
+}

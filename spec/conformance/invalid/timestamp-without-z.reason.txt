@@ -1,0 +1,1 @@
+core.md 7: timestamps are RFC 3339 UTC with a trailing Z. start here has no Z suffix.

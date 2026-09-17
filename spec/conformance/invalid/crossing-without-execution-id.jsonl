@@ -1,0 +1,1 @@
+{"end":{"outcome":"output","output":{"bytes":11,"hash":"sha256:4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93","value":{"ok":true}}},"host":"example/host","id":"b6e6b559877c512c","input":{"bytes":7,"hash":"sha256:015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862","value":{"a":1}},"kind":"crossing","target":"t"}

@@ -1,0 +1,67 @@
+{
+  "conflicts": [],
+  "crossings": {},
+  "executions": {
+    "813a9318be12c105bbd994c0ccfc2a93": {
+      "context": {
+        "session": "mcp-sess-7f3a21c8"
+      },
+      "end": {
+        "disposition": "completed",
+        "outputs": {
+          "stderr": {
+            "bytes": 0,
+            "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "value": ""
+          },
+          "stdout": {
+            "bytes": 88,
+            "hash": "sha256:28e1b2f5c3d830ea4290a9d8999d599ef54ed41d2af28db4e4b88bc8b276094b",
+            "value": "estimates=[3.141526, 3.1415, 3.141338, 3.143486, 3.141972]\nmean=3.141964\nstdev=0.000883\n"
+          }
+        },
+        "time": "2026-09-17T14:02:50.187Z"
+      },
+      "ext": {
+        "judge0.created_at": "2026-09-17T14:02:03.118Z",
+        "judge0.exit_code": 0,
+        "judge0.exit_signal": null,
+        "judge0.finished_at": "2026-09-17T14:02:50.041Z",
+        "judge0.language_id": 71,
+        "judge0.memory": 9840,
+        "judge0.result_delivery": "callback_url",
+        "judge0.status": {
+          "description": "Accepted",
+          "id": 3
+        },
+        "judge0.time": "3.812",
+        "judge0.token": "6f0a3e8c-9b7d-4e2a-8c1f-2d4b7a9e5c33",
+        "judge0.wall_time": "4.009"
+      },
+      "host": "judge0/ce/isolated",
+      "id": "813a9318be12c105bbd994c0ccfc2a93",
+      "kind": "execution",
+      "language": "python",
+      "program": {
+        "bytes": 441,
+        "hash": "sha256:a94ee2c09a93a322597f394286dcc6df851557113a4d866a12c6ae2d96e83c25",
+        "value": "import random\nimport statistics\n\ndef monte_carlo_pi(n):\n    inside = 0\n    for _ in range(n):\n        x, y = random.random(), random.random()\n        if x * x + y * y <= 1.0:\n            inside += 1\n    return 4 * inside / n\n\nrandom.seed(20260917)\nestimates = [monte_carlo_pi(2_000_000) for _ in range(5)]\nprint(\"estimates=\" + str(estimates))\nprint(\"mean=%.6f\" % statistics.mean(estimates))\nprint(\"stdev=%.6f\" % statistics.stdev(estimates))\n"
+      },
+      "start": "2026-09-17T14:02:03.241Z"
+    }
+  },
+  "hosts": {
+    "judge0/ce/isolated": {
+      "attested": [
+        "execution.error.class"
+      ],
+      "host": "judge0/ce/isolated",
+      "kind": "host",
+      "observes_crossings": "none",
+      "spec_version": "1.0",
+      "unmediated_egress": false
+    }
+  },
+  "skipped": 0,
+  "unresolved": []
+}

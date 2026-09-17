@@ -1,0 +1,417 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "example/mcp"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "mocon/example/mcp"
+          },
+          "spans": [
+            {
+              "traceId": "a218a2b4ccf7ed00ce2e656895419c7d",
+              "spanId": "9f8290a2fef1db70",
+              "parentSpanId": "695567847d15457c",
+              "name": "company_identify",
+              "kind": 3,
+              "startTimeUnixNano": "1789552800118000000",
+              "endTimeUnixNano": "1789552800402000000",
+              "attributes": [
+                {
+                  "key": "mocon.host",
+                  "value": {
+                    "stringValue": "example/mcp"
+                  }
+                },
+                {
+                  "key": "mocon.execution.id",
+                  "value": {
+                    "stringValue": "a218a2b4ccf7ed00ce2e656895419c7d"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.id",
+                  "value": {
+                    "stringValue": "9f8290a2fef1db70"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.target",
+                  "value": {
+                    "stringValue": "company_identify"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.seq",
+                  "value": {
+                    "intValue": "1"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.outcome",
+                  "value": {
+                    "stringValue": "output"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.input.value",
+                  "value": {
+                    "stringValue": "{\"query\":\"acme.example\"}"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.input.bytes",
+                  "value": {
+                    "intValue": "24"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.input.hash",
+                  "value": {
+                    "stringValue": "sha256:f3a8ad21e8d2901da6044c6caf0b28c49c08763b0a958771f49fc0668f5847d9"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.output.value",
+                  "value": {
+                    "stringValue": "{\"id\":8842,\"name\":\"Acme Robotics\"}"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.output.bytes",
+                  "value": {
+                    "intValue": "34"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.output.hash",
+                  "value": {
+                    "stringValue": "sha256:36df3dd3ebc93235d004bd5fcc0ac5e37056638abfead126d1a482e1b83dd412"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "company_identify"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "9f8290a2fef1db70"
+                  }
+                },
+                {
+                  "key": "mocon.provenance.crossing.output.value",
+                  "value": {
+                    "stringValue": "P"
+                  }
+                }
+              ],
+              "status": {
+                "code": 1
+              }
+            },
+            {
+              "traceId": "a218a2b4ccf7ed00ce2e656895419c7d",
+              "spanId": "cb23b7c9d2d291c9",
+              "parentSpanId": "695567847d15457c",
+              "name": "person_search",
+              "kind": 3,
+              "startTimeUnixNano": "1789552800119000000",
+              "endTimeUnixNano": "1789552801874000000",
+              "attributes": [
+                {
+                  "key": "mocon.host",
+                  "value": {
+                    "stringValue": "example/mcp"
+                  }
+                },
+                {
+                  "key": "mocon.execution.id",
+                  "value": {
+                    "stringValue": "a218a2b4ccf7ed00ce2e656895419c7d"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.id",
+                  "value": {
+                    "stringValue": "cb23b7c9d2d291c9"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.target",
+                  "value": {
+                    "stringValue": "person_search"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.seq",
+                  "value": {
+                    "intValue": "2"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.outcome",
+                  "value": {
+                    "stringValue": "output"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.input.value",
+                  "value": {
+                    "stringValue": "{\"domain\":\"acme.example\",\"limit\":200}"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.input.bytes",
+                  "value": {
+                    "intValue": "37"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.input.hash",
+                  "value": {
+                    "stringValue": "sha256:af0f041879cfb45ab9707da2dd193577fb5f03164ff49c259000fbd12ba31a3f"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.output.value",
+                  "value": {
+                    "stringValue": "[{\"name\":\"Jordan Ellis\",\"title\":\"CEO\"},{\"name\":\"Mira Okafor\",\"title\":\"CTO\"},{\"nam"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.output.truncated",
+                  "value": {
+                    "boolValue": true
+                  }
+                },
+                {
+                  "key": "mocon.crossing.output.bytes",
+                  "value": {
+                    "intValue": "6224"
+                  }
+                },
+                {
+                  "key": "mocon.crossing.output.hash",
+                  "value": {
+                    "stringValue": "sha256:7d05f82880ea1120e45267e38dfcb8970fefa4c125134be800505e679154c7e2"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "person_search"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "cb23b7c9d2d291c9"
+                  }
+                },
+                {
+                  "key": "mocon.provenance.crossing.output.value",
+                  "value": {
+                    "stringValue": "P"
+                  }
+                }
+              ],
+              "status": {
+                "code": 1
+              }
+            },
+            {
+              "traceId": "a218a2b4ccf7ed00ce2e656895419c7d",
+              "spanId": "695567847d15457c",
+              "name": "mocon.execution",
+              "kind": 1,
+              "startTimeUnixNano": "1789552800000000000",
+              "endTimeUnixNano": "1789552801902000000",
+              "attributes": [
+                {
+                  "key": "mocon.host",
+                  "value": {
+                    "stringValue": "example/mcp"
+                  }
+                },
+                {
+                  "key": "mocon.host.spec_version",
+                  "value": {
+                    "stringValue": "1.0"
+                  }
+                },
+                {
+                  "key": "mocon.host.observes_crossings",
+                  "value": {
+                    "stringValue": "all"
+                  }
+                },
+                {
+                  "key": "mocon.host.unmediated_egress",
+                  "value": {
+                    "boolValue": false
+                  }
+                },
+                {
+                  "key": "mocon.host.crossing_edge",
+                  "value": {
+                    "stringValue": "invocation"
+                  }
+                },
+                {
+                  "key": "mocon.host.attested",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "crossing.target"
+                        },
+                        {
+                          "stringValue": "crossing.input"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "mocon.execution.id",
+                  "value": {
+                    "stringValue": "a218a2b4ccf7ed00ce2e656895419c7d"
+                  }
+                },
+                {
+                  "key": "mocon.execution.disposition",
+                  "value": {
+                    "stringValue": "completed"
+                  }
+                },
+                {
+                  "key": "mocon.execution.language",
+                  "value": {
+                    "stringValue": "javascript"
+                  }
+                },
+                {
+                  "key": "mocon.context.session",
+                  "value": {
+                    "stringValue": "mcp-9a1f0c"
+                  }
+                },
+                {
+                  "key": "mocon.program.value",
+                  "value": {
+                    "stringValue": "const [co, people] = await Promise.all([callTool('company_identify',{query:'acme.example'}), callTool('person_search',{domain:'acme.example',limit:200})]); return {company: co.name, count: people.length};"
+                  }
+                },
+                {
+                  "key": "mocon.program.bytes",
+                  "value": {
+                    "intValue": "204"
+                  }
+                },
+                {
+                  "key": "mocon.program.hash",
+                  "value": {
+                    "stringValue": "sha256:7736542c4a55183c6bebe63fd34637eb6fff9ffb6f57602a0b6bfbe4a8b4b28c"
+                  }
+                },
+                {
+                  "key": "mocon.execution.result.value",
+                  "value": {
+                    "stringValue": "{\"company\":\"Acme Robotics\",\"count\":120}"
+                  }
+                },
+                {
+                  "key": "mocon.execution.result.bytes",
+                  "value": {
+                    "intValue": "39"
+                  }
+                },
+                {
+                  "key": "mocon.execution.result.hash",
+                  "value": {
+                    "stringValue": "sha256:5b585cf876f43d4a11cc8a164a3f1d34eda316e4c4748a9ec994b773edf75d59"
+                  }
+                },
+                {
+                  "key": "mocon.ext.example.credits_remaining",
+                  "value": {
+                    "intValue": "9982"
+                  }
+                },
+                {
+                  "key": "mocon.ext.example.credits_used",
+                  "value": {
+                    "intValue": "18"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "mocon.provenance.program.value",
+                  "value": {
+                    "stringValue": "P"
+                  }
+                },
+                {
+                  "key": "mocon.provenance.execution.language",
+                  "value": {
+                    "stringValue": "P"
+                  }
+                },
+                {
+                  "key": "mocon.provenance.execution.result.value",
+                  "value": {
+                    "stringValue": "P"
+                  }
+                },
+                {
+                  "key": "mocon.provenance.ext.p",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        { "stringValue": "example.credits_remaining" },
+                        { "stringValue": "example.credits_used" }
+                      ]
+                    }
+                  }
+                }
+              ],
+              "status": {
+                "code": 1
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "_note": "mocon.provenance.ext.p lists both ext keys present on the execution span (example.credits_remaining, example.credits_used) because both are still P: no published extension defines an ext.<extension> attested entry for either today (otel-mapping.md section 10). Neither key is upgraded to H, so neither is omitted from the array."
+}

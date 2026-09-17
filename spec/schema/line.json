@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tanvincible/mocon/spec/1.0/schema/line.json",
+  "title": "mocon line",
+  "description": "core.md sections 3 and 5. One line of a mocon stream: a JSON object whose kind is host, execution, or crossing. Each branch's own schema requires and const-checks kind, so this oneOf discriminates on kind without repeating the check.",
+  "oneOf": [
+    { "$ref": "host.json" },
+    { "$ref": "execution.json" },
+    { "$ref": "crossing.json" }
+  ]
+}

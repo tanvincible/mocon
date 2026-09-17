@@ -1,0 +1,1 @@
+core.md 5.2: a complete execution's end MUST carry disposition. Only time is present.

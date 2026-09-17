@@ -1,0 +1,76 @@
+{
+  "conflicts": [],
+  "crossings": {
+    "d3da50a5fe33d478": {
+      "end": {
+        "outcome": "output",
+        "output": {
+          "bytes": 10,
+          "hash": "sha256:5429ed31f7eec9dbc86e358b3bacc5eb07eba26715ab1e05c802841f2d3fbd57",
+          "value": {
+            "hits": 3
+          }
+        },
+        "time": "2026-09-17T01:00:00.045Z"
+      },
+      "execution_id": "1263e112aaa74973a0b3ebe79fd1388f",
+      "host": "pi-codemode-mcp/pi",
+      "id": "d3da50a5fe33d478",
+      "input": {
+        "bytes": 14,
+        "hash": "sha256:c149bd11789fc76c01fc5c424ee524579b1b3ce571fdd2aba1957855e1119378",
+        "value": {
+          "q": "status"
+        }
+      },
+      "kind": "crossing",
+      "seq": 1,
+      "start": "2026-09-17T01:00:00.010Z",
+      "target": "search",
+      "x-debug": "build-9f21"
+    }
+  },
+  "executions": {
+    "1263e112aaa74973a0b3ebe79fd1388f": {
+      "end": {
+        "disposition": "completed",
+        "result": {
+          "bytes": 10,
+          "hash": "sha256:5429ed31f7eec9dbc86e358b3bacc5eb07eba26715ab1e05c802841f2d3fbd57",
+          "value": {
+            "hits": 3
+          }
+        },
+        "time": "2026-09-17T01:00:00.060Z"
+      },
+      "host": "pi-codemode-mcp/pi",
+      "id": "1263e112aaa74973a0b3ebe79fd1388f",
+      "kind": "execution",
+      "language": "javascript",
+      "program": {
+        "bytes": 56,
+        "hash": "sha256:af08052c36c2f6c3e8244052b61571f772cb5530287342455db1fca7aa4d62bd",
+        "value": "const r = await call('search', {q: 'status'});\nreturn r;"
+      },
+      "start": "2026-09-17T01:00:00.000Z",
+      "x-debug": "build-9f21"
+    }
+  },
+  "hosts": {
+    "pi-codemode-mcp/pi": {
+      "attested": [
+        "crossing.target",
+        "crossing.input"
+      ],
+      "crossing_edge": "invocation",
+      "host": "pi-codemode-mcp/pi",
+      "kind": "host",
+      "observes_crossings": "all",
+      "spec_version": "1.0",
+      "unmediated_egress": true,
+      "x-debug": "build-9f21"
+    }
+  },
+  "skipped": 0,
+  "unresolved": []
+}

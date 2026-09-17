@@ -1,0 +1,41 @@
+{
+  "conflicts": [],
+  "crossings": {},
+  "executions": {
+    "af52dc47d193bc33a894848c3b8a262e": {
+      "end": {
+        "disposition": "completed",
+        "outputs": {
+          "stdout": {
+            "bytes": 54,
+            "hash": "sha256:ca6a66f798318f641e75e8ce196f8138486b55255e3ad04fd54edfa5e29eb301",
+            "value": "{'exported': 1204, 'file': '/tmp/export-1204.csv'}\n"
+          }
+        },
+        "time": "2026-09-16T12:00:03.118Z"
+      },
+      "host": "open-ptc-agent/daytona",
+      "id": "af52dc47d193bc33a894848c3b8a262e",
+      "kind": "execution",
+      "language": "python",
+      "program": {
+        "bytes": 68,
+        "hash": "sha256:df102afa8c1996c46fcac122778e7416fbc0eb08cb5beffc537d76d0e1be6dc8",
+        "value": "from tools.crm import export_all\nresult = export_all()\nprint(result)"
+      },
+      "start": "2026-09-16T12:00:00.000Z"
+    }
+  },
+  "hosts": {
+    "open-ptc-agent/daytona": {
+      "attested": [],
+      "host": "open-ptc-agent/daytona",
+      "kind": "host",
+      "observes_crossings": "none",
+      "spec_version": "1.0",
+      "unmediated_egress": true
+    }
+  },
+  "skipped": 0,
+  "unresolved": []
+}

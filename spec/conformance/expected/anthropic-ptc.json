@@ -1,0 +1,116 @@
+{
+  "conflicts": [],
+  "crossings": {
+    "cc630d68644aa7e2": {
+      "context": {
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+      },
+      "end": {
+        "outcome": "output",
+        "output": {
+          "bytes": 16,
+          "hash": "sha256:67daf843f5d20ef50ba3fa0213793bb8baf4c9a5e9707b84757bcbd8e6402de6",
+          "value": {
+            "id": "acc_881"
+          }
+        },
+        "time": "2026-09-16T13:00:00.640Z"
+      },
+      "execution_id": "91c3c203f7cd531c268ed77dde15ed28",
+      "ext": {
+        "anthropic.tool_use_id": "toolu_01Abc9Kf3jz7Pq2Rstu4Vw"
+      },
+      "host": "anthropic/code-execution",
+      "id": "cc630d68644aa7e2",
+      "input": {
+        "bytes": 24,
+        "hash": "sha256:1f290920ecd0965d20a5ec899e83e9f4e2b1bfdebf6e6cd485ce9003cd83e6db",
+        "value": {
+          "customer_id": "C-4821"
+        }
+      },
+      "kind": "crossing",
+      "seq": 1,
+      "start": "2026-09-16T13:00:00.210Z",
+      "target": "lookup_account"
+    },
+    "f3bbe34a4b672191": {
+      "context": {
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+      },
+      "end": {
+        "outcome": "output",
+        "output": {
+          "bytes": 17,
+          "hash": "sha256:d91bf2f0fb517caceda7b96d65244ad3a9af2b4d29d130c483ce8e6748d89643",
+          "value": {
+            "id": "tkt_2290"
+          }
+        },
+        "time": "2026-09-16T13:00:01.512Z"
+      },
+      "execution_id": "91c3c203f7cd531c268ed77dde15ed28",
+      "ext": {
+        "anthropic.tool_use_id": "toolu_01Bd8Lm4kA9xRp3Stuv5Wy"
+      },
+      "host": "anthropic/code-execution",
+      "id": "f3bbe34a4b672191",
+      "input": {
+        "bytes": 42,
+        "hash": "sha256:2fe26975fb52455d18b6e91148450ac4dda50464206e9932228d1a38c80f2ac1",
+        "value": {
+          "account_id": "acc_881",
+          "priority": "high"
+        }
+      },
+      "kind": "crossing",
+      "seq": 2,
+      "start": "2026-09-16T13:00:01.005Z",
+      "target": "create_ticket"
+    }
+  },
+  "executions": {
+    "91c3c203f7cd531c268ed77dde15ed28": {
+      "context": {
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+      },
+      "end": {
+        "disposition": "completed",
+        "outputs": {
+          "stdout": {
+            "bytes": 12,
+            "hash": "sha256:d2054697314d5abe80e96753533659d710e9f97f5c9a8860f0f722218383d2f7",
+            "value": "tkt_2290\n"
+          }
+        },
+        "time": "2026-09-16T13:00:01.610Z"
+      },
+      "host": "anthropic/code-execution",
+      "id": "91c3c203f7cd531c268ed77dde15ed28",
+      "kind": "execution",
+      "language": "python",
+      "program": {
+        "bytes": 144,
+        "hash": "sha256:c7d8bb80b32b13f541fe156fb7a054778ebf8cf1cb7556e00c52c6abcdb34f02",
+        "value": "account = await lookup_account(customer_id='C-4821')\nticket = await create_ticket(account_id=account['id'], priority='high')\nprint(ticket['id'])"
+      },
+      "start": "2026-09-16T13:00:00.000Z"
+    }
+  },
+  "hosts": {
+    "anthropic/code-execution": {
+      "attested": [
+        "crossing.target",
+        "crossing.input"
+      ],
+      "crossing_edge": "invocation",
+      "host": "anthropic/code-execution",
+      "kind": "host",
+      "observes_crossings": "all",
+      "spec_version": "1.0",
+      "unmediated_egress": false
+    }
+  },
+  "skipped": 0,
+  "unresolved": []
+}
