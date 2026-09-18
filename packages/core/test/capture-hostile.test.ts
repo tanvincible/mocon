@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { memorySink, mocon } from "../src/index.js";
-import { harness, least, type Rec } from "./helpers.js";
+import { assertValidStream, harness, least, type Rec } from "./helpers.js";
 
 /* ------------------------------------------------------------------ */
 
@@ -416,4 +416,127 @@ test("the capture holds nothing per execution, however many distinct line budget
   const early = reachable(capture);
   run(50, 500);
   assert.equal(reachable(capture), early, `the capture reached ${early} objects after 50 executions and ${reachable(capture)} after 550`);
+});
+
+/* ------------------------------------------------------------------ */
+/* What a program reaches outside a payload: the envelope, the option  */
+/* containers, and the target coercion.                                */
+/* ------------------------------------------------------------------ */
+
+/** Installs `toJSON` on `Object.prototype`, the way a program that escaped its sandbox reaches the host realm. */
+function polluteObjectPrototype(): () => void {
+  Object.defineProperty(Object.prototype, "toJSON", { value: () => "PWNED", configurable: true, writable: true });
+  return () => void delete (Object.prototype as { toJSON?: unknown }).toJSON;
+}
+
+test("Object.prototype.toJSON reaches no line: the declaration refuses to be built, and every later line is still a JSON object", () => {
+  let clean = (): void => undefined;
+  try {
+    clean = polluteObjectPrototype();
+    assert.throws(
+      () => mocon({ host: "h", capabilities: { observes_crossings: "all" }, sinks: [memorySink()] }),
+      TypeError,
+      "core.md 5.1 wants a host record on every stream, so a declaration that would not be an object refuses construction",
+    );
+    clean();
+
+    const h = harness();
+    const ex = h.m.execution.start({ program: "p", context: { session: "s", traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01" }, ext: { "h.k": 1 } });
+    clean = polluteObjectPrototype();
+    const settled = ex.crossing.start({ target: "t", input: { a: 1 }, notice: true, ext: { "c.k": 1 } });
+    settled.output({ ok: true });
+    const open = ex.crossing.start({ target: "u", input: new Uint8Array([1, 2, 3]) });
+    ex.complete({ result: { r: 1 }, outputs: { stdout: "out" }, ext: { "e.k": 2 } });
+    open.output("after the end");
+    clean();
+
+    assertValidStream(h.sink.lines);
+    for (const record of h.records()) {
+      for (const field of ["ext", "context"]) {
+        const value = record[field];
+        assert.ok(value === undefined || (typeof value === "object" && value !== null && !Array.isArray(value)), `${field} is ${JSON.stringify(value)}`);
+      }
+    }
+    assert.deepEqual(h.last("execution")["context"], { session: "s", traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01" });
+    assert.equal(h.ofKind("event").length, 1, "the late settlement is still one event");
+  } finally {
+    clean();
+  }
+});
+
+test("a hostile outputs container answers with mocon's own TypeError, and the handle is left as it was", () => {
+  const h = harness();
+  const ex = h.m.execution.start({ program: "p", notice: false });
+  ex.crossing.start({ target: "open", input: 1 });
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  const hostile: Array<[string, unknown]> = [
+    [
+      "a getter that throws",
+      {
+        get stdout(): string {
+          throw new Error("program getter in outputs");
+        },
+      },
+    ],
+    [
+      "an ownKeys trap that throws",
+      new Proxy(
+        {},
+        {
+          ownKeys: () => {
+            throw new Error("program ownKeys in outputs");
+          },
+        },
+      ),
+    ],
+    ["a revoked proxy", revoked.proxy],
+  ];
+  for (const [what, outputs] of hostile) {
+    assert.throws(() => ex.complete({ outputs: outputs as Record<string, unknown> }), TypeError, `outputs: ${what}`);
+  }
+  assert.equal(h.ofKind("execution").length, 0, "a rejected call writes nothing");
+
+  ex.complete({ outputs: { stdout: "ok" } });
+  assert.deepEqual(
+    h.records().map((r) => [r["kind"], (r["end"] as Rec | undefined)?.["outcome"] ?? (r["end"] as Rec | undefined)?.["disposition"]]),
+    [
+      ["host", undefined],
+      ["crossing", "abandoned"],
+      ["execution", "completed"],
+    ],
+  );
+  assertValidStream(h.sink.lines);
+});
+
+test("a crossing target is never coerced through the value's own code, so a value cannot choose what the target step costs", () => {
+  const h = harness();
+  const ex = h.m.execution.start({ program: "p", notice: false });
+  const call = ex.instrument((_name: unknown) => 1);
+  const read: string[] = [];
+  // A proxy over three elements claiming a length of 1e8: O(1) for the program, and Array.prototype.join
+  // for the whole claimed length if anything coerces it.
+  const lying = new Proxy([1, 2, 3], {
+    get: (t, k, r) => {
+      read.push(String(k));
+      return k === "length" ? 1e8 : (Reflect.get(t, k, r) as unknown);
+    },
+  });
+  let ran = false;
+  const named = {
+    toString: () => {
+      ran = true;
+      return "named";
+    },
+  };
+  call(lying as unknown as string);
+  call(named as unknown as string);
+  ex.complete();
+  assert.deepEqual(read, [], "the target step reads nothing from the value");
+  assert.equal(ran, false, "the value's own toString never runs");
+  assert.deepEqual(
+    h.ofKind("crossing").map((c) => c["target"]),
+    ["[object]", "[object]"],
+  );
+  assertValidStream(h.sink.lines);
 });

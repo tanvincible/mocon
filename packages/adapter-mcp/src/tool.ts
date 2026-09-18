@@ -88,10 +88,14 @@ export function moconTool<Args>(m: Mocon, options: MoconToolOptions<Args>): Moco
  * the cause rule; the reason's own rule answers for it.
  */
 function nonNormal(cause: unknown, extra: McpExtra, classify: Classify): ExecutionEndOptions {
-  const { signal } = extra;
+  // Guarded, not destructured: this runs inside the wrapper's own catch, on the path that writes the record
+  // for a call that already failed. An `extra` without `signal` — a shape the SDK does not hand over today,
+  // and a host or a test may — would otherwise throw here, replace the body's error on its way to the SDK,
+  // and leave the execution with a start notice and no complete record. A missing signal costs the class.
+  const signal: AbortSignal | undefined = (extra as { signal?: AbortSignal } | undefined)?.signal;
   const given = classified(classify, cause, extra);
-  const aborted = signal.aborted;
-  const reason: unknown = aborted ? signal.reason : undefined;
+  const aborted = signal?.aborted === true;
+  const reason: unknown = aborted ? signal?.reason : undefined;
   const surfaced = typeof reason === "string" && cause === reason;
   const error: ErrorInput = { class: given.class ?? (aborted ? "cancelled" : "runtime"), cause: surfaced ? undefined : cause };
   // The reason is the message under the default class, and also when it is all the body left: `classify`

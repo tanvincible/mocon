@@ -2,7 +2,7 @@
 
 mocon wrappers for hosts built on `@modelcontextprotocol/sdk`. One wrapper around the tool handler that runs a program, one around the SDK client a program calls through, and one reader for the request context. Everything else comes from `@mocon/core`.
 
-The SDK is a peer dependency. This package uses its types only; the built module imports nothing at runtime. It holds no state across executions: the only state is inside one execution handle, for the length of one tool call.
+The SDK is a peer dependency, `>=1.12 <2`. This package uses its types only; the built module imports nothing at runtime, and `test/packaging.test.ts` checks that. The floor is where the types this source reads arrived — `RequestHandlerExtra` became generic in 1.9 and gained `_meta` in 1.11 — not where the tests happen to run, so a host on any 1.x from 1.12 installs without a peer conflict. It holds no state across executions: the only state is inside one execution handle, for the length of one tool call.
 
 ## Public functions
 
@@ -12,7 +12,7 @@ The SDK is a peer dependency. This package uses its types only; the built module
 
 ## Registering the handler
 
-With `McpServer`, the handler is the callback of `registerTool`. The SDK validates the arguments against the schema before the handler runs, so `args` is typed. `crmClient` is an SDK `Client` connected to an upstream server and `runInSandbox` is the host's own sandbox.
+With `McpServer`, the handler is the callback of `registerTool`. Register it with an `inputSchema`: with one, the SDK calls the handler as `(args, extra)`, and without one it calls it as `(extra)` alone, so the handler would read the request context as its arguments. TypeScript rejects the second form against this handler's type; a JavaScript host gets no such warning, and the call is answered with an error and leaves no line. The SDK validates the arguments against the schema before the handler runs, so `args` is typed. `crmClient` is an SDK `Client` connected to an upstream server and `runInSandbox` is the host's own sandbox.
 
 ```ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -85,6 +85,19 @@ The start notice is written before `run`. When `run` settles, every crossing sti
 | throws, or returns `isError`, while `extra.signal` is aborted | `terminated` | `error.class` is `cancelled`, `error.message` is the client's cancel reason when it sent one of 256 characters or fewer, `error.value` as above unless what `run` threw *is* that reason, which the wrapper relays only as the message |
 
 An aborted signal means the client sent `notifications/cancelled`, or the connection closed, and the SDK acted on it. The host stopped waiting, so the record is `terminated`, and it says so even if the sandbox keeps running. A result that arrives without `isError` after the abort is still `completed`: the program finished, whether or not the transport delivers the value.
+
+Over stdio the SDK does not act on a closed connection by itself. `StdioServerTransport` subscribes to stdin's `data` and `error` and not to its end, so a client that closes the pipe with a call in flight takes the process down without the transport's `onclose` ever running: no signal aborts, and every call in flight ends with a start notice and no complete record — the exact event the format exists to record. A stdio host closes the server itself, which does reach `onclose`, and the SDK aborts each in-flight request from there.
+
+```ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+const stdioServer = new McpServer({ name: "example", version: "1.0.0" });
+await stdioServer.connect(new StdioServerTransport());
+process.stdin.once("end", () => void stdioServer.close());
+```
+
+`test/fixtures/stdio-server.ts` does this and `test/stdio.test.ts` holds it: a client that closes the pipe mid-call leaves one `terminated` record with class `cancelled`, its open crossing abandoned first. Over a transport whose `onclose` does fire, such as the SDK's `InMemoryTransport`, no hook is needed.
 
 `classify(cause, extra)` decides first for the last three rows. `cause` is what `run` threw or the `isError` result it returned. It returns `{ disposition?, class? }` with `disposition` one of `failed` and `terminated`, or `undefined`. A field it gives replaces that field's default; a field it leaves out keeps it. `message` and `value` still come from `cause` under the core cause rule, and the client's cancel reason is the message while the class is the default `cancelled`, or when the reason is what `run` surfaced and so the only text there is. A host limit that surfaces as a throw is the usual case: core.md 5.2 records the host acting on its own limit as `terminated`, which the wrapper cannot tell from a program's own error without being told.
 
@@ -262,6 +275,8 @@ Idempotence belongs to a handle, not to a key. Two handles opened from the same 
 Both values come from the client, and `traceparent` is written once per crossing on the request path, so a value longer than 256 characters is dropped, not cut. A W3C `traceparent` is 55 characters. Dropping keeps the relay unmodified: the record carries the caller's value or no value, never a prefix that reads as a different trace or session.
 
 A cancel reason is the same, and the wrapper holds the rule against the body as well. The client chooses the reason, so one longer than 256 characters is never written; a body that stops waiting by surfacing the reason itself — `extra.signal.throwIfAborted()`, or a race the signal rejects — does not get it into the record by the other door, because a cause that *is* the string reason does not go to the cause rule. Such an execution ends with `error.class` `cancelled` and the reason as `error.message` within the cap, and with the class alone past it. A body that throws its own error keeps that error as `error.value` either way.
+
+The rule is about identity, not about the characters. A body that *wraps* the reason — `throw new Error("cancelled: " + String(extra.signal.reason))` — throws an ordinary error whose text happens to be the client's, and the cause rule writes it as any other cause: `error.message`, and again inside `error.value`, bounded by the error slot's 16 KiB cap rather than by 256 characters. So the ceiling a client can reach is that cap, not the relay rule, and it reaches it only through a body that put the reason there. Surfacing the reason instead of wrapping it — `extra.signal.throwIfAborted()`, or a race the signal rejects — keeps the 256-character rule over the whole path.
 
 A host with its own notion of session passes `context: (extra) => ({ session: mySessionOf(extra) })`.
 

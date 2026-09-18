@@ -113,6 +113,34 @@ test("abandon precedes execution end", () => {
   assert.throws(() => forced.complete(), isInvariant);
 });
 
+test("abandon precedes execution end: a crossing whose own input capture ended the execution is abandoned before the complete record", () => {
+  const h = harness();
+  const ex = h.m.execution.start({ program: "p", notice: false });
+  const call = ex.instrument((_name: string, _args: unknown) => "answered");
+  call("person_search", {
+    // Program code inside the input ends the execution while that input is being captured, before the
+    // crossing would have been tracked if it were tracked after the capture.
+    get filter() {
+      ex.end({ disposition: "terminated" });
+      return 1;
+    },
+  });
+
+  assertValidStream(h.sink.lines);
+  const records = h.records();
+  assert.deepEqual(
+    records.map((r) => [r["kind"], r["target"] ?? r["name"], (r["end"] as Rec | undefined)?.["outcome"] ?? (r["end"] as Rec | undefined)?.["disposition"]]),
+    [
+      ["host", undefined, undefined],
+      ["crossing", "person_search", "abandoned"],
+      ["execution", undefined, "terminated"],
+      ["event", "late_settlement", undefined],
+    ],
+    "the crossing is accounted for before the execution's complete record, and its settlement is an event after it",
+  );
+  assert.deepEqual((records[1] as Rec)["input"], { redacted: true }, "the input the capture never returned");
+});
+
 test("an execution ends at most once", () => {
   const h = harness();
   const ex = h.m.execution.start({ program: "p", notice: false });

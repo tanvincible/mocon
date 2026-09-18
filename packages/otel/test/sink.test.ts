@@ -268,3 +268,67 @@ test("through a core instance, undefined, NaN, Infinity, a Date and a boxed stri
   assert.equal(execution["mocon.execution.result.value"], "null");
   assert.equal(execution["mocon.ext.v.when"], "1970-01-01T00:00:00.000Z");
 });
+
+test("a declaration larger than the sink will hold is not held and is counted, so one host string cannot make the sink hold a stream's ext for the process's life", async () => {
+  // The count of host strings bounds the entries and not the bytes: nothing bounds a declaration's `ext`,
+  // so 256 slots can hold gigabytes. This is the other half of the bound, and its outcome is the same as a
+  // host string past the count: no `mocon.host.*`, baseline labels, and a number a reader can see.
+  const f = fakeFetch();
+  const sink = otlpSink({ url: URL_, fetch: f.fetch });
+  const huge = hostLine("huge/host", { attested: ["crossing.target"], ext: { "example.blob": "x".repeat(200_000) } });
+  const line = JSON.stringify(huge);
+  assert.ok(line.length > 64 * 1024, "the fixture must be past the bound to test it");
+  await sink.write([line, JSON.stringify(execution({ host: "huge/host" }))]);
+  assert.equal(sink.declarationsDropped, 1);
+  assert.equal(sink.conflicts, 0);
+  const span = attrs(spanOf(f.calls[0]?.body as ExportTraceServiceRequest));
+  assert.equal(span["mocon.host"], "huge/host");
+  assert.ok(
+    !Object.keys(span).some((k) => k.startsWith("mocon.host.")),
+    "a declaration the sink did not hold must not reach the span",
+  );
+
+  // The same host string declaring again within the bound is held as usual: the bound is on the line, not the host.
+  const small = hostLine("huge/host", { attested: ["crossing.target"] });
+  await sink.write([JSON.stringify(small), JSON.stringify(execution({ host: "huge/host" }))]);
+  assert.equal(sink.declarationsDropped, 1, "a declaration inside the bound is held, not counted");
+  assert.equal(attrs(spanOf(f.calls[1]?.body as ExportTraceServiceRequest))["mocon.host.observes_crossings"], "all");
+});
+
+test("close() waits for the POSTs in flight, so Mocon.close does not return while a request is open", async () => {
+  let release = (): void => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let settled = false;
+  const sink = otlpSink({
+    url: URL_,
+    fetch: async () => {
+      await gate;
+      return ok();
+    },
+  });
+  const write = sink.write(text([execution()]));
+  assert.ok(write instanceof Promise);
+  void write.then(() => {
+    settled = true;
+  });
+  const closing = sink.close().then(() => {
+    assert.equal(settled, true, "close resolved while a POST was still open");
+  });
+  assert.equal(settled, false);
+  release();
+  await closing;
+});
+
+test("kind:'event', which @mocon/core writes for a late settlement, is counted as unknown_kind and produces no span", async () => {
+  // core.md 4 rule 7 reads as one span per complete line, but an extension kind is a kind this sink does
+  // not know, so core.md 3 has it skipped and counted. A recorded late settlement therefore reaches no
+  // trace backend, and the counter is the only place it shows.
+  const f = fakeFetch();
+  const sink = otlpSink({ url: URL_, fetch: f.fetch });
+  const event = { kind: "event", host: HOST, event: "late_settlement", time: "2026-09-16T10:00:03Z", crossing_id: "c1" };
+  await sink.write([JSON.stringify(hostLine(HOST)), JSON.stringify(execution()), JSON.stringify(event)]);
+  assert.equal(sink.skipped.unknown_kind, 1);
+  assert.equal(spansOf(f.calls[0]?.body as ExportTraceServiceRequest).length, 1, "the event line adds no span to the batch that carried it");
+});

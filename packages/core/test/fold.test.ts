@@ -9,6 +9,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { test } from "node:test";
 import { fold, type View } from "../src/fold.js";
 import { readExpected, readStream, specDir, streamNames, type Rec } from "./helpers.js";
@@ -21,8 +22,10 @@ function suiteView(view: View): Rec {
   return { hosts: { ...view.hosts }, executions: strip(view.executions), crossings: strip(view.crossings), unresolved: view.unresolved, conflicts: view.conflicts, skipped: view.skipped };
 }
 
-test("the suite has 23 golden streams", () => {
-  assert.equal(names.length, 23);
+test("every golden stream has an expected view, and the suite has not shrunk", () => {
+  assert.ok(names.length >= 23, `${names.length} golden streams`);
+  const expected = readdirSync(specDir + "conformance/expected/").filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -".json".length));
+  assert.deepEqual([...names].sort(), expected.sort());
 });
 
 for (const name of names) {
@@ -202,4 +205,36 @@ test("two complete records that differ only in 1 versus 1.0: fold reports the co
   const b = '{"kind":"crossing","host":"h","id":"c","execution_id":"e","target":"t","input":{"value":1},"seq":1.0,"end":{"outcome":"abandoned"}}';
   const stream = [HOST, a, b].join("\n");
   assert.deepEqual(fold(stream).conflicts, checkPyView(stream)["conflicts"]);
+});
+
+test("unresolved and conflicts sort by code point, the order check.py's lists come out in", () => {
+  const notice = (host: string): string => JSON.stringify({ kind: "execution", host, id: "e", program: { value: "p" }, start: "2026-09-17T09:00:00Z" });
+  // U+1F600 is one code point above U+FFFD and two UTF-16 units below it, so `<` on the raw strings inverts them.
+  const hosts = ["\u{1F600}host", "�host"];
+  const view = fold([notice(hosts[0] as string), notice(hosts[1] as string)].join("\n"));
+  assert.deepEqual(
+    view.unresolved.map((r) => r.host),
+    ["�host", "\u{1F600}host"],
+  );
+  assert.deepEqual(fold([notice(hosts[1] as string), notice(hosts[0] as string)].join("\n")).unresolved, view.unresolved, "and the same list either way round");
+});
+
+test("a key two (host, id) pairs share gives one view for either order: the tie-break decides, never the line order", () => {
+  const NUL = "\0";
+  const one = JSON.stringify({ kind: "execution", host: "a", id: "b" + NUL + "c", program: { value: "1" }, start: "2026-09-17T09:00:00Z" });
+  const two = JSON.stringify({ kind: "execution", host: "a" + NUL + "b", id: "c", program: { value: "2" }, start: "2026-09-17T09:00:00Z" });
+  const forward = fold([one, two].join("\n"));
+  const backward = fold([two, one].join("\n"));
+  assert.deepEqual(backward, forward, "core.md 4 rule 4: one view for every permutation");
+  assert.deepEqual(forward.unresolved, [{ kind: "execution", host: "a", id: "b" + NUL + "c" }], "the ref names the record the view holds");
+  assert.equal((forward.executions["a" + NUL + "b" + NUL + "c"] as unknown as Rec | undefined)?.["program"] !== undefined, true);
+});
+
+test("an integer past 2^53 is not preserved by a JavaScript consumer, and the tie-break is unaffected", () => {
+  const crossing = (bytes: string): string =>
+    `{"kind":"crossing","host":"h","id":"c","execution_id":"e","target":"t","input":{"value":1,"bytes":${bytes}},"seq":12345678901234567890,"end":{"outcome":"output"}}`;
+  const view = fold(crossing("1"));
+  assert.equal((view.crossings["h\0c"] as unknown as Rec)["seq"], 12345678901234567000, "the README says so: a JSON number outside the double range reads back rounded");
+  // canonical() reads the digits from the text with BigInt, so two records that differ only past 2^53 still conflict.
+  assert.deepEqual(fold([crossing("12345678901234567890"), crossing("12345678901234567891")].join("\n")).conflicts, [{ kind: "crossing", host: "h", id: "c" }]);
 });

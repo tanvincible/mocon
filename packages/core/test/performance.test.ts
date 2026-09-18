@@ -1,8 +1,10 @@
 /**
  * Performance assertions that belong in `npm test`: the capture costs
- * O(cap), not O(size), for every shape a program can return, and one
- * crossing costs a small multiple of the serializing and hashing any
- * emitter has to do for the same payload.
+ * O(cap), not O(size), for every shape a program can return except the
+ * width of an object, where the own key list is materialized whole before
+ * the first member and no cap reduces it; and one crossing costs a small
+ * multiple of the serializing and hashing any emitter has to do for the
+ * same payload.
  *
  * One rule holds for every timing assertion in this package's tests. Each
  * one compares two measurements taken in the same process, so it asserts a
@@ -180,6 +182,20 @@ test("a wide object costs one enumeration of its own keys, and nothing per key p
     1,
   );
   assert.ok(proxyUs <= proxyKeysUs * 10, `capturing a Proxy with 200k keys took ${proxyUs.toFixed(0)} us; Object.keys on it takes ${proxyKeysUs.toFixed(0)} us`);
+});
+
+test("no cap reduces what a wide object costs, and a drop rule on the slot is what does", () => {
+  const big = wide(100_000);
+  const tight = inputOnly({ capture: { caps: { "crossing.input": 16 } } });
+  const loose = inputOnly({ capture: { caps: { "crossing.input": 256 * KiB } } });
+  const dropped = inputOnly({ capture: { rules: { "crossing.input": "drop" } } });
+  const [tightUs, looseUs] = interleaved(() => tight(big), () => loose(big), 7, 1);
+  // The README states the bound this holds: O(cap) in bytes written and members read, plus O(own keys)
+  // once per object opened. A cap 16,384 times smaller buys nothing, so a host that must bound the cost
+  // of a value it does not trust bounds its key count or drops the slot.
+  assert.ok(tightUs >= looseUs / 4, `a 16-byte cap took ${tightUs.toFixed(0)} us where a 256 KiB cap took ${looseUs.toFixed(0)} us, which would make the cap the bound`);
+  const [dropUs, capUs] = interleaved(() => dropped(big), () => tight(big), 7, 1);
+  assert.ok(dropUs * 20 <= capUs, `the drop rule took ${dropUs.toFixed(1)} us against ${capUs.toFixed(0)} us for the smallest cap`);
 });
 
 // Skipped because JavaScript cannot give O(cap) here. The walker stops after the cap's worth of members,

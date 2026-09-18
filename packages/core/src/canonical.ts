@@ -1,13 +1,10 @@
 /**
- * Canonical JSON of a JSON text, the text spec/conformance/check.py
- * compares: `json.dumps(json.loads(text), sort_keys=True,
- * separators=(",", ":"))`. Keys are sorted by code point at every depth,
- * a repeated key keeps its last value, every character outside printable
- * ASCII is a lowercase `\uXXXX` escape, an integer keeps every digit, and
- * a number written with a fraction or an exponent is a float formatted as
- * Python's `repr` formats it, so `1` and `1.0` stay distinct. Used only to
- * compare records, the tie-break core.md 4 recommends, and never written
- * to the wire. The text is read once, iteratively, so a line nested as
+ * Canonical JSON of a JSON text, the text spec/conformance/check.py compares:
+ * `json.dumps(json.loads(text), sort_keys=True, separators=(",", ":"))`. A
+ * repeated key keeps its last value, and a number with a fraction or an
+ * exponent is formatted as Python's `repr` formats it, so `1` and `1.0` stay
+ * distinct. Only for comparing records, the tie-break core.md 4 recommends,
+ * and never written to the wire. Read once, iteratively, so a line nested as
  * deep as `JSON.parse` allows cannot overflow the stack.
  */
 
@@ -15,17 +12,14 @@ const STRING = /"[^"\\]*(?:\\.[^"\\]*)*"/y;
 const NUMBER = /-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/y;
 
 interface Container {
-  /** Members of an object, as key and canonical value; `undefined` for an array. */
+  /** Key and canonical value; `undefined` for an array. */
   members: Array<[string, string]> | undefined;
   items: string[];
   /** The key the object's next value goes under, once read. */
   key: string | undefined;
 }
 
-/**
- * `text` must be JSON that `JSON.parse` accepts. `omit` names top-level
- * keys to leave out, for a record a consumer reads without them.
- */
+/** `text` must be JSON `JSON.parse` accepts. `omit` drops top-level keys. */
 export function canonical(text: string, omit?: ReadonlySet<string>): string {
   const open: Container[] = [];
   let result = "";
@@ -65,7 +59,7 @@ export function canonical(text: string, omit?: ReadonlySet<string>): string {
         let body = "";
         for (let j = 0; j < members.length; j++) {
           const [key, value] = members[j] as [string, string];
-          // The sort is stable, so of a repeated key the last one read comes last and wins, as in json.loads.
+          // Stable sort: a repeated key's last value wins, like json.loads.
           if ((j + 1 < members.length && (members[j + 1] as [string, string])[0] === key) || skip?.has(key) === true) continue;
           body += (body === "" ? "" : ",") + pyString(key) + ":" + value;
         }
@@ -111,8 +105,8 @@ export function canonical(text: string, omit?: ReadonlySet<string>): string {
   return result;
 }
 
-/** Order by code point, as Python compares strings: a surrogate pair is one code point above U+FFFF, and a lone surrogate is its own code point. */
-function byCodePoint(a: string, b: string): number {
+/** Order by code point, as Python compares strings, not by UTF-16 unit. */
+export function byCodePoint(a: string, b: string): number {
   for (let i = 0; i < a.length && i < b.length; ) {
     const x = a.codePointAt(i) as number;
     const y = b.codePointAt(i) as number;
@@ -137,7 +131,7 @@ function pyString(s: string): string {
   return out + s.slice(from) + '"';
 }
 
-/** A float as Python's `repr` writes it: the shortest digits that round-trip, in exponent form below 1e-4 and from 1e16 up. */
+/** As Python's `repr`: shortest round-trip digits, exponent past 1e-4/1e16. */
 function pyFloat(x: number): string {
   if (x === Infinity) return "Infinity";
   if (x === -Infinity) return "-Infinity";

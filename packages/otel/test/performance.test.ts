@@ -19,7 +19,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { otlpSink, type FetchLike } from "../src/index.js";
-import { crossing, mapped, spanOf } from "./helpers.js";
+import { crossing, declared, mapped, spanOf } from "./helpers.js";
 
 /** A collector that answers at once and costs the measurement nothing of its own: a stand-in that read the body would be timed along with the sink. */
 const quiet: FetchLike = async () => ({ ok: true, status: 200, body: null });
@@ -103,4 +103,16 @@ test("mapping cost is proportional to nesting depth: a 200,000-deep value costs 
     const ratio = d / DEEP / (s / SHALLOW);
     assert.ok(ratio < 10, `${open}: ${(s / 1000).toFixed(1)} ms at depth ${SHALLOW}, ${(d / 1000).toFixed(1)} ms at depth ${DEEP}, per-level ratio ${ratio.toFixed(2)}`);
   }
+});
+
+test("a span costs the same whatever the length of the declaration's attested list, because the set is built once per declaration and not once per line", async () => {
+  // The list is the stream's choice and the declaration is held for the life of the sink, so rebuilding the
+  // set per line would make every later span pay for it: a declaration naming 200,000 entries measured about
+  // 6,000 times a one-entry declaration before the set was memoized.
+  const one = declared(["crossing.target"]);
+  const many = { ...one, attested: ["crossing.target", ...Array.from({ length: 200_000 }, (_, i) => "vendor.entry." + i)] } as never;
+  const line = measurable(lineWith(JSON.stringify({ text: "x".repeat(100) })));
+  // Each side maps against the same declaration object every time, as the sink does, so the set is built once.
+  const [small, large] = fastest([() => mapped(line, one), () => mapped(line, many)], 200, 9) as [number, number];
+  assert.ok(large / small < 5, `attested of 1: ${small.toFixed(1)} us per span, attested of 200,000: ${large.toFixed(1)} us per span, ${(large / small).toFixed(1)}x`);
 });

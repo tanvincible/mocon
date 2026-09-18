@@ -21,7 +21,7 @@ npm test
 
 `npx mocon view mocon.jsonl` prints the stream as a tree with provenance markers. `npx mocon ui mocon.jsonl` serves a viewer at `http://127.0.0.1:7311/` with timing bars for the overlapping calls. `npx mocon validate mocon.jsonl` checks every line against the spec.
 
-The stream file is set by the `MOCON_FILE` environment variable, for the driver and the server alike; the default is `mocon.jsonl` in this directory for the driver and in the working directory for the server. The server creates it readable by its owner only, because it holds program text and payloads. In a stdio server, stdout is the JSON-RPC channel, so nothing else is ever written there: a program's `console` goes nowhere, and the server's own reports go to stderr.
+The stream file is set by the `MOCON_FILE` environment variable, for the driver and the server alike; the default is `mocon.jsonl` in this directory for the driver and in the working directory for the server. `MOCON_TIME_LIMIT_MS` sets the server's time limit, an integer of 1 or more, and the server refuses a value it cannot use before it starts. The server creates it readable by its owner only, because it holds program text and payloads. In a stdio server, stdout is the JSON-RPC channel, so nothing else is ever written there: a program's `console` goes nowhere, and the server's own reports go to stderr.
 
 ## What the stream shows
 
@@ -36,8 +36,11 @@ One `host` line with the capabilities declaration. One `execution` notice writte
 | does not compile | `failed` | `validation` | the host, before the program runs |
 | is still running at the time limit, one second by default | `terminated` | `timeout` | the host |
 | is cancelled by the client | `terminated` | `cancelled` | the adapter |
+| is in flight when the agent closes the pipe | `terminated` | `cancelled` | the adapter |
 
 The time limit covers the synchronous part, which `node:vm` interrupts, and the awaits, where the host stops waiting. A busy loop after the first `await` blocks the whole process, and nothing in `node:vm` can stop it. The host decides that the limit fired by its own clock, never from the error, which a program can imitate. A call still open when the execution ends is written as `abandoned` before the complete record, and its answer arrives later as a `late_settlement` event.
+
+The last row needs a line of the server's own. `StdioServerTransport` subscribes to stdin's `data` and `error` and not to its end, so an agent that closes the pipe reaches neither the transport's `onclose` nor the server's, and the SDK aborts no in-flight request: what the record said would be whatever the time limit eventually wrote, and on a host whose calls can outlive the pipe there would be no complete record at all. `src/server.ts` closes the server on stdin's end, which does reach `onclose`, so a call in flight ends as `cancelled` — the agent went away — rather than as `timeout`, which would name the host's clock for something the agent did.
 
 Once the host stops waiting, whether the program returned, threw, ran out of time or was cancelled, `callTool` refuses every call. The program can keep running, because `node:vm` cannot stop it, but no tool runs for it: each refused call is recorded as a crossing that ends in an error with class `refused`.
 
@@ -51,7 +54,7 @@ Once the host stops waiting, whether the program returned, threw, ran out of tim
 
 - `src/tools.ts` holds the two fake tools.
 - `src/codemode.ts` builds the MCP server: `execute` registered with `moconTool`, the program compiled and run in `node:vm`, the time limit, and the bridge wrapped with `execution.instrument`. It exports `createServer(m, { timeLimitMs })`, `HOST` and `CAPABILITIES`.
-- `src/server.ts` is the stdio entry point: the file sink, stderr reports, and the transport.
+- `src/server.ts` is the stdio entry point: the file sink, stderr reports, the transport, the time limit from `MOCON_TIME_LIMIT_MS`, and the close on stdin's end that turns a disconnect into a record.
 - `src/drive.ts` is the client side.
 
 ## Tests

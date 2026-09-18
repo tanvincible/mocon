@@ -20,6 +20,7 @@ import { basename } from "node:path";
 import { stringifyDeep } from "@mocon/core/fold";
 import { buildModel } from "./model.js";
 import { page } from "./page.js";
+import { safe } from "./text.js";
 
 const CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'";
 const TEXT = "text/plain; charset=utf-8";
@@ -57,7 +58,9 @@ export async function serveUi(file: string, port: number): Promise<UiServer> {
       try {
         return send(res, 200, "application/json; charset=utf-8", viewJson(file));
       } catch (e) {
-        return send(res, 500, TEXT, `cannot read ${file}: ${e instanceof Error ? e.message : String(e)}\n`);
+        // The path came from the command line and the message from the platform, but both reach a terminal
+        // through `curl` as readily as a browser, so neither goes out with a control character in it.
+        return send(res, 500, TEXT, safe(`cannot read ${file}: ${e instanceof Error ? e.message : String(e)}\n`));
       }
     }
     return send(res, 404, TEXT, "not found\n");
@@ -81,15 +84,22 @@ export async function serveUi(file: string, port: number): Promise<UiServer> {
 /**
  * Writes the page with the view inlined, readable by its owner only.
  * Nothing is served. The page carries the whole stream, program text and
- * payload values included, so the path is opened without following a
- * symbolic link, checked to be a regular file, and set to owner-only
- * before it is emptied, whether the open created it or found it: a path
- * this cannot make private keeps what it held.
+ * payload values included, so the final path component is opened without
+ * following a symbolic link, checked to be a regular file, and set to
+ * owner-only before it is emptied, whether the open created it or found
+ * it: a path this cannot make private keeps what it held.
+ *
+ * The open is non-blocking, because the check that refuses anything but a
+ * regular file can only run once the open returns: a FIFO planted at the
+ * path would otherwise hold `open` until a reader arrived, which is
+ * indefinitely, and the refusal would never be reached. `O_NONBLOCK` makes
+ * that open fail with ENXIO instead, and it has no effect on a regular
+ * file, which is the only kind of file this goes on to write.
  */
 export function writeUi(file: string, out: string): void {
   const html = page(viewJson(file));
-  const { O_WRONLY, O_CREAT, O_NOFOLLOW = 0 } = constants;
-  const fd = openSync(out, O_WRONLY | O_CREAT | O_NOFOLLOW, OWNER_ONLY);
+  const { O_WRONLY, O_CREAT, O_NOFOLLOW = 0, O_NONBLOCK = 0 } = constants;
+  const fd = openSync(out, O_WRONLY | O_CREAT | O_NOFOLLOW | O_NONBLOCK, OWNER_ONLY);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(`${out} is not a regular file`);
     fchmodSync(fd, OWNER_ONLY);

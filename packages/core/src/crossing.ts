@@ -1,18 +1,11 @@
 /**
- * One crossing (core.md 5.3). The first settlement writes the complete
- * record; every later call is ignored. A crossing written as abandoned,
- * by its execution's end or by the host's own `end({ outcome:
- * "abandoned" })`, records the first output or error that arrives after
- * it as a `late_settlement` event (extensions/events.md 5), never
- * attributed to the closed key; later ones are ignored the same way.
+ * One crossing (core.md 5.3). A crossing written as abandoned records the first output or error that arrives
+ * after it as a `late_settlement` event (extensions/events.md 5), never attributed to the closed key; later
+ * ones are ignored.
  *
- * The part of the line fixed at initiation (host, id, execution id,
- * target, input, seq, context, start) is written once; a settlement
- * appends `end` and `ext`. A settle call reads each option once and
- * validates it, then captures the payload and the `ext`, which may run
- * program code, and only then reads and changes the state. A rejected
- * call leaves the crossing open, and a getter that settled or abandoned
- * the crossing from inside the capture wins, because it finished first.
+ * A settle call reads each option once and validates it, then captures the payload and the `ext`, which may
+ * run program code, and only then reads and changes the state. A rejected call leaves the crossing open, and
+ * a getter that settled or abandoned the crossing from inside the capture wins, because it finished first.
  */
 
 import { errorInput } from "./cause.js";
@@ -35,7 +28,7 @@ interface CrossingFields {
   seq: number | undefined;
   start: string;
   startText: string;
-  /** `start` when the host gave it, so a default `end.time` read from this instance's clock does not fall below it. */
+  /** `start` when the host gave it, so a clock-read `end.time` cannot fall below it. */
   floor: string | undefined;
   /** The host's `ext` as given at initiation, with the library's own notes. */
   ext: string | undefined;
@@ -50,17 +43,34 @@ type State = typeof OPEN | typeof SETTLED | typeof ABANDONED | typeof LATE;
 
 export class Crossing implements CrossingHandle {
   private state: State = OPEN;
-  /** The line up to, not including, `end` and `ext`. */
-  private readonly head: string;
+  /** The line up to, not including, `end` and `ext`, once a line has needed it. */
+  private headText: string | undefined;
 
   constructor(
     private readonly owner: Execution,
     private readonly fields: CrossingFields,
-  ) {
-    const f = fields;
+  ) {}
+
+  /** Built on first use, then fixed: whatever line needed it settled what the crossing carries. */
+  private get head(): string {
+    if (this.headText !== undefined) return this.headText;
+    const f = this.fields;
+    const owner = this.owner;
     let head = '{"kind":"crossing","host":' + owner.inst.hostText + ',"id":' + f.idText + ',"execution_id":' + owner.idText + ',"target":' + f.targetText + ',"input":' + f.inputText;
     if (f.seq !== undefined) head += ',"seq":' + f.seq;
-    this.head = head + owner.crossingContextText + ',"start":' + f.startText;
+    return (this.headText = head + owner.crossingContextText + ',"start":' + f.startText);
+  }
+
+  /**
+   * Fills in what the input capture produced, once it has returned. The execution tracks a crossing before
+   * the capture runs, because a rule, an `instrument` derive or a `toJSON` inside it can end the execution;
+   * when one did, this crossing's abandoned record was already written from the redacted input, and nothing
+   * here changes what that line said.
+   */
+  opened(inputText: string, ext: string | undefined): void {
+    if (this.headText !== undefined) return;
+    this.fields.inputText = inputText;
+    this.fields.ext = ext;
   }
 
   get id(): string {
@@ -87,7 +97,7 @@ export class Crossing implements CrossingHandle {
     return this.head + extText(this.fields.ext) + "}";
   }
 
-  /** Closes the crossing as its execution ends and returns the complete record's line. Runs no host or program code. */
+  /** Closes the crossing as its execution ends; returns its line. Runs no host or program code. */
   abandon(): string {
     this.move(OPEN, ABANDONED);
     return this.head + ',"end":{"outcome":"abandoned"}' + extText(this.fields.ext) + "}";
@@ -145,10 +155,11 @@ export class Crossing implements CrossingHandle {
     return undefined;
   }
 
-  /** The `late_settlement` event for what arrived after the crossing was abandoned. `data.payload` has the shape `end.output` or `end.error` would have had. */
+  /** The `late_settlement` event. `data.payload` has the shape `end.output` or `end.error` would have had. */
   private lateSettlement(outcome: "output" | "error", timeText: string, payload: { text: string; notes: Notes | undefined } | undefined): string {
     const inst = this.owner.inst;
-    const notes = payload?.notes === undefined ? "" : ',"ext":' + JSON.stringify(payload.notes);
+    // Through `extJson`, not `JSON.stringify`: a `toJSON` on `Object.prototype` answers for any object.
+    const notes = extText(extJson(payload?.notes));
     return (
       '{"kind":"event","host":' +
       inst.hostText +

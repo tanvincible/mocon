@@ -1,15 +1,11 @@
 /**
- * One execution (core.md 5.2). The handle tracks only the crossings it
- * opened and has not settled; `end` writes those as abandoned, then the
- * complete record, in one write. The first `end` wins.
+ * One execution (core.md 5.2). The handle tracks only the crossings it opened and has not settled;
+ * `end` writes those as abandoned, then the complete record, in one write. The first `end` wins.
  *
- * The part of the line fixed at start (host, id, program, language,
- * start, context) is written once; `end` appends the rest. `end` reads
- * each option once and validates it, then captures the result, outputs,
- * error and `ext`, which may run program code, and only then reads and
- * changes the state. A rejected call leaves the handle and its open
- * crossings as they were, and a getter that ended the execution from
- * inside the capture wins, because it finished first.
+ * `end` reads each option once and validates it, then captures the result, outputs, error and
+ * `ext`, which may run program code, and only then reads and changes the state. A rejected call
+ * leaves the handle and its open crossings as they were, and a getter that ended the execution
+ * from inside the capture wins, because it finished first.
  */
 
 import { errorInput } from "./cause.js";
@@ -29,7 +25,7 @@ export interface ExecutionFields {
   idText: string;
   start: string;
   startText: string;
-  /** `start` when the host gave it, so a default `end.time` read from this instance's clock does not fall below it. */
+  /** `start` when the host gave it, so a clock-read `end.time` cannot fall below it. */
   floor: string | undefined;
   programText: string;
   language: string | undefined;
@@ -50,7 +46,7 @@ export class Execution implements ExecutionHandle {
   private readonly head: string;
   private seq = 0;
   private ended = false;
-  /** An execution line of this handle reached the stream, or none ever will because the instance is inert. */
+  /** An execution line of this handle reached the stream, or none ever will (inert). */
   private noticed: boolean;
 
   constructor(
@@ -64,7 +60,8 @@ export class Execution implements ExecutionHandle {
     let head = '{"kind":"execution","host":' + inst.hostText + ',"id":' + fields.idText + ',"program":' + fields.programText;
     if (fields.language !== undefined) head += ',"language":' + quote(fields.language);
     head += ',"start":' + fields.startText;
-    if (fields.context !== undefined) head += ',"context":' + JSON.stringify(fields.context);
+    // From the validated strings: `Object.prototype.toJSON` answers for `JSON.stringify`.
+    if (fields.context !== undefined) head += ',"context":' + contextText(fields.context);
     this.head = head;
     this.crossing = { start: (options) => this.startCrossing(options) };
   }
@@ -73,14 +70,14 @@ export class Execution implements ExecutionHandle {
     return this.fields.id;
   }
 
-  /** Writes the start notice, unless an execution line of this handle already reached the stream. */
+  /** Writes the start notice, unless a line of this handle already reached the stream. */
   announce(): void {
     if (this.noticed) return;
     this.noticed = true;
     this.inst.emit([this.head + extText(this.fields.ext) + "}"]);
   }
 
-  /** Writes a line of one of this execution's crossings, after the start notice when this handle has written no execution line yet. */
+  /** A crossing's line, after the start notice when this handle has written none. */
   write(line: string): void {
     if (this.noticed) {
       this.inst.emit([line]);
@@ -145,7 +142,7 @@ export class Execution implements ExecutionHandle {
     if (!CLOSED.disposition.has(disposition)) throw new RangeError(`mocon: unknown disposition ${JSON.stringify(disposition)}`);
     const given = time === undefined ? undefined : checkEndTime(time, this.fields.start);
     const settleExt = checkExt(ext, "ext");
-    if (outputs !== undefined && (outputs === null || typeof outputs !== "object")) throw new TypeError("mocon: outputs must be an object");
+    const channels = outputs === undefined ? undefined : outputPairs(outputs);
     const errorIn = error === undefined ? undefined : errorInput(error as ErrorInput);
     if (this.ended) return;
     const inst = this.inst;
@@ -154,7 +151,7 @@ export class Execution implements ExecutionHandle {
       return;
     }
     const reading = given ?? (this.fields.floor === undefined ? inst.now() : notBefore(inst.now(), this.fields.floor));
-    const [end, notes] = this.endText(disposition as Disposition, raw(reading), errorIn, result, outputs as Record<string, unknown> | undefined);
+    const [end, notes] = this.endText(disposition as Disposition, raw(reading), errorIn, result, channels);
     const extMerged = mergeExt(this.fields.ext, extJson(settleExt), notes);
     // The capture and the ext ran program code, which may have ended this execution first.
     if (this.ended) return;
@@ -163,7 +160,7 @@ export class Execution implements ExecutionHandle {
     inst.emit(lines);
   }
 
-  /** Abandons every tracked crossing, then marks the execution ended. Returns the abandoned records' lines. Runs no host or program code. */
+  /** Abandons every tracked crossing, then ends the execution. Runs no host or program code. */
   private close(): string[] {
     invariant(!this.ended, "an execution ends at most once");
     const lines: string[] = [];
@@ -187,7 +184,7 @@ export class Execution implements ExecutionHandle {
     );
   }
 
-  /** Opens a crossing from values already checked, and tracks it unless the execution ended while its input was captured. */
+  /** Opens a crossing from checked values, tracked unless the execution ended during capture. */
   private open(given: string, input: unknown, ext: string | undefined, ownId: string | undefined, ownSeq: number | undefined, ownStart: string | undefined, notice: boolean): Crossing {
     const inst = this.inst;
     const id = ownId ?? inst.ids.crossing();
@@ -196,37 +193,38 @@ export class Execution implements ExecutionHandle {
     else if (ownSeq > this.seq) this.seq = ownSeq;
     const start = ownStart ?? inst.now();
     const target = inst.capture.target(given);
-    let notes: Notes | undefined = target.truncated ? note(undefined, "mocon.target", "truncated", true) : undefined;
-    let inputText = REDACTED_TEXT;
-    if (!inst.inert && input !== WITHHELD) {
-      const c = inst.capture.value("crossing.input", input, undefined, target.value);
-      inputText = c.text;
-      if (c.base64) notes = note(notes, "mocon.encoding", "input", "base64");
-    }
+    const notes: Notes | undefined = target.truncated ? note(undefined, "mocon.target", "truncated", true) : undefined;
     const crossing = new Crossing(this, {
       id,
       idText: ownId === undefined ? raw(id) : quote(id),
       target: target.value,
       targetText: target.text,
-      inputText,
+      inputText: REDACTED_TEXT,
       seq,
       start,
       startText: raw(start),
       floor: ownStart,
       ext: mergeExt(ext, undefined, notes),
     });
+    // Tracked before the input is captured, not after: that capture runs program code, and one
+    // ending the execution from inside must find this crossing tracked, or it is never abandoned
+    // and its record lands after the execution's complete record, which core.md 10 forbids.
     if (!this.ended) this.tracked.add(crossing);
+    if (!inst.inert && input !== WITHHELD) {
+      const c = inst.capture.value("crossing.input", input, undefined, target.value);
+      crossing.opened(c.text, mergeExt(ext, undefined, c.base64 ? note(notes, "mocon.encoding", "input", "base64") : notes));
+    }
     if (notice && !inst.inert) this.write(crossing.notice());
     return crossing;
   }
 
-  /** `,"end":{...}`, and a note for every slot whose value holds base64 or whose message was cut. The payloads share the line's budget. */
+  /** `,"end":{...}`, plus base64 and cut-message notes. The payloads share the budget. */
   private endText(
     disposition: Disposition,
     timeText: string,
     error: ErrorInput | undefined,
     result: unknown,
-    outputs: Record<string, unknown> | undefined,
+    outputs: ReadonlyArray<readonly [channel: string, value: unknown]> | undefined,
   ): [text: string, notes: Notes | undefined] {
     const capture = this.inst.capture;
     const budget = new Budget(LINE_BUDGET);
@@ -246,8 +244,7 @@ export class Execution implements ExecutionHandle {
     }
     if (outputs !== undefined) {
       let outputsText = "";
-      for (const channel of Object.keys(outputs)) {
-        const value = outputs[channel];
+      for (const [channel, value] of outputs) {
         if (value === undefined) continue;
         const c = capture.value("outputs", value, budget, undefined, channel);
         outputsText += (outputsText === "" ? "" : ",") + quote(channel) + ":" + c.text;
@@ -257,6 +254,30 @@ export class Execution implements ExecutionHandle {
     }
     return [text + "}", notes];
   }
+}
+
+/**
+ * The `outputs` container read once, beside the other options, so a channel map that throws from
+ * `ownKeys` or from a getter answers the caller with mocon's own `TypeError` instead of throwing
+ * the program's error out of `complete()`. The values are captured later, under the payload guard.
+ */
+function outputPairs(outputs: unknown): Array<[string, unknown]> {
+  if (outputs === null || typeof outputs !== "object") throw new TypeError("mocon: outputs must be an object");
+  const pairs: Array<[string, unknown]> = [];
+  try {
+    for (const channel of Object.keys(outputs)) pairs.push([channel, (outputs as Record<string, unknown>)[channel]]);
+  } catch {
+    throw new TypeError("mocon: outputs must be an object whose channels can be read");
+  }
+  return pairs;
+}
+
+/** `{"session":...,"traceparent":...}` in `normalizeContext`'s order, from the strings. */
+function contextText(context: ExecutionContext): string {
+  let body = "";
+  if (context.session !== undefined) body += '"session":' + quote(context.session);
+  if (context.traceparent !== undefined) body += (body === "" ? "" : ",") + '"traceparent":' + quote(context.traceparent);
+  return "{" + body + "}";
 }
 
 type Derive<T> = (...args: any[]) => T;
@@ -272,7 +293,7 @@ function instrumentOptions(options: unknown): { target: string | Derive<unknown>
   return { target: target as string | Derive<unknown> | undefined, input: input as Derive<unknown> | undefined, ext: ext as Ext | Derive<unknown> | undefined };
 }
 
-/** The target of one call: the option's string, what its function returned, or the first argument, through `targetOf`. */
+/** The option's string, what its function returned, or the first argument, via `targetOf`. */
 function targetFrom(option: string | Derive<unknown> | undefined, args: unknown[]): string {
   if (typeof option === "string") return option;
   let value: unknown = args[0];
@@ -280,13 +301,13 @@ function targetFrom(option: string | Derive<unknown> | undefined, args: unknown[
     try {
       value = option(...args);
     } catch {
-      // The target function could not read these arguments; the first argument names the call instead.
+      // The target function could not read these arguments; the first argument names the call.
     }
   }
   return targetOf(value);
 }
 
-/** The input of one call: what the option's function returned, or the arguments not used as the target, unwrapped when there is one. */
+/** The option's function's return, or the arguments not used as the target, unwrapped when one. */
 function inputOf(option: Derive<unknown> | undefined, targetFromFirst: boolean, args: unknown[]): unknown {
   if (option !== undefined) {
     try {
@@ -299,7 +320,7 @@ function inputOf(option: Derive<unknown> | undefined, targetFromFirst: boolean, 
   return args.length === 1 ? args[0] : args;
 }
 
-/** The `ext` of one call, from the option's function: its JSON text, or the redaction note for a throw or a value that is not an object. */
+/** The option's function's JSON text, or the redaction note for a throw or a non-object. */
 function extOf(option: Derive<unknown>, args: unknown[]): string | undefined {
   try {
     return extJson(option(...args));

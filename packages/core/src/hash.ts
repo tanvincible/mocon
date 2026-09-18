@@ -1,11 +1,6 @@
 /**
- * The one SHA-256 in this repository. `program.hash` and every Payload
- * hash come from it, and so do the derived ids of `@mocon/otel`
- * (otel-mapping.md 4), which reach it through `@mocon/core/fold`.
- *
- * `crypto.hash` is one call into the platform, and is present from Node
- * 20.12; `createHash` is the fallback on an older 20.x, and costs an
- * object per digest.
+ * The one SHA-256 in this repository: `program.hash`, every Payload hash, and the derived ids of `@mocon/otel`
+ * (otel-mapping.md 4). `crypto.hash` is present from Node 20.12; `createHash` is the fallback on an older 20.x.
  */
 
 import * as nodeCrypto from "node:crypto";

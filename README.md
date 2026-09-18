@@ -2,7 +2,7 @@
 
 mocon is a record format for observing code-mode MCP servers: it makes visible what a code-mode execution did while it ran. See `spec/README.md` for the full explanation, `core.md` section 1 for the definition of a code-mode MCP, and section 4 for the stateless, supersede-based record model.
 
-Status: draft 1.0, dated 2026-09-17, and not yet stable. The specification is written and is the source of truth for the format. A host can conform without any library by emitting the JSON Lines described in the spec directly; `core.md` section 13 shows how in about sixty lines of plain JavaScript with no dependency.
+Status: draft 1.0, dated 2026-09-17, and not yet stable. The specification is written and is the source of truth for the format. A host can conform without any library by emitting the JSON Lines described in the spec directly; `core.md` section 13 shows the shape in about sixty lines of plain JavaScript with no dependency, and `spec/conformance/README.md` section 5 is what you check a real adaptor against.
 
 The full specification, its conformance levels, and a file-by-file index live at `spec/README.md`.
 

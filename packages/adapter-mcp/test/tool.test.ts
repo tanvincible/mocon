@@ -345,3 +345,26 @@ test("context defaults to contextFromMcp(extra) and can be replaced", async () =
   await handler(h2, { context: () => ({ session: "mine" }), run: () => OK })({ code: "x" }, extraOf({ sessionId: "s-1" }));
   assert.deepEqual(h2.done()["context"], { session: "mine" });
 });
+
+test("an extra the SDK shape no longer carries costs a field, never the record: a call that fails without a signal is still written failed, with the body's own error", async () => {
+  // `signal` is required of `extra` in the SDK this package is built against. Reading it unguarded would
+  // throw inside the wrapper's own catch, which replaces the body's error on its way to the caller and
+  // leaves the execution with a start notice and no complete record — the one outcome the wrapper exists
+  // to prevent.
+  const h = harness();
+  const boom = new Error("bad program");
+  const noSignal = { requestId: 1, sendNotification: async () => {}, sendRequest: async () => ({}) } as never;
+  await assert.rejects(
+    handler(h, {
+      run: () => {
+        throw boom;
+      },
+    })({ code: "x" }, noSignal),
+    (thrown: unknown) => thrown === boom,
+  );
+  assertValidStream(h.sink.lines);
+  const done = h.done();
+  assert.equal(done["end"]["disposition"], "failed", "no signal reads as not aborted, so the call failed");
+  assert.equal(done["end"]["error"]["class"], "runtime");
+  assert.deepEqual(done["end"]["error"], failReference(boom), "the body's error still goes through the core cause rule");
+});

@@ -225,35 +225,45 @@ const rows = (bytes: number): string[] => new Array(Math.ceil(bytes / 4)).fill("
 /** An object of about `bytes` characters, holding an array and a run. */
 const record = (bytes: number): Record<string, unknown> => ({ "v.rows": rows(bytes / 2), "v.note": chars("n", bytes / 2) });
 
-/** A stream of about `bytes` characters in each slot the tree shows, in every shape a value takes: a run, an array and an object. */
+/**
+ * A stream of about `bytes` characters in every slot the tree shows: each
+ * Payload value, in every shape one takes — a run, an array and an object
+ * — and equally each plain field the stream chooses, which core.md bounds
+ * no more than it bounds a payload: the host string, the ids, the
+ * language, the session, the traceparent, the target, the error class, an
+ * `outputs` channel name, an `attested` entry and the timestamps.
+ */
 function runsOf(bytes: number): string {
+  const big = (c: string): string => chars(c, bytes);
   return jsonl([
-    { kind: "host", host: "h", spec_version: "1.0", observes_crossings: "all" },
+    { kind: "host", host: big("h"), spec_version: big("V"), observes_crossings: "all", attested: [big("A")] },
     {
       kind: "execution",
-      host: "h",
-      id: "e",
+      host: big("h"),
+      id: big("e"),
+      language: big("l"),
+      context: { session: big("s"), traceparent: big("w") },
       program: { value: chars("p", bytes) },
-      start: T,
+      start: big("S"),
       ext: record(bytes),
-      end: { time: T1, disposition: "completed", result: { value: rows(bytes) }, outputs: { stdout: { value: record(bytes) } } },
+      end: { time: big("T"), disposition: big("D"), result: { value: rows(bytes) }, outputs: { [big("o")]: { value: record(bytes) } } },
     },
     {
       kind: "crossing",
-      host: "h",
-      id: "c",
-      execution_id: "e",
-      target: "t",
+      host: big("h"),
+      id: big("c"),
+      execution_id: big("e"),
+      target: big("t"),
       input: { value: record(bytes) },
       seq: 1,
-      start: T,
+      start: big("S"),
       ext: record(bytes),
-      end: { outcome: "error", time: T1, error: { class: "E", message: chars("m", bytes), value: { value: rows(bytes) } } },
+      end: { outcome: big("O"), time: big("T"), error: { class: big("E"), message: chars("m", bytes), value: { value: rows(bytes) } } },
     },
   ]);
 }
 
-test("showing a value costs what the width it shows costs, whatever its shape: a 5 MB payload renders within a small multiple of a 5 KB one", () => {
+test("showing a stream costs what the width it shows costs, whatever its shape: a 5 MB value in any field renders within a small multiple of a 5 KB one", () => {
   const small = buildModel(runsOf(5_000));
   const large = buildModel(runsOf(5_000_000));
   const tree = renderView(large);

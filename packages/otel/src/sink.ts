@@ -41,14 +41,36 @@ export interface OtlpSink extends Sink {
   readonly conflicts: number;
   /** Host declarations of another major version than this package reads, counted and not held (core.md 11). */
   readonly versionMismatches: number;
-  /** Host declarations for a host string past `MAX_HOSTS`, which are not held: their spans carry no `mocon.host.*` and read as attesting nothing. */
+  /**
+   * Host declarations the sink did not hold, because the host string was
+   * past `MAX_HOSTS` or the line was longer than `MAX_DECLARATION_BYTES`.
+   * Their spans carry no `mocon.host.*` and read as attesting nothing.
+   */
   readonly declarationsDropped: number;
   /** Resolves when every POST in flight has settled, whether it succeeded or not. */
   flush(): Promise<void>;
+  /**
+   * The same wait as `flush`, so `Mocon.close` awaits the POSTs in flight
+   * rather than returning while they are open. The sink owns no socket,
+   * no timer and no dispatcher of its own to release: what it holds is the
+   * set of POSTs, and this is what waits for them.
+   */
+  close(): Promise<void>;
 }
 
 /** Host strings whose declaration the sink holds. A declaration for a further host string is not stored. */
 const MAX_HOSTS = 256;
+/**
+ * Bytes of a host line the sink will hold. A declaration carries the five
+ * capability fields and an `ext`, and nothing bounds that `ext`: a stream
+ * can declare a megabyte of it per host string, and the sink would hold it
+ * until the process ends. The count alone is not a bound on memory, so
+ * this is the other half of it. A longer line is not held and is counted,
+ * so its spans read as they would before any declaration — the same
+ * outcome as a host string past `MAX_HOSTS`, and visible in the same
+ * counter.
+ */
+const MAX_DECLARATION_BYTES = 64 * 1024;
 /** Concurrent POSTs. A write that arrives past the bound is dropped and its promise rejects. */
 const MAX_IN_FLIGHT = 64;
 /** Bytes of a failed response's body the error quotes. Nothing more of any body is read. */
@@ -89,6 +111,11 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
   const remember = (declaration: HostLine, line: string): void => {
     if (!sameMajor(declaration.spec_version)) {
       versionMismatches++;
+      return;
+    }
+    // Before the line is canonicalized, so an oversized declaration costs no more than the text it arrived as.
+    if (line.length > MAX_DECLARATION_BYTES) {
+      declarationsDropped++;
       return;
     }
     const canon = canonical(line);
@@ -156,6 +183,9 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
       return tracked;
     },
     async flush() {
+      await Promise.allSettled([...inFlight]);
+    },
+    async close() {
       await Promise.allSettled([...inFlight]);
     },
   };

@@ -23,12 +23,25 @@ test("validate exits 0 on every golden stream and prints OK", async () => {
   });
 });
 
-test("validate exits 1 on every invalid line and names the line", async () => {
+test("validate exits 1 on every invalid line and names the line, unless the line is not JSON and is counted as skipped", async () => {
   const runs = await Promise.all(invalid.map((f) => mocon(["validate", f.path])));
   runs.forEach((r, i) => {
     const f = invalid[i]!;
+    let json = true;
+    try {
+      JSON.parse(f.text);
+    } catch {
+      json = false;
+    }
+    if (!json) {
+      // core.md 3: a line that is not a JSON object is skipped and counted by every consumer, never failed.
+      assert.equal(r.status, 0, `${f.name}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /: 1 lines, 1 skipped, 0 failed, 0 warnings -> OK\n/, f.name);
+      return;
+    }
     assert.equal(r.status, 1, `${f.name}: ${r.stdout}${r.stderr}`);
-    assert.match(r.stdout, /: 1 lines, 0 skipped, 1 failed, 0 warnings -> FAIL\n/, f.name);
+    // A line can fail a rule and trip a provenance.md 7 lint at once: `attested` holding a number does both.
+    assert.match(r.stdout, /: 1 lines, 0 skipped, 1 failed, \d+ warnings -> FAIL\n/, f.name);
     assert.match(r.stdout, /^    line 1 (host|execution|crossing) /m, f.name);
   });
 });

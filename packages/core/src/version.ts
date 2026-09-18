@@ -1,7 +1,4 @@
-/**
- * The version of spec/core.md this package implements, and the one rule a
- * consumer applies to a declared version (core.md 11).
- */
+/** The version of spec/core.md this package implements (core.md 11). */
 
 /** Every host line declares it. */
 export const SPEC_VERSION = "1.0";
@@ -9,8 +6,7 @@ export const SPEC_VERSION = "1.0";
 const MAJOR = SPEC_VERSION.slice(0, SPEC_VERSION.indexOf("."));
 
 /**
- * Whether a declaration's `spec_version` is read under this version: absent,
- * which reads as this major, or a string whose major is this one. A
+ * Absent reads as this major; otherwise the string's major must match. A
  * consumer that sees another major warns and may refuse.
  */
 export function sameMajor(version: unknown): boolean {

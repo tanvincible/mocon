@@ -1,8 +1,6 @@
 /**
- * Boundary checks on what the host hands a handle. Each throws before any
- * state changes, so a rejected call leaves the handle as it was.
- * `targetOf` is the one exception: a target names the call, so it is
- * coerced rather than refused.
+ * Boundary checks on what the host hands a handle. Each throws before any state changes, so a rejected call leaves
+ * the handle as it was. `targetOf` is the exception: a target names the call, so it is coerced, not refused.
  */
 
 import { earlier, unixNanos } from "./time.js";
@@ -35,18 +33,15 @@ export function checkSeq(value: unknown): number {
 }
 
 /**
- * A crossing target from whatever named the call: the string itself, or
- * `String(value)`, or the value's type when `String` throws, since a
- * program can reach that call. Never throws: the wrapper that derives a
- * target still has a bridge to reach.
+ * A crossing target from whatever named the call: the string itself, the text of any other primitive, and the
+ * value's type in brackets for an object or a function. Never throws and never runs the value's own code: a program
+ * reaches this call, and coercing an object it supplied would run its `toString`, which the host cannot bound — a
+ * Proxy claiming a length of 1e8 parks `String()` in `Array.prototype.join` for a target the cap then discards.
  */
 export function targetOf(value: unknown): string {
   if (typeof value === "string") return value;
-  try {
-    return String(value);
-  } catch {
-    return "[" + typeof value + "]";
-  }
+  if (value !== null && (typeof value === "object" || typeof value === "function")) return "[" + typeof value + "]";
+  return String(value);
 }
 
 export function checkExt(value: unknown, field: string): Ext | undefined {

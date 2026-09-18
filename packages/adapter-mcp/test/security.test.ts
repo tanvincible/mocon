@@ -11,7 +11,7 @@ import { test } from "node:test";
 import { fold } from "@mocon/core/fold";
 import { contextFromMcp, instrumentMcpClient, moconTool, type McpClientCalls } from "../src/index.js";
 import { withMcpServer } from "./codemode.js";
-import { assertValidStream, complete, extraOf, harness, waitFor } from "./helpers.js";
+import { assertValidStream, complete, extraOf, harness, waitFor, type Rec } from "./helpers.js";
 
 test("a traceparent or session the client inflates is not copied onto the execution or any crossing line", async () => {
   const h = harness();
@@ -183,5 +183,30 @@ test("a cancel reason of 256 characters or fewer is the message, and a longer on
     assert.equal(error["class"], "cancelled", where);
     assert.equal(error["message"], message, where);
     if (!own) assert.equal(error["value"], undefined, `${where}: the reason was written as the error value`);
+  }
+});
+
+test("a body that wraps the cancel reason writes it as an ordinary cause, bounded by the error slot's cap and not by the 256-character relay rule", async () => {
+  // The relay rule is about identity: a cause that *is* the reason skips the cause rule, and a cause that
+  // merely holds the reason's characters does not. So a body that wraps it hands the client a slot bounded
+  // by the error cap, in `message` and again in `value`. That is the real ceiling, and the README says so
+  // rather than promising a 256-character one the wrapper cannot keep over a body it did not write.
+  const sizes = [256, 1024, 1 << 14, 1 << 20];
+  for (const size of sizes) {
+    const h = harness();
+    const reason = "r".repeat(size);
+    const handler = moconTool(h.m, {
+      program: () => "p",
+      run: (_a, { extra }) => {
+        throw new Error("cancelled: " + String(extra.signal.reason));
+      },
+    });
+    await assert.rejects(handler({}, extraOf({ abort: { reason } })));
+    const error = complete(h.ofKind("execution"))["end"]["error"] as Rec;
+    assert.equal(error["class"], "cancelled", `reason of ${size}`);
+    const written = typeof error["message"] === "string" ? Buffer.byteLength(error["message"]) : 0;
+    assert.ok(written <= (1 << 14) + 64, `reason of ${size} wrote ${written} bytes of message, past the error slot's cap`);
+    const longest = Math.max(...h.sink.lines.map((l) => Buffer.byteLength(l)));
+    assert.ok(longest < 1 << 17, `reason of ${size}: the longest line is ${longest} bytes`);
   }
 });

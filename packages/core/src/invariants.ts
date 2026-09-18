@@ -1,8 +1,6 @@
 /**
- * Cheap checks at the state boundaries of the handle and capture code. A
- * failed invariant is a bug in this package, never a bad input: bad input
- * is rejected with a TypeError or RangeError before any state changes.
- * The README lists every invariant under "Invariants".
+ * A failed invariant is a bug in this package, never a bad input: bad input is
+ * rejected with a TypeError or RangeError before any state changes.
  */
 
 export class InvariantError extends Error {

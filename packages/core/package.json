@@ -8,6 +8,7 @@
   "engines": {
     "node": ">=20"
   },
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -16,13 +17,19 @@
     "./fold": {
       "types": "./dist/fold.d.ts",
       "default": "./dist/fold.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b",
+    "prepack": "npm run build",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p test/tsconfig.json"
   },

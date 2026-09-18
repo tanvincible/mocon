@@ -1,7 +1,7 @@
 /**
  * Emitter conformance: six scenarios shaped after the golden streams,
  * every emitted line validated against spec/schema/line.json and the
- * structural rules, then folded into the canonical view; the nine
+ * structural rules, then folded into the canonical view; the
  * invalid fixtures rejected by the same checks; and the reference
  * checker, spec/conformance/check.py, run on an emitted stream.
  */
@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fold } from "../src/fold.js";
-import { memorySink, mocon, type Payload } from "../src/index.js";
+import { memorySink, mocon, type Attestation, type ExecutionContext, type Payload } from "../src/index.js";
 import { assertValidStream, harness, lineErrors, readInvalid, readStream, specDir, SYNC_BRIDGE, sleep, type Rec } from "./helpers.js";
 
 const sha = (s: string): string => "sha256:" + createHash("sha256").update(s).digest("hex");
@@ -244,9 +244,17 @@ test("hash-only program: redacted with bytes and hash on the notice and the comp
 
 test("every invalid fixture fails the checks emitted streams are held to, and every golden line passes them", () => {
   const invalid = readInvalid();
-  assert.equal(invalid.length, 9);
+  assert.ok(invalid.length >= 9, `${invalid.length} invalid fixtures`);
   for (const { name, line, reason } of invalid) {
-    assert.ok(lineErrors(JSON.parse(line)).length > 0, `${name} must fail: ${reason}`);
+    // A fixture that is not JSON is refused by the parse itself: core.md 3 has a consumer skip
+    // and count such a line, so it never reaches the checks a record is held to.
+    let record: unknown;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    assert.ok(lineErrors(record).length > 0, `${name} must fail: ${reason}`);
   }
   for (const name of ["sync-bridge", "crossing-error", "base64-input-null-value", "unknown-field"]) {
     const lines = readStream(name).split("\n").filter((l) => l.trim() !== "");
@@ -255,22 +263,68 @@ test("every invalid fixture fails the checks emitted streams are held to, and ev
 });
 
 test("the emitter writes no invalid fixture: each rule the API can express is enforced before anything is written", () => {
-  const fixtures = Object.fromEntries(readInvalid().map(({ name, line }) => [name, JSON.parse(line) as Rec]));
+  const all = readInvalid();
+  const parsed = all.flatMap(({ name, line }) => {
+    try {
+      return [[name, JSON.parse(line) as Rec] as const];
+    } catch {
+      return [];
+    }
+  });
+  const fixtures = Object.fromEntries(parsed);
+
+  // One fixture is not JSON, so it never becomes a record to classify. The emitter cannot write it either:
+  // a non-finite number leaves the walker as `null`, the way `JSON.stringify` writes one.
+  assert.deepEqual(
+    all.map((f) => f.name).filter((n) => !(n in fixtures)),
+    ["nan-and-infinity"],
+  );
+  const nonFinite = harness();
+  const counted = nonFinite.m.execution.start({ program: "p", notice: false });
+  counted.crossing.start({ target: "t", input: { value: NaN, bytes: Infinity }, notice: true });
+  counted.complete({ result: -Infinity });
+  assert.deepEqual((nonFinite.last("crossing")["input"] as Rec)["value"], { value: null, bytes: null }, "NaN and Infinity are written as null, never as the bare words");
+  assert.deepEqual(((nonFinite.last("execution")["end"] as Rec)["result"] as Rec)["value"], null);
+  assertValidStream(nonFinite.sink.lines);
+
   const h = harness();
   const ex = h.m.execution.start({ program: "p", notice: false });
+  // `end` on a crossing is reached only from that crossing's own handle, so this one is opened on its own instance.
+  const hc = harness();
+  const exc = hc.m.execution.start({ program: "p", notice: false });
+  const crossing = exc.crossing.start({ target: "t", input: 1 });
   const refused: Record<string, () => unknown> = {
-    "missing-host": () => mocon({ host: fixtures["missing-host"]?.["host"] as string, capabilities: SYNC_BRIDGE, sinks: [memorySink()] }),
-    "observes-crossings-unknown-value": () => mocon({ host: "h", capabilities: { observes_crossings: fixtures["observes-crossings-unknown-value"]?.["observes_crossings"] as "all" }, sinks: [memorySink()] }),
+    "attested-not-strings": () => mocon({ host: "h", capabilities: { observes_crossings: "all", attested: fixtures["attested-not-strings"]?.["attested"] as Attestation[] }, sinks: [memorySink()] }),
+    "context-session-not-a-string": () => h.m.execution.start({ program: "p", context: fixtures["context-session-not-a-string"]?.["context"] as ExecutionContext }),
+    "crossing-end-not-an-object": () => crossing.end(fixtures["crossing-end-not-an-object"]?.["end"] as never),
+    "crossing-target-not-a-string": () => ex.crossing.start({ target: fixtures["crossing-target-not-a-string"]?.["target"] as string, input: 1 }),
     "disposition-outside-closed-set": () => ex.end({ disposition: ((fixtures["disposition-outside-closed-set"]?.["end"] as Rec)["disposition"]) as "completed" }),
     "end-without-disposition": () => ex.end((fixtures["end-without-disposition"]?.["end"]) as never),
+    "execution-end-not-an-object": () => ex.end(fixtures["execution-end-not-an-object"]?.["end"] as never),
+    "execution-id-not-a-string": () => h.m.execution.start({ program: "p", id: fixtures["execution-id-not-a-string"]?.["id"] as string }),
+    "missing-host": () => mocon({ host: fixtures["missing-host"]?.["host"] as string, capabilities: SYNC_BRIDGE, sinks: [memorySink()] }),
+    "observes-crossings-not-a-string": () => mocon({ host: "h", capabilities: { observes_crossings: fixtures["observes-crossings-not-a-string"]?.["observes_crossings"] as "all" }, sinks: [memorySink()] }),
+    "observes-crossings-unknown-value": () => mocon({ host: "h", capabilities: { observes_crossings: fixtures["observes-crossings-unknown-value"]?.["observes_crossings"] as "all" }, sinks: [memorySink()] }),
+    "seq-negative": () => ex.crossing.start({ target: "t", input: 1, seq: fixtures["seq-negative"]?.["seq"] as number }),
+    "seq-not-an-integer": () => ex.crossing.start({ target: "t", input: 1, seq: fixtures["seq-not-an-integer"]?.["seq"] as number }),
+    "timestamp-with-trailing-newline": () => h.m.execution.start({ program: "p", start: fixtures["timestamp-with-trailing-newline"]?.["start"] as string }),
     "timestamp-without-z": () => h.m.execution.start({ program: "p", start: fixtures["timestamp-without-z"]?.["start"] as string }),
+    "unmediated-egress-not-a-boolean": () => mocon({ host: "h", capabilities: { observes_crossings: "all", unmediated_egress: fixtures["unmediated-egress-not-a-boolean"]?.["unmediated_egress"] as boolean }, sinks: [memorySink()] }),
   };
   for (const [name, attempt] of Object.entries(refused)) {
     assert.ok(name in fixtures, name);
     assert.throws(attempt, (e: unknown) => e instanceof TypeError || e instanceof RangeError, name);
   }
-  // The only Payload the host writes by hand is the one a capture rule returns, and a rule that breaks the Payload rule writes `{"redacted":true}` rather than the fixture's shape.
-  const replaced = ["payload-no-value-no-flag", "hash-wrong-length"];
+  assert.equal(hc.sink.lines.length, 1, "the rejected crossing end wrote nothing: the host line alone");
+  crossing.output({ ok: true });
+  exc.complete();
+  assert.equal(hc.sink.lines.length, 4, "the crossing the rejected call left open still settles: host, the deferred notice, the crossing, the complete record");
+  assertValidStream(hc.sink.lines);
+
+  // The only Payload the host writes by hand is the one a capture rule returns, and a rule that breaks the Payload
+  // rule of core.md 5.4 (no value and neither flag, a hash that is not exactly 64 hex digits, a negative `bytes`)
+  // writes `{"redacted":true}` rather than the fixture's shape.
+  const replaced = ["payload-no-value-no-flag", "hash-wrong-length", "hash-with-trailing-newline", "payload-bytes-negative"];
   for (const name of replaced) {
     assert.ok(name in fixtures, name);
     const ruled = harness({ capture: { rules: { "crossing.input": () => (fixtures[name]?.["input"] as Payload) } } });
@@ -280,13 +334,36 @@ test("the emitter writes no invalid fixture: each rule the API can express is en
     assert.deepEqual(ruled.last("crossing")["input"], { redacted: true }, name);
     assertValidStream(ruled.sink.lines);
   }
-  // The other two cannot be expressed: a crossing is opened from its execution's handle, and an outcome carries only its own payload.
-  assert.deepEqual(Object.keys(fixtures).filter((n) => !(n in refused) && !replaced.includes(n)).sort(), ["crossing-without-execution-id", "outcome-output-with-error-field"]);
+
+  // The rest cannot be expressed. A crossing is opened from its execution's handle, so it always carries one;
+  // an outcome carries only its own payload; `spec_version` is this package's own constant, not a capability
+  // (records.test.ts pins that); and `outputs` is read as channel/value pairs before anything is captured, so an
+  // array's indices become channel names and the field on the wire is an object.
+  const inexpressible = ["crossing-without-execution-id", "execution-outputs-not-an-object", "outcome-output-with-error-field", "spec-version-not-major-minor"];
+  assert.deepEqual(Object.keys(fixtures).filter((n) => !(n in refused) && !replaced.includes(n)).sort(), inexpressible);
+  const channels = harness();
+  const listed = channels.m.execution.start({ program: "p", notice: false });
+  listed.end({ disposition: "completed", outputs: (fixtures["execution-outputs-not-an-object"]?.["end"] as Rec)["outputs"] as Record<string, unknown> });
+  assert.deepEqual(Object.keys((channels.last("execution")["end"] as Rec)["outputs"] as Rec), ["0"], "the array became a channel map, so the wire field is an object");
+  assertValidStream(channels.sink.lines);
+
   ex.complete();
   assert.equal(h.sink.lines.length, 2, "the host line and the one valid complete record");
   assertValidStream(h.sink.lines);
+
   const view = fold(Object.values(fixtures).map((r) => JSON.stringify(r)));
-  assert.equal(view.flagged, 3, "fold reads an unknown or missing disposition, and an unknown observes_crossings, as absent (core.md 8)");
+  assert.equal(
+    view.flagged,
+    6,
+    "fold reads an unknown or missing disposition, an end that is not an object on either kind, and an unknown or non-string observes_crossings, as absent (core.md 8)",
+  );
+  assert.equal(view.skipped, 2, "missing-host and execution-id-not-a-string are not records at all: no string host, no string id");
+  // Four fixtures share one execution id and seven share one crossing id, so seventeen execution and crossing
+  // records fold onto eight keys. A key holding a complete record resolves, however many broken notices arrived
+  // under it, which leaves the three unresolved keys the nine-fixture suite had: the two ends flagged and read as
+  // absent, and the one bad `start`.
+  assert.equal(Object.keys(view.executions).length, 4);
+  assert.equal(Object.keys(view.crossings).length, 4);
   assert.deepEqual(view.unresolved.map((r) => r.id).sort(), [fixtures["disposition-outside-closed-set"]?.["id"], fixtures["end-without-disposition"]?.["id"], fixtures["timestamp-without-z"]?.["id"]].sort());
 });
 

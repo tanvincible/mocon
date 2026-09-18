@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { fold } from "../src/fold.js";
-import { mocon, memorySink, type Ext, type Payload, type Sink } from "../src/index.js";
+import { mocon, memorySink, type Attestation, type Capabilities, type Ext, type Payload, type Sink } from "../src/index.js";
 import { assertValidStream, harness, SYNC_BRIDGE, sleep, type Rec } from "./helpers.js";
 
 function cyclic(): Rec {
@@ -262,9 +262,9 @@ test("instrument options: target and input functions, ext, and a non-string firs
   single(4);
   ex.complete();
   const [o, n, t, c1, c2, c3] = h.ofKind("crossing") as [Rec, Rec, Rec, Rec, Rec, Rec];
-  assert.equal(o["target"], "[object Object]");
+  assert.equal(o["target"], "[object]", "an object names the call by its type: coercing it would run its own toString");
   assert.equal(n["target"], "42");
-  assert.equal(t["target"], "[object]", "a throwing toString falls back to the type");
+  assert.equal(t["target"], "[object]", "a toString that would throw is never reached either");
   assert.equal(c1["target"], "crm/lookup");
   assert.deepEqual((c1["input"] as Rec)["value"], { id: 7 });
   assert.deepEqual(c1["ext"], { "mcp.name": "lookup" });
@@ -653,6 +653,37 @@ test("configuration errors surface at construction", () => {
   assert.throws(() => mocon({ host: "h", capabilities: { observes_crossings: "all", unmediated_egress: "no" as never }, sinks }), TypeError);
   assert.throws(() => mocon({ host: "h", capabilities: { observes_crossings: "all", ext: [] as never }, sinks }), TypeError);
   assert.throws(() => mocon({ host: "h", capabilities: { observes_crossings: "all" }, sinks: {} as never }), TypeError);
+});
+
+test("core.md 5.1: each capability is read once, so the declaration carries the value the closed-set check saw and never a second reading", () => {
+  /** A capabilities object whose `key` answers the first read with `member` and every later one with `after`. */
+  const shifting = (key: string, member: unknown, after: unknown): Capabilities => {
+    let read = 0;
+    const caps: Record<string, unknown> = { observes_crossings: "all" };
+    Object.defineProperty(caps, key, { enumerable: true, configurable: true, get: () => (read++ === 0 ? member : after) });
+    return caps as unknown as Capabilities;
+  };
+  const shifts: Array<[key: string, member: unknown, after: unknown]> = [
+    ["observes_crossings", "all", "most"],
+    ["unmediated_egress", true, "false"],
+    ["crossing_edge", "invocation", "sideways"],
+    ["attested", ["crossing.target"], [7]],
+  ];
+  for (const [key, member, after] of shifts) {
+    const sink = memorySink();
+    mocon({ host: "example/mcp", capabilities: shifting(key, member, after), sinks: [sink] });
+    const line = JSON.parse(sink.lines[0] ?? "{}") as Rec;
+    assert.deepEqual(line[key], member, `${key} passed the check as ${JSON.stringify(member)} and the declaration reads ${JSON.stringify(line[key])}`);
+    assertValidStream(sink.lines);
+  }
+  // The entries too: the array is copied once and the copy is both checked and written.
+  const entries: unknown[] = [undefined];
+  let read = 0;
+  Object.defineProperty(entries, 0, { enumerable: true, configurable: true, get: () => (read++ === 0 ? "crossing.target" : 7) });
+  const sink = memorySink();
+  mocon({ host: "example/mcp", capabilities: { observes_crossings: "all", attested: entries as Attestation[] }, sinks: [sink] });
+  assert.deepEqual((JSON.parse(sink.lines[0] ?? "{}") as Rec)["attested"], ["crossing.target"]);
+  assertValidStream(sink.lines);
 });
 
 test("ids are unique across instances and within one", () => {

@@ -111,7 +111,6 @@ test("a target, execution id, class or time that String() cannot convert is show
 
 test(
   "a host or execution id that String() cannot convert does not stop the model",
-  { todo: "@mocon/core fold builds its keys with String(host) and String(id), which throws on a parsed object such as {\"toString\": null}" },
   () => {
     buildModel(jsonl([{ kind: "execution", host: { toString: null }, id: "e1", program: { value: "p" }, start: T(0) }]));
     buildModel(jsonl([{ kind: "crossing", host: "h", id: [{ toString: null }], execution_id: "e1", target: "t", input: { value: 1 } }]));

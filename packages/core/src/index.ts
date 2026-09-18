@@ -1,10 +1,6 @@
 /**
- * @mocon/core: the reference emitter for mocon.
- *
- * `mocon` builds an instance from a host string, a capabilities
- * declaration and sinks. The instance writes the host line once and hands
- * out execution handles. It keeps no registry of executions and runs
- * nothing in the background.
+ * @mocon/core: the reference emitter for mocon. The instance writes the host line once and hands out execution
+ * handles; it keeps no registry of executions and runs nothing in the background.
  */
 
 import { checkExt, checkString, checkTimestamp } from "./check.js";
@@ -13,7 +9,7 @@ import { Execution } from "./execution.js";
 import { createRuntime, follow } from "./instance.js";
 import { Capturer, REDACTED_TEXT } from "./payload.js";
 import { extJson, objectJson, quote, raw } from "./serialize.js";
-import type { Ext, ExecutionContext, ExecutionHandle, ExecutionStartOptions, HostLine, Mocon, MoconOptions } from "./types.js";
+import type { Attestation, Capabilities, Ext, ExecutionContext, ExecutionHandle, ExecutionStartOptions, HostLine, Mocon, MoconOptions } from "./types.js";
 import { SPEC_VERSION } from "./version.js";
 
 export type * from "./types.js";
@@ -26,7 +22,11 @@ export { SPEC_VERSION } from "./version.js";
 export function mocon(options: MoconOptions): Mocon {
   const hostLine = buildHostLine(options);
   if (!Array.isArray(options.sinks)) throw new TypeError("mocon: sinks must be an array");
-  const runtime = createRuntime(hostLine.host, JSON.stringify(hostLine), [...options.sinks], new Capturer(options.capture), options.onError);
+  // A `toJSON` on `Object.prototype` makes the serialization of any object whatever it returns. A declaration
+  // that is not a JSON object refuses construction: core.md 5.1 wants one on every stream.
+  const declaration = objectJson(hostLine);
+  if (typeof declaration !== "string") throw new TypeError("mocon: the host declaration must serialize to a JSON object");
+  const runtime = createRuntime(hostLine.host, declaration, [...options.sinks], new Capturer(options.capture), options.onError);
   const inst = runtime.inst;
   runtime.declare();
 
@@ -74,31 +74,39 @@ export function mocon(options: MoconOptions): Mocon {
   return { execution: { start, run }, declare: runtime.declare, flush: runtime.flush, close: runtime.close };
 }
 
+/**
+ * The declaration from the capabilities, each field read once and the line written from what was read, the way
+ * every other option is handled (core.md 5.1 and 8). Reading a field twice would let a getter or a Proxy answer
+ * the closed-set check with a member and the write with anything, putting a value on the wire that never passed
+ * a check; `attested` is copied before its entries are checked for the same reason.
+ */
 function buildHostLine(options: MoconOptions): HostLine {
   const { host, capabilities } = options;
   if (typeof host !== "string" || host === "") throw new TypeError("mocon: host must be a non-empty string");
   if (capabilities === null || typeof capabilities !== "object") throw new TypeError("mocon: capabilities are required");
-  if (!CLOSED.observes_crossings.has(capabilities.observes_crossings)) {
+  const { observes_crossings: observes, unmediated_egress: egress, crossing_edge: edge, attested, ext: extIn } = capabilities as Capabilities;
+  if (!CLOSED.observes_crossings.has(observes)) {
     throw new RangeError(`mocon: observes_crossings must be "all", "some" or "none"`);
   }
-  const line: HostLine = { kind: "host", host, spec_version: SPEC_VERSION, observes_crossings: capabilities.observes_crossings };
-  if (capabilities.unmediated_egress !== undefined) {
-    if (typeof capabilities.unmediated_egress !== "boolean") throw new TypeError("mocon: unmediated_egress must be a boolean");
-    line.unmediated_egress = capabilities.unmediated_egress;
+  const line: HostLine = { kind: "host", host, spec_version: SPEC_VERSION, observes_crossings: observes };
+  if (egress !== undefined) {
+    if (typeof egress !== "boolean") throw new TypeError("mocon: unmediated_egress must be a boolean");
+    line.unmediated_egress = egress;
   }
-  if (capabilities.crossing_edge !== undefined) {
-    if (!CLOSED.crossing_edge.has(capabilities.crossing_edge)) throw new RangeError(`mocon: crossing_edge must be "invocation" or "dispatch"`);
-    line.crossing_edge = capabilities.crossing_edge;
+  if (edge !== undefined) {
+    if (!CLOSED.crossing_edge.has(edge)) throw new RangeError(`mocon: crossing_edge must be "invocation" or "dispatch"`);
+    line.crossing_edge = edge;
   }
-  if (capabilities.attested !== undefined) {
-    if (!Array.isArray(capabilities.attested)) throw new TypeError("mocon: attested must be an array");
-    for (const entry of capabilities.attested) {
+  if (attested !== undefined) {
+    if (!Array.isArray(attested)) throw new TypeError("mocon: attested must be an array");
+    const entries = [...attested] as unknown[];
+    for (const entry of entries) {
       if (!CLOSED.attested.has(entry)) throw new RangeError(`mocon: unknown attested entry ${JSON.stringify(entry)}`);
     }
-    line.attested = [...capabilities.attested];
+    line.attested = entries as Attestation[];
   }
   // Serialized once and parsed back, so the declaration carries plain data and a toJSON inside runs once.
-  const ext = objectJson(checkExt(capabilities.ext, "capabilities.ext"));
+  const ext = objectJson(checkExt(extIn, "capabilities.ext"));
   if (ext === null) throw new TypeError("mocon: capabilities.ext must serialize to a JSON object");
   if (ext !== undefined) line.ext = JSON.parse(ext) as Ext;
   return line;

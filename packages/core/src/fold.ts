@@ -1,19 +1,14 @@
 /**
- * The canonical view of a stream, as spec/conformance/README.md section 3
- * defines it: the supersede rule (core.md 4) applied once per key,
- * order-independently, with conflicts resolved by the tie-break check.py
- * uses. Executions and crossings are keyed by host and id, because
- * core.md 6 scopes ids to `(host, kind)`; a single-host stream is the
- * special case where every key shares one host.
+ * The canonical view of a stream, as spec/conformance/README.md 3 defines it:
+ * the supersede rule (core.md 4) applied once per key, order-independently,
+ * with the tie-break check.py uses. Executions and crossings are keyed by
+ * host and id, because core.md 6 scopes ids to `(host, kind)`.
  *
- * A consumer-side entry, published at `@mocon/core/fold` with the other
- * consumer tools: `canonical`, `CLOSED`, `unixNanos`, `sameMajor`,
- * `sha256` and `stringifyDeep`, which `@mocon/otel` and `@mocon/cli`
- * share from here rather than each keeping a copy. The emitter's main
- * entry does not carry them.
+ * The consumer entry, published at `@mocon/core/fold`; `@mocon/otel` and
+ * `@mocon/cli` share its re-exports rather than each keeping a copy.
  */
 
-import { canonical } from "./canonical.js";
+import { byCodePoint, canonical } from "./canonical.js";
 import { CLOSED } from "./closed.js";
 import type { CrossingLine, ExecutionLine, HostLine } from "./types.js";
 
@@ -31,7 +26,16 @@ export interface ViewRef {
   id: string | null;
 }
 
-/** The three maps have a null prototype: any key is an own entry, and a missing key reads as `undefined`. */
+/**
+ * The three maps have a null prototype: any key is an own entry.
+ *
+ * `host + "\0" + id` is not injective — host `a` with id `b\0c` and host
+ * `a\0b` with id `c` share a key, and both are legal on the wire — so two
+ * such records fold as one, which check.py, keying by the pair itself, does
+ * not do. Which one the view holds is decided by the tie-break below and
+ * never by arrival order, so every permutation still gives one view
+ * (core.md 4 rule 4).
+ */
 export interface View {
   hosts: Record<string, HostLine>;
   /** Keyed by `host + "\0" + id`. */
@@ -42,12 +46,11 @@ export interface View {
   unresolved: ViewRef[];
   /** Keys with two or more distinct complete records, sorted the same way. */
   conflicts: ViewRef[];
-  /** Lines that were not JSON objects, carried a kind this version does not know, or had no string `host`, or no string `id` on a kind that needs one. */
+  /** Not a JSON object, an unknown kind, or a missing string `host` or `id`. */
   skipped: number;
   /**
-   * Lines that carried a value outside a closed set (core.md 8). The
-   * containing object is read as absent: an execution or crossing whose
-   * `end` is malformed counts as a notice, and a declaration loses the
+   * A value outside a closed set (core.md 8). The containing object reads as
+   * absent: a malformed `end` counts as a notice, and a declaration loses the
    * offending key.
    */
   flagged: number;
@@ -63,7 +66,6 @@ interface Entry {
 
 const END: ReadonlySet<string> = new Set(["end"]);
 
-/** Folds a stream given as one text or as an iterable of lines. */
 export function fold(input: string | Iterable<string>): View {
   const lines = typeof input === "string" ? input.split("\n") : input;
   const hosts = new Map<string, Entry[]>();
@@ -126,16 +128,13 @@ export function fold(input: string | Iterable<string>): View {
   const resolve = <T>(map: Map<string, Entry[]>, kind: "execution" | "crossing"): Record<string, T> => {
     const out: Array<[string, T]> = [];
     for (const [key, entries] of map) {
-      const first = (entries[0] as Entry).rec;
-      const ref: ViewRef = { kind, host: first["host"] as string, id: first["id"] as string };
       const completes = dedupe(entries.filter((e) => Object.hasOwn(e.rec, "end")));
-      if (completes.length > 0) {
-        if (completes.length > 1) conflicts.push(ref);
-        out.push([key, pick(completes) as unknown as T]);
-      } else {
-        unresolved.push(ref);
-        out.push([key, pick(dedupe(entries)) as unknown as T]);
-      }
+      // The ref names the record the view holds, not the first line to arrive.
+      const chosen = pick(completes.length > 0 ? completes : dedupe(entries));
+      const ref: ViewRef = { kind, host: chosen["host"] as string, id: chosen["id"] as string };
+      if (completes.length > 1) conflicts.push(ref);
+      else if (completes.length === 0) unresolved.push(ref);
+      out.push([key, chosen as unknown as T]);
     }
     return table(out);
   };
@@ -147,14 +146,14 @@ export function fold(input: string | Iterable<string>): View {
   return { hosts: table(hostView), executions: executionView, crossings: crossingView, unresolved, conflicts, skipped, flagged };
 }
 
-/** A map with no prototype, so a key such as `__proto__` or `constructor` is an own entry like any other. */
+/** No prototype, so `__proto__` or `constructor` is an own entry. */
 function table<T>(entries: Array<[string, T]>): Record<string, T> {
   const out = Object.create(null) as Record<string, T>;
   for (const [key, value] of entries) out[key] = value;
   return out;
 }
 
-/** Whether `end` is present but not an object, or carries a closed-set value the consumer does not know. */
+/** `end` present but not an object, or with an unknown closed-set value. */
 function badEnd(rec: Rec, field: string, allowed: ReadonlySet<unknown>): boolean {
   if (!Object.hasOwn(rec, "end")) return false;
   const end = rec["end"];
@@ -167,7 +166,7 @@ function outside(rec: Rec, key: string, allowed: ReadonlySet<unknown>): boolean 
   return Object.hasOwn(rec, key) && !allowed.has(rec[key]);
 }
 
-/** A copy without `keys`. Every key is copied as an own data property, `__proto__` included. */
+/** A copy without `keys`, every key an own data property, `__proto__` too. */
 function without(rec: Rec, keys: ReadonlySet<string>): Rec {
   return Object.fromEntries(Object.entries(rec).filter(([k]) => !keys.has(k)));
 }
@@ -178,12 +177,9 @@ function push(map: Map<string, Entry[]>, key: string, entry: Entry): void {
   else list.push(entry);
 }
 
+/** By code point, as check.py sorts; `<` compares UTF-16 units instead. */
 function byRef(a: ViewRef, b: ViewRef): number {
-  return cmp(a.kind, b.kind) || cmp(a.host, b.host) || cmp(a.id ?? "", b.id ?? "");
-}
-
-function cmp(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+  return byCodePoint(a.kind, b.kind) || byCodePoint(a.host, b.host) || byCodePoint(a.id ?? "", b.id ?? "");
 }
 
 /** Distinct by canonical JSON, keeping the first occurrence of each. */
@@ -198,7 +194,10 @@ function dedupe(entries: readonly Entry[]): Entry[] {
   return out;
 }
 
-/** The content-only tie-break the conformance suite recommends: the record whose canonical JSON sorts first. Canonical JSON is ASCII, so `<` is Python's order. */
+/**
+ * The content-only tie-break the conformance suite recommends: the record
+ * whose canonical JSON sorts first. That JSON is ASCII, so `<` is Python's.
+ */
 function pick(entries: readonly Entry[]): Rec {
   let best = entries[0] as Entry;
   for (const e of entries) if (e.canon < best.canon) best = e;

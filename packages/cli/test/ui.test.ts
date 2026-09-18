@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { appendFileSync, chmodSync, copyFileSync, readFileSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { appendFileSync, chmodSync, copyFileSync, mkdirSync, readFileSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
@@ -253,4 +254,56 @@ test("--out onto something that is not a regular file is refused before it is em
   const before = statSync("/dev/null").mode & 0o777;
   assert.throws(() => writeUi(file, "/dev/null"), /not a regular file/, "a device took the page, and its mode");
   assert.equal(statSync("/dev/null").mode & 0o777, before);
+});
+
+test("--out onto a FIFO with no reader is refused rather than blocking: the refusal cannot wait on the open", { skip: process.platform === "win32", timeout: 20_000 }, () => {
+  const dir = tempDir();
+  const file = join(dir, "stream.jsonl");
+  writeFileSync(file, jsonl([{ kind: "execution", host: "h", id: "e", program: { value: "p" }, start: "2026-09-16T10:00:00Z" }]));
+  const fifo = join(dir, "page.html");
+  const made = spawnSync("mkfifo", [fifo]);
+  if (made.status !== 0) return; // no mkfifo on this machine: nothing to check
+  // A blocking open would hold here until a reader arrived, which is never, and the check that refuses
+  // anything but a regular file would not run. Anyone who can write the directory can plant this.
+  const started = Date.now();
+  assert.throws(() => writeUi(file, fifo), "a FIFO took the page, or the open is still waiting for a reader");
+  assert.ok(Date.now() - started < 5_000, "the open waited on a reader instead of failing");
+});
+
+test("the 500 body writes a control character in the path as a visible escape, as every other line the command writes does", async () => {
+  const ch = (code: number): string => String.fromCharCode(code);
+  const ESC = ch(0x1b);
+  const RLO = ch(0x202e);
+  // A 500 carries the path back, and a path is chosen on the command line but read in a terminal as often
+  // as in a browser: `curl` puts this body straight on the screen.
+  const file = join(tempDir(), `live${ESC}[31m${RLO}.jsonl`);
+  copyFileSync(stream("unresolved").path, file);
+  const ui = await serveUi(file, 0);
+  try {
+    unlinkSync(file);
+    const gone = await fetch(ui.url + "view.json");
+    assert.equal(gone.status, 500);
+    const body = await gone.text();
+    assert.ok(!body.includes(ESC) && !body.includes(RLO), `the body carries the path raw: ${JSON.stringify(body)}`);
+    assert.ok(body.includes("\\x1b") && body.includes("\\u202e"), `the path is not escaped in the body: ${JSON.stringify(body)}`);
+  } finally {
+    await ui.close();
+  }
+});
+
+test("--out follows a symbolic link in a directory of the path, because O_NOFOLLOW covers the final component only", { skip: process.platform === "win32" }, () => {
+  // Node has no `openat`, so the final open cannot be made relative to a directory the command verified, and
+  // comparing the parent against its real path would refuse the ordinary symlinked directories a machine has
+  // (/tmp and /var are symbolic links on macOS). What is left is to say so: packages/cli/README.md narrows
+  // the promise to the final component, and this is the case it is narrowed for.
+  const dir = tempDir();
+  const file = join(dir, "stream.jsonl");
+  writeFileSync(file, jsonl([{ kind: "execution", host: "h", id: "e", program: { value: "p" }, start: "2026-09-16T10:00:00Z" }]));
+  const real = join(dir, "realdir");
+  mkdirSync(real);
+  symlinkSync(real, join(dir, "dirlink"));
+  writeUi(file, join(dir, "dirlink", "page.html"));
+  const written = join(real, "page.html");
+  assert.ok(statSync(written).isFile(), "the page did not land in the directory the link names");
+  assert.equal(statSync(written).mode & 0o077, 0, "wherever it lands, the page is owner-readable only");
 });

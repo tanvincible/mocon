@@ -261,14 +261,31 @@ function classed(error: unknown): boolean {
   return isRec(error) && typeof error["class"] === "string";
 }
 
+/**
+ * The `attested` entries of a declaration that this version knows, as a
+ * set, computed once per declaration object.
+ *
+ * Once per declaration and not once per line: a caller holds one
+ * declaration for a host string and maps every line of that host against
+ * it, so rebuilding the set per line would make each span's cost
+ * proportional to the length of a list the stream chose, for the life of
+ * the sink. An entry outside `CLOSED.attested` is dropped here as it is
+ * from `mocon.host.attested` (otel-mapping.md 3, provenance.md 4), which
+ * changes no label: every lift this file asks about is a known entry.
+ */
 function attestedSet(declaration: HostLine | undefined): ReadonlySet<string> {
-  const list = declaration?.attested;
-  if (!Array.isArray(list)) return EMPTY;
+  if (declaration === undefined) return EMPTY;
+  const held = ATTESTED.get(declaration);
+  if (held !== undefined) return held;
+  const list = declaration.attested;
   const set = new Set<string>();
-  for (const entry of list) if (typeof entry === "string") set.add(entry);
+  if (Array.isArray(list)) for (const entry of list) if (CLOSED.attested.has(entry)) set.add(entry as string);
+  ATTESTED.set(declaration, set);
   return set;
 }
 const EMPTY: ReadonlySet<string> = new Set();
+/** Keyed on the declaration object, so an entry goes when the caller stops holding it. */
+const ATTESTED = new WeakMap<HostLine, ReadonlySet<string>>();
 
 /** `mocon.host.*` from the declaration (otel-mapping.md 6.2). An unknown closed-set value drops that one attribute (core.md 8). */
 function hostAttributes(a: Attributes, d: HostLine): void {

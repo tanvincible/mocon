@@ -27,8 +27,8 @@ const execution = (over: Record<string, unknown>, end?: Record<string, unknown>)
   ...over,
 });
 
-test("the 23 golden streams validate with no failures and no lint warnings", () => {
-  assert.equal(streams.length, 23);
+test("every golden stream validates with no failures and no lint warnings", () => {
+  assert.ok(streams.length >= 23, `${streams.length} golden streams listed`);
   for (const s of streams) {
     const report = validateStream(s.text);
     assert.deepEqual(report.failures, [], s.name);
@@ -39,10 +39,21 @@ test("the 23 golden streams validate with no failures and no lint warnings", () 
   }
 });
 
-test("each of the 9 invalid lines is rejected, as a line and as a stream", () => {
-  assert.equal(invalid.length, 9);
+test("every invalid line is rejected, as a line and as a stream, or is not JSON and so never becomes a record", () => {
+  assert.ok(invalid.length >= 9, `${invalid.length} invalid lines listed`);
   for (const f of invalid) {
-    const errors = structuralErrors(JSON.parse(f.text));
+    const parsed = parseLine(f.text);
+    if (parsed === undefined) {
+      // check.py answers "correctly rejected (not JSON)" for these. `validate` counts the line as skipped
+      // rather than failing it, which core.md 3 requires of every consumer, so the two agree that it is
+      // never read as a record. A stream of such lines therefore exits 0, with the count as the evidence.
+      const report = validateStream(f.text);
+      assert.deepEqual(report.failures, [], f.name);
+      assert.equal(report.skipped, 1, `${f.name} is not JSON, so it must be counted as skipped`);
+      assert.equal(exitCode(report), 0, f.name);
+      continue;
+    }
+    const errors = structuralErrors(parsed);
     assert.ok(errors.length > 0, `${f.name} should fail`);
     const report = validateStream(f.text);
     assert.equal(report.failures.length, 1, f.name);
@@ -53,8 +64,17 @@ test("each of the 9 invalid lines is rejected, as a line and as a stream", () =>
   }
 });
 
+/** One invalid fixture's line, or `undefined` when it is not JSON at all, as `nan-and-infinity` is. */
+function parseLine(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 test("the rejection names the rule, the way check.py does", () => {
-  const byName = new Map(invalid.map((f) => [f.name, structuralErrors(JSON.parse(f.text))]));
+  const byName = new Map(invalid.filter((f) => parseLine(f.text) !== undefined).map((f) => [f.name, structuralErrors(parseLine(f.text))]));
   assert.deepEqual(byName.get("crossing-without-execution-id"), ["crossing: missing required field: execution_id"]);
   assert.deepEqual(byName.get("disposition-outside-closed-set"), ["execution.end.disposition not in closed set"]);
   assert.deepEqual(byName.get("end-without-disposition"), ["execution.end: missing required field: disposition"]);
@@ -217,4 +237,18 @@ test("a line whose id or kind is nested 20000 deep is reported, not a crash", ()
 test("a timestamp that names no instant, such as February 30, fails like one with the wrong shape", () => {
   const report = validateStream(jsonl([execution({ start: "2026-02-30T00:00:00Z" })]));
   assert.deepEqual(report.failures[0]?.errors, ["execution.start: not RFC 3339 UTC with Z suffix"]);
+});
+
+test("the report's `lines` counts every non-blank line, not the records kept, which is the one number check.py's header states differently", () => {
+  // `mocon validate unknown-kind.jsonl` prints "4 lines, 1 skipped" where check.py prints "3 lines, 1
+  // skipped": check.py counts records kept and this counts what it read. Both name the same file, so a
+  // reader comparing the two reports needs the definition, and packages/cli/README.md gives it.
+  const s = streams.find((f) => f.name === "unknown-kind");
+  assert.ok(s !== undefined, "the unknown-kind golden stream is the case both tools print");
+  const nonBlank = s.text.split("\n").filter((l) => l.trim() !== "").length;
+  const report = validateStream(s.text);
+  assert.equal(report.lines, nonBlank, "every non-blank line is counted, skipped ones included");
+  assert.equal(report.skipped, 1);
+  assert.equal(report.lines - report.skipped, nonBlank - 1, "records kept is lines minus skipped, which is check.py's number");
+  assert.match(renderReport("unknown-kind.jsonl", report), new RegExp(`^unknown-kind\\.jsonl: ${nonBlank} lines, 1 skipped, 0 failed, 0 warnings -> OK$`, "m"));
 });

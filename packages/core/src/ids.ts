@@ -1,11 +1,8 @@
 /**
  * Ids in the shapes core.md 6 recommends: 32 lowercase hex digits from 128
  * random bits for an execution, 16 from 64 bits for a crossing or event.
- *
- * Bytes come from a pool filled by the CSPRNG in one call and sliced as
- * ids are minted, instead of one call per id. A pool belongs to one
- * instance, so there is no module-level state; no chunk is handed out
- * twice.
+ * Bytes come from a CSPRNG pool sliced as ids are minted; a pool belongs to
+ * one instance, so no chunk is handed out twice.
  */
 
 import { randomFillSync } from "node:crypto";

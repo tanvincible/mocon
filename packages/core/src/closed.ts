@@ -1,8 +1,6 @@
 /**
- * The closed sets of core.md 8, and the `attested` entries provenance.md 4
- * defines for the version this package implements, as runtime values. Each
- * set is built from a record keyed by its wire type, so a member missing
- * from the list or foreign to the type fails to compile.
+ * The closed sets of core.md 8 and the `attested` entries of provenance.md 4, as runtime values. Each set is
+ * built from a record keyed by its wire type, so a missing member or one foreign to it fails to compile.
  */
 
 import type { Attestation, CrossingEdge, CrossingEnd, Disposition, ObservesCrossings } from "./types.js";

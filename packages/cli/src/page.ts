@@ -5,6 +5,9 @@
  * through `el`, never as markup, so nothing in a record is parsed as HTML,
  * and `el` writes control characters and bidirectional formatting marks
  * as visible escapes, so a record cannot reorder or hide what is shown.
+ * The one string the page shows that is not from the stream, the file name
+ * the command was given, goes through the same escape on its way to the
+ * header and the document title.
  * With `--out` the folded view is inlined instead, with `<` escaped so a
  * program containing `</script>` cannot end the block.
  */
@@ -180,8 +183,8 @@ const SCRIPT = String.raw`
   const state = { session: 0, exec: 0 };
 
   function render() {
-    document.title = 'mocon ' + (model.file || '');
-    $('file').textContent = model.file || '';
+    document.title = 'mocon ' + visible(model.file || '');
+    $('file').textContent = visible(model.file || '');
     $('counts').textContent = model.executions + ' executions · ' + model.crossings + ' crossings · ' +
       model.unresolved.length + ' unresolved · ' + model.conflicts.length + ' conflicts · ' + model.skipped + ' skipped · ' + model.flagged + ' flagged';
     renderHosts();

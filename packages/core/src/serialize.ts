@@ -1,38 +1,22 @@
 /**
- * The JSON serialization this package uses for the lines it writes.
+ * `JSON.stringify` with no indentation, so object keys come out in the order
+ * JavaScript enumerates them — integer-like keys first in numeric order, then
+ * the rest in insertion order — and non-ASCII text travels as UTF-8 rather than
+ * as `\u` escapes. Payload values follow the same rule through the bounded
+ * walker in `payload.ts`, with the departures listed there; `program` is the
+ * one slot whose serialization is the UTF-8 text itself (core.md 5.4).
  *
- * It is `JSON.stringify` with no indentation:
+ * The conformance fixtures under spec/conformance were produced this way and
+ * this package's hashes test pins the rule to them, so a change here changes
+ * those fixtures too.
  *
- * - compact separators, no whitespace;
- * - object keys in the order JavaScript enumerates them: integer-like
- *   keys first in numeric order, then the rest in insertion order;
- * - strings escaped the way `JSON.stringify` escapes them: `"`, `\`,
- *   control characters and lone surrogates, nothing else, so non-ASCII
- *   text travels as UTF-8 and not as `\u` escapes;
- * - numbers formatted as JavaScript formats them, with `NaN` and the
- *   infinities written as `null`;
- * - `toJSON` honoured; `undefined`, functions and symbols written as
- *   `null` at the top level and inside arrays, and omitted inside
- *   objects.
- *
- * Payload values follow the same rule through the bounded walker in
- * `payload.ts`, with the departures listed there: binary anywhere is a
- * base64 string, and a value nested deeper than the walker's depth limit,
- * or a string far past the cap, is cut. `program` is the one slot whose
- * serialization is the UTF-8 text itself (core.md 5.4).
- *
- * The conformance fixtures under spec/conformance were produced this way:
- * hashing `{"name":"Acme Robotics","id":8842}` in that key order gives
- * the `hash` the sync-bridge stream carries for that output. The hashes
- * test in this package pins the rule to those fixtures.
- *
- * A line is written by concatenation: a fixed envelope around Payload
- * text the encoder already produced, so a payload is serialized once.
+ * A line is written by concatenation: a fixed envelope around Payload text the
+ * encoder already produced, so a payload is serialized once.
  */
 
 import type { Ext, JsonValue } from "./types.js";
 
-/** A JSON string literal: `JSON.stringify(s)`, with a fast path for the short strings that need no escaping. */
+/** `JSON.stringify(s)`, with a fast path for short unescaped strings. */
 export function quote(s: string): string {
   const n = s.length;
   if (n > 32) return JSON.stringify(s);
@@ -43,18 +27,17 @@ export function quote(s: string): string {
   return '"' + s + '"';
 }
 
-/** A JSON string literal for text known to need no escaping: a minted id, a validated timestamp. */
+/** For text known to need no escaping: a minted id, a validated timestamp. */
 export function raw(s: string): string {
   return '"' + s + '"';
 }
 
-/** What replaces an `ext` the serialization rejects: a cycle, a BigInt, a throwing `toJSON`, or anything that yields no object. */
+/** Replaces an `ext` the serialization rejects, or that yields no object. */
 export const EXT_REDACTED = '{"mocon.ext":{"redacted":true}}';
 
 /**
- * The JSON text of `value` when it serializes to an object; `undefined`
- * when it serializes to nothing; `null` when it serializes to anything
- * else or the serialization throws.
+ * The JSON text of `value` when it serializes to an object, `undefined` when
+ * it serializes to nothing, and `null` otherwise or when it throws.
  */
 export function objectJson(value: unknown): string | undefined | null {
   let text: string | undefined;
@@ -68,11 +51,10 @@ export function objectJson(value: unknown): string | undefined | null {
 }
 
 /**
- * The JSON text of an `ext`, read once when the host hands it over, so a
- * later change to the host's object, or a getter or `toJSON` inside it,
- * cannot reach a record. Total: an `ext` that cannot be serialized, or
- * serializes to something other than an object, is replaced by a
- * `mocon.ext` note; one that serializes to nothing is absent.
+ * Read once when the host hands it over, so a later change to the object, or
+ * a getter or `toJSON` inside it, cannot reach a record. Total: one that
+ * cannot serialize to an object becomes a `mocon.ext` note, and one that
+ * serializes to nothing is absent.
  */
 export function extJson(ext: unknown): string | undefined {
   if (ext === undefined) return undefined;
@@ -85,7 +67,7 @@ export function extText(json: string | undefined): string {
   return json === undefined ? "" : ',"ext":' + json;
 }
 
-/** The library's own notes, keyed by their `mocon.*` key: `{ "mocon.encoding": { input: "base64" } }`. */
+/** The library's own notes, keyed by their `mocon.*` key. */
 export type Notes = Record<string, Record<string, JsonValue>>;
 
 /** `notes` with `note` merged into its key, creating either as needed. */
@@ -96,9 +78,8 @@ export function note(notes: Notes | undefined, key: string, field: string, value
 }
 
 /**
- * `base` with `over` merged in key by key, the key in `over` winning, and
- * each note merged into its own key the same way. `base` and `over` are
- * JSON text from `extJson`, so nothing here runs host or program code.
+ * `base` with `over` merged key by key, `over` winning. Both are JSON text
+ * from `extJson`, so nothing here runs host or program code.
  */
 export function mergeExt(base: string | undefined, over: string | undefined, notes?: Notes): string | undefined {
   if (notes === undefined) {
@@ -113,14 +94,16 @@ export function mergeExt(base: string | undefined, over: string | undefined, not
       ext[key] = held !== null && typeof held === "object" && !Array.isArray(held) ? { ...held, ...added } : added;
     }
   }
-  return JSON.stringify(ext);
+  // Through `objectJson`: `Object.prototype.toJSON` could return a string.
+  const text = objectJson(ext);
+  return text === null ? EXT_REDACTED : text;
 }
 
 function parseExt(json: string | undefined): Ext | undefined {
   return json === undefined ? undefined : (JSON.parse(json) as Ext);
 }
 
-/** `JSON.parse(text)` with every object and array in the result frozen: the Payload `ctx.capture` hands a rule. */
+/** `JSON.parse`, everything frozen: the Payload `ctx.capture` hands a rule. */
 export function parseFrozen<T>(text: string): T {
   const root: unknown = JSON.parse(text);
   const stack: unknown[] = [root];

@@ -289,3 +289,20 @@ test("a long execution renders its timeline without spreading every time into on
   const timeline = document.getElementById("main")!.find(by("div", "timeline"))[0]!;
   assert.equal(timeline.children.length, 1 + 70_000, "an axis and one row per crossing: 140,002 times, past the arguments a spread call can take");
 });
+
+test("the file name is escaped like everything else the page shows: a name carrying a control character or a bidirectional mark reaches neither the header nor the title raw", () => {
+  const ch = (code: number): string => String.fromCharCode(code);
+  const RLO = ch(0x202e);
+  const ESC = ch(0x1b);
+  // The name comes from the command line, not from the stream, but it lands in the same header the stream's
+  // own values do, and in the document title, where a terminal-style escape or an override is as good a lie.
+  const dir = tempDir();
+  const name = `a${RLO}b${ESC}[31mc.jsonl`;
+  const file = join(dir, name);
+  writeFileSync(file, jsonl([{ kind: "host", host: "h", observes_crossings: "all" }]));
+  const { document } = boot(viewJson(file));
+  const shown = document.getElementById("file")!.textContent;
+  assert.ok(!shown.includes(RLO) && !shown.includes(ESC), `the header shows the name raw: ${JSON.stringify(shown)}`);
+  assert.ok(shown.includes("\\u202e") && shown.includes("\\x1b"), `the name is not shown as escapes: ${JSON.stringify(shown)}`);
+  assert.ok(!document.title.includes(RLO) && !document.title.includes(ESC), `the title carries the name raw: ${JSON.stringify(document.title)}`);
+});

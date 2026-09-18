@@ -1,17 +1,12 @@
 /**
- * The cause rule shared by `ExecutionHandle.fail`, `CrossingHandle.error`
- * and `ErrorInput.cause` (types.ts). `cause` is what the host caught,
- * which is often what the program threw, so nothing here trusts it: every
- * read is guarded, errors are recognised by their internal brand rather
- * than by `instanceof` or a tag the program can set (an error from
- * node:vm, an isolate or a worker is not an instance of this realm's
- * `Error`), and a cause chain is cut at a fixed depth.
- *
- * A native error becomes the plain object `{ name, message, stack, ...own
- * enumerable properties, cause }` whose members are read from the error
- * lazily, the first time each is read: the bounded walker in `payload.ts`
- * reads them as it writes them, so a getter on a thrown error past the
- * slot's cap never runs, as for any other object.
+ * The cause rule shared by `ExecutionHandle.fail`, `CrossingHandle.error` and
+ * `ErrorInput.cause` (types.ts). `cause` is what the host caught, often what
+ * the program threw, so nothing here trusts it: every read is guarded, errors
+ * are recognised by internal brand rather than `instanceof` or a tag the
+ * program can set (an error from node:vm, an isolate or a worker is not an
+ * instance of this realm's `Error`), and a cause chain is cut at a fixed
+ * depth. Members are read lazily, as the bounded walker in `payload.ts`
+ * writes them, so a getter past the slot's cap never runs.
  */
 
 import { types } from "node:util";
@@ -41,10 +36,9 @@ function fromCause(cause: unknown, cls: string): ErrorInput {
 }
 
 /**
- * The error a settle call writes: `class`, then `message` and `value` from
- * `cause` under the rule above, with a `message` or `value` given beside
- * the cause winning. Throws a TypeError for a `class` or `message` that is
- * not a string, before it reads the cause.
+ * `class`, then `message` and `value` from `cause` under the rule above, a
+ * `message` or `value` given beside the cause winning. Throws a TypeError for
+ * a non-string `class` or `message`, before it reads the cause.
  */
 export function errorInput(error: ErrorInput): ErrorInput {
   const cls = checkString(error.class, "error.class");
@@ -59,13 +53,11 @@ export function errorInput(error: ErrorInput): ErrorInput {
 const OWN = new Set(["name", "message", "stack", "cause"]);
 
 /**
- * A native error as the plain object `{ name, message, stack, ...own
- * enumerable properties, cause }`, with absent and non-string fields
- * omitted, a nested error converted the same way, and a cycle or a chain
- * past `MAX_CAUSE_DEPTH` cut. `name`, `stack`, the key list and the cause
- * chain are read when the object is made, `message` is the caller's
- * reading, and every other member is an accessor that reads the error the
- * first time it is read and then holds the value, so each runs once.
+ * A native error as `{ name, message, stack, ...own enumerable properties,
+ * cause }`, absent and non-string fields omitted, a nested error converted
+ * the same way, and a cycle or a chain past `MAX_CAUSE_DEPTH` cut. `name`,
+ * `stack`, the key list and the cause chain are read when the object is made;
+ * every other member is an accessor that reads the error once and holds it.
  */
 function plainError(error: Error, message: string | undefined, seen: Set<object>, level: number): Record<string, unknown> {
   const nested = (e: Error): Record<string, unknown> | undefined => {

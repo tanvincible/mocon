@@ -7,13 +7,13 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { closeSync, constants, mkdtempSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
+import { closeSync, constants, existsSync, mkdtempSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { LATEST_PROTOCOL_VERSION, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { assertHostRules, completeExecution, crossingsOf, DRIVER_PROGRAM, serverEntry, text, waitFor } from "./helpers.js";
 
 interface Child {
@@ -135,5 +135,43 @@ test("a stream file that stops taking lines is reported on stderr, and the call 
     assert.match(child.stderr(), /^node-vm-codemode: the stream file failed to write: EPIPE/);
   } finally {
     await child.close();
+  }
+});
+
+test("an agent that closes the pipe with a call in flight leaves a complete record saying the agent went away, not that the clock ran out", async (t) => {
+  // `StdioServerTransport` subscribes to stdin's "data" and "error" and not to its end, so without the
+  // server's own close on end nothing aborts the request: the record for a call in flight would be whatever
+  // the time limit eventually wrote, or nothing at all on a host whose calls can outlive the pipe. The time
+  // limit is raised here so that the clock cannot be what ends this call, which is the whole distinction.
+  const dir = scratch(t);
+  const file = join(dir, "stream.jsonl");
+  const child = spawn(process.execPath, [serverEntry], { cwd: dir, env: { ...process.env, MOCON_FILE: file, MOCON_TIME_LIMIT_MS: "30000" }, stdio: ["pipe", "pipe", "pipe"] });
+  try {
+    const answered = new Set<number>();
+    child.stdout.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n")) {
+        if (line.trim() === "") continue;
+        const id = (JSON.parse(line) as { id?: number }).id;
+        if (typeof id === "number") answered.add(id);
+      }
+    });
+    const send = (message: object): void => void child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n");
+    send({ id: 1, method: "initialize", params: { protocolVersion: LATEST_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "raw", version: "0.0.0" } } });
+    await waitFor(() => answered.has(1));
+    send({ method: "notifications/initialized" });
+    // A program that never settles and starts no timer: only the host can end this call.
+    send({ id: 2, method: "tools/call", params: { name: "execute", arguments: { code: "await new Promise(() => {}); return 1" } } });
+    await waitFor(() => existsSync(file) && readFileSync(file, "utf8").includes('"kind":"execution"'));
+
+    const exited = new Promise<number | null>((resolve) => child.on("exit", resolve));
+    child.stdin.end();
+    await exited;
+
+    const records = assertHostRules(lines(file));
+    const done = completeExecution(records);
+    assert.equal(done["end"]["disposition"], "terminated");
+    assert.equal(done["end"]["error"]["class"], "cancelled", "the record says the host's own clock ended a call the agent abandoned");
+  } finally {
+    child.kill();
   }
 });

@@ -85,7 +85,7 @@ test("a fixture stream converts the same whatever order its lines arrive in, exc
 
 test("every golden stream through the sink: one span per complete line, crossings tied to their execution, nothing for a notice", async () => {
   const names = streamNames();
-  assert.equal(names.length, 23);
+  assert.ok(names.length >= 23, `${names.length} golden streams listed`);
   for (const name of names) {
     const lines = readStreamLines(name);
     const records = lines.map((l) => JSON.parse(l) as Rec);
@@ -118,16 +118,37 @@ test("every invalid line: skipped and counted by otel-mapping.md 3's reason, or 
     "disposition-outside-closed-set": "bad_enum",
     "end-without-disposition": "malformed",
     "missing-host": "malformed",
+    // A required field of the wrong type is a missing field to the mapping (3).
+    "crossing-end-not-an-object": "malformed",
+    "execution-end-not-an-object": "malformed",
+    // Not JSON at all, whatever a parser with extensions would make of it (core.md 3).
+    "nan-and-infinity": "malformed",
     // A notice: dropped before any time is read.
     "timestamp-without-z": "notice",
+    // Notices too: each is a line without `end`, so the field the fixture breaks is never reached.
+    "context-session-not-a-string": "notice",
+    "crossing-target-not-a-string": "notice",
+    "execution-id-not-a-string": "notice",
+    "hash-with-trailing-newline": "notice",
+    "payload-bytes-negative": "notice",
+    "seq-negative": "notice",
+    "seq-not-an-integer": "notice",
+    "timestamp-with-trailing-newline": "notice",
     // A declaration: the unknown closed-set value costs its one attribute.
     "observes-crossings-unknown-value": "host",
+    // Declarations too: a key outside its type costs that one attribute and nothing else (core.md 8).
+    "attested-not-strings": "host",
+    "observes-crossings-not-a-string": "host",
+    "spec-version-not-major-minor": "host",
+    "unmediated-egress-not-a-boolean": "host",
     // Copied verbatim and never recomputed (8.1).
     "hash-wrong-length": "span",
     // The error field is read only under outcome error (7.2).
     "outcome-output-with-error-field": "span",
     // The mapping writes what the Payload has and does not validate its shape.
     "payload-no-value-no-flag": "span",
+    // `outputs` that is not an object carries no channel, so the span is written without one.
+    "execution-outputs-not-an-object": "span",
   };
   const lines = invalidLines();
   assert.deepEqual(lines.map(([name]) => name).sort(), Object.keys(expected).sort());
@@ -154,7 +175,7 @@ test("every invalid line through one sink write: the counters by reason, and one
   const f = fakeFetch();
   const sink = otlpSink({ url: "https://collector.example/v1/traces", fetch: f.fetch });
   await sink.write(invalidLines().map(([, line]) => line));
-  assert.deepEqual(sink.skipped, { notice: 1, malformed: 3, unknown_kind: 0, bad_enum: 1, bad_timestamp: 0 });
+  assert.deepEqual(sink.skipped, { notice: 9, malformed: 6, unknown_kind: 0, bad_enum: 1, bad_timestamp: 0 });
   assert.equal(f.calls.length, 1);
-  assert.equal(spansOf(f.calls[0]?.body as ExportTraceServiceRequest).length, 3);
+  assert.equal(spansOf(f.calls[0]?.body as ExportTraceServiceRequest).length, 4);
 });

@@ -33,3 +33,12 @@ test("contextFromMcp tolerates a _meta that is null or not an object", () => {
   assert.deepEqual(contextFromMcp({ _meta: null as unknown as undefined }), {});
   assert.deepEqual(contextFromMcp({ _meta: "traceparent" as unknown as undefined }), {});
 });
+
+test("contextFromMcp costs a field, never the record, when the SDK hands over a shape it does not have today", () => {
+  // Registering a tool with no `inputSchema` makes the SDK call the handler with one argument, so `extra`
+  // arrives as `undefined`. Reading a field off it must not throw: the throw would land before the
+  // execution starts, and the call would leave no line at all.
+  assert.deepEqual(contextFromMcp(undefined as unknown as { sessionId?: string }), {});
+  assert.deepEqual(contextFromMcp(null as unknown as { sessionId?: string }), {});
+  assert.deepEqual(contextFromMcp({ sessionId: "s-1" } as never), { session: "s-1" }, "an extra without _meta still relays what it has");
+});

@@ -1,32 +1,21 @@
 /**
- * Payloads (core.md 5.4): one encoder that produces `value`, `truncated`,
- * `redacted`, `bytes` and `hash` as wire text, and the capture policy that
- * decides which rule a slot uses.
+ * Payloads (core.md 5.4) as wire text: a line splices what a capture returns
+ * instead of serializing a Payload object.
  *
  * The encoder reads a value once. A bounded walker serializes it under
- * `serialize.ts`'s rule and stops once its output passes the slot's cap,
- * so every property, getter and `toJSON` of a program-controlled value
- * runs at most once, and a 5 MB result costs O(cap). The bytes the walker
- * wrote are the bytes that are hashed, measured and cut, so `bytes`,
- * `hash` and a truncated `value` agree by construction. `bytes` and `hash`
- * are written only when the walker read the whole value; they describe the
- * full serialization, never the prefix. `program` is the one exception:
- * its text is hashed in full even when `value` is cut, because core.md 5.2
- * wants `program.hash` and `program.bytes` always present.
+ * `serialize.ts`'s rule and stops once its output passes the slot's cap, so
+ * every property, getter and `toJSON` of a program-controlled value runs at
+ * most once. The bytes the walker wrote are the bytes that are hashed,
+ * measured and cut, so `bytes`, `hash` and a truncated `value` agree by
+ * construction. `program` is the one exception: its text is hashed in full
+ * even when `value` is cut, because core.md 5.2 wants `program.hash` and
+ * `program.bytes` always present.
  *
- * A cap bounds what `value` adds to a line, in UTF-8 bytes as written: a
- * cut value is a JSON string, and its prefix is chosen so that the string,
- * escapes and quotes included, fits the cap.
- *
- * The walker departs from `JSON.stringify` in three ways: binary anywhere
- * is a base64 string; a value nested deeper than `MAX_DEPTH` is cut there,
- * so a ref can always be serialized again; and a string far longer than
- * the cap is not read at all, because its first character read would
- * flatten a rope the program built for free. `hash-only` reads a value in
- * full, but no further than `WHOLE_LIMIT` bytes of serialization.
- *
- * Every capture returns wire text, so a line splices it in instead of
- * serializing a Payload object.
+ * The walker departs from `JSON.stringify` in three ways: binary anywhere is
+ * a base64 string; a value nested deeper than `MAX_DEPTH` is cut there, so a
+ * ref can always be serialized again; and a string far longer than the cap
+ * is not read at all, because its first character read would flatten a rope
+ * the program built for free.
  */
 
 import { types } from "node:util";
@@ -48,28 +37,24 @@ export const DEFAULT_CAPS: Readonly<Record<CapKey, number>> = {
   "crossing.error": 1 << 14,
 };
 
-/**
- * The bytes the payloads of one complete execution line share with its
- * head: 1 MiB, the size core.md 3 asks lines to stay under, less room for
- * the envelope the library writes around them.
- */
+/** One line's payload budget: core.md 3's 1 MiB, less the envelope. */
 export const LINE_BUDGET = (1 << 20) - (1 << 12);
 
-/** Containers open at once. `JSON.stringify` and most JSON parsers recurse, and a ref's value has to survive both. */
+/** Containers open at once; `JSON.stringify` and most parsers recurse. */
 const MAX_DEPTH = 256;
 
-/** A string longer than this many times the cap is not read: reading one character of a rope flattens all of it. */
+/** A string longer than this many times the cap is not read at all. */
 const READ_FACTOR = 64;
 
-/** `hash-only` reads a value in full up to this many bytes of serialization, and redacts the slot past it. */
+/** `hash-only` reads this many bytes of serialization, then redacts the slot. */
 const WHOLE_LIMIT = 8 << 20;
 
-/** The largest scratch buffer an encoder keeps; a larger cap encodes into a fresh buffer. */
+/** The largest scratch buffer an encoder keeps; a larger cap gets a fresh one. */
 const SCRATCH_MAX = 4 << 20;
 
 const HASH = /^sha256:[0-9a-f]{64}$/;
 
-/* The intrinsics a capture reads through, taken at load so nothing a program later defines on a value or a prototype stands in for them. */
+/* Intrinsics taken at load, so nothing a program later defines stands in for them. */
 
 const objectProto = Object.prototype;
 const hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -92,10 +77,10 @@ const dataViewLength = getter(DataView.prototype, "byteLength");
 const arrayBufferLength = getter(ArrayBuffer.prototype, "byteLength");
 const sharedArrayBufferLength = getter(SharedArrayBuffer.prototype, "byteLength");
 
-/** What `resolve` hands the walker for a value it writes its own way. One base class, so a plain object costs one check. */
+/** What `resolve` hands the walker for a value it writes its own way. */
 abstract class Marker {}
 
-/** Binary as its internal slots: the buffer, offset and length a program cannot redefine. */
+/** Binary by internal slot: a buffer, offset and length a program cannot redefine. */
 class Binary extends Marker {
   constructor(
     readonly buffer: ArrayBufferLike,
@@ -121,19 +106,18 @@ class Raw extends Marker {
   }
 }
 
-/** An object whose prototype is neither `Object.prototype` nor `null`: its members come from its own key list, never from a loop that would enumerate its prototypes too. */
+/** An object with a foreign prototype: its members come from its own key list. */
 class Keyed extends Marker {
   constructor(readonly object: object) {
     super();
   }
 }
 
-/** `v` itself, or `v` marked as `Keyed` when it is an object. */
 function keyed(v: unknown): unknown {
   return v !== null && typeof v === "object" ? new Keyed(v) : v;
 }
 
-/** An `ArrayBuffer`, `SharedArrayBuffer` or view from any realm, by brand; `undefined` for anything else, whatever its tag says. */
+/** An `ArrayBuffer`, `SharedArrayBuffer` or view from any realm, by brand not tag. */
 function binaryOf(v: object): Binary | undefined {
   if (isView(v)) {
     return isTypedArray(v)
@@ -152,16 +136,15 @@ function isPlain(v: object): boolean {
   return proto === objectProto || (proto === null && !(isRawJSON !== undefined && isRawJSON(v)));
 }
 
-/** What the walker writes without walking it: binary, or raw JSON text. `undefined` for an ordinary object. */
+/** What the walker writes without walking it: binary, or raw JSON text. */
 function marker(v: object): Binary | Raw | undefined {
   if (isRawJSON !== undefined && isRawJSON(v)) return new Raw((v as { rawJSON: string }).rawJSON);
   return binaryOf(v);
 }
 
 /**
- * Steps 2 and 4 of SerializeJSONProperty for an object, a function or a
- * BigInt: `toJSON`, then unboxing by internal slot, as `JSON.stringify`
- * does, so an own `valueOf` runs and a `Symbol.toStringTag` is never read.
+ * Steps 2 and 4 of SerializeJSONProperty: `toJSON`, then unboxing by internal
+ * slot, so an own `valueOf` runs and a `Symbol.toStringTag` is never read.
  * Binary is caught before `toJSON`, so a Buffer's own `toJSON` never builds
  * its full number array.
  */
@@ -189,7 +172,7 @@ function unbox(v: object): unknown {
   return v;
 }
 
-/** A value as read from its holder, resolved when it is an object, a function or a BigInt. */
+/** A value from its holder, resolved when it is an object, function or BigInt. */
 function settle(v: unknown, key: string | number): unknown {
   return typeof v === "object" ? (v === null ? v : resolve(v, key)) : typeof v === "function" || typeof v === "bigint" ? resolve(v as object | bigint, key) : v;
 }
@@ -202,13 +185,13 @@ function circularError(): TypeError {
   return new TypeError("Converting circular structure to JSON");
 }
 
-/** `n`, or `n + 1` when the unit before `n` is a high surrogate, so a cut never splits a pair. */
+/** `n`, or `n + 1` past a high surrogate, so a cut never splits a pair. */
 function cutAt(s: string, n: number): number {
   return n > 0 && (s.charCodeAt(n - 1) & 0xfc00) === 0xd800 ? n + 1 : n;
 }
 
 interface Walk {
-  /** Holds the serialization's UTF-8 bytes up to `size`: whole, or cut once they passed the limit, possibly a few bytes past a prefix. */
+  /** The serialization's UTF-8 bytes up to `size`: whole, or cut past the limit. */
   buffer: Buffer;
   size: number;
   complete: boolean;
@@ -216,31 +199,26 @@ interface Walk {
   binary: boolean;
 }
 
-/** Containers this shallow are checked for a cycle by scanning the open ones; deeper ones go in a set. */
+/** Cycles this shallow are found by scanning the open containers, not a set. */
 const SCAN_DEPTH = 32;
 
-/** Room a walk keeps past its last check: closing brackets as a deep value unwinds, and separators. More than `MAX_DEPTH`. */
+/** Bytes a walk may write past its last check. Must exceed `MAX_DEPTH`. */
 const SLACK = 512;
 
 /**
- * Serializes a resolved value the way `JSON.stringify` does, with the
- * departures listed at the top of this file, as UTF-8 written straight
- * into `buffer`, which grows when a value needs it, and stops once more
- * than `limit` bytes are written. Each string is sliced to the remaining
- * budget before it is escaped, and one longer than `readBound` past the
- * budget is not read at all; escaped text is written no further than a
- * few bytes past the limit. Every node visited adds at least one byte,
- * except an object member that serializes to nothing, and those are
- * counted against the limit too, so the work past a container's own key
- * list is bounded by the limit.
- * The key list is the one residual O(own keys) step, paid once per object
- * the walk opens: V8 materializes every key of a dictionary-mode object,
- * and a Proxy's whole `ownKeys` result, before the first one can be read.
- * An object's members are read in a `for...in` loop, which V8 turns into
- * direct field loads for an object of known shape, so a Proxy's
- * descriptor and `has` traps may run more than once per key; its `get`
- * trap runs once per key the walk reads. The walk recurses, one frame per
- * open container, which `MAX_DEPTH` bounds.
+ * Serializes a resolved value as `JSON.stringify` does, with the departures
+ * listed at the top of this file, as UTF-8 written straight into `buffer`,
+ * which grows as needed, and stops once more than `limit` bytes are written.
+ * Each string is sliced to the remaining budget before it is escaped, and one
+ * longer than `readBound` past the budget is not read at all. Every node
+ * visited adds at least one byte, except an object member that serializes to
+ * nothing, and those count against the limit too, so the work past a
+ * container's own key list is bounded by the limit. That key list is the one
+ * residual O(own keys) step, paid once per object opened: V8 materializes
+ * every key of a dictionary-mode object, and a Proxy's whole `ownKeys`
+ * result, before the first can be read. A Proxy's `get` trap runs once per
+ * key the walk reads. The walk recurses one frame per open container, which
+ * `MAX_DEPTH` bounds.
  */
 function walk(root: unknown, limit: number, readBound: number, buffer: Buffer): Walk {
   const walker = new Walker(limit, readBound, buffer);
@@ -303,7 +281,7 @@ class Walker {
     return this.text(at, raw.slice(0, cutAt(raw, room)));
   }
 
-  /** An array, or an object read by `for...in` when `plain` and by its own key list otherwise. */
+  /** An array, or an object read by `for...in` when `plain`, by its keys otherwise. */
   private container(at: number, v: object, plain: boolean, depth: number): number {
     if (depth === MAX_DEPTH) {
       this.stopped = true;
@@ -343,9 +321,8 @@ class Walker {
   }
 
   /**
-   * A plain object, whose prototype is `Object.prototype` or `null`,
-   * inherits nothing a `for...in` loop would visit past its own keys, and
-   * V8 reads its members in that loop as direct field loads; any other
+   * A plain object inherits nothing a `for...in` loop would visit past its
+   * own keys, and V8 reads it in that loop as direct field loads. Any other
    * object's members come from its own key list, so a prototype with many
    * enumerable keys costs nothing.
    */
@@ -368,7 +345,7 @@ class Walker {
     return at;
   }
 
-  /** One member, read only while the limit is not passed; `at` unchanged when its value serializes to nothing, which counts against the limit instead. */
+  /** One member, read only below the limit; a value that writes nothing still counts. */
   private member(at: number, o: Record<string, unknown>, key: string, first: boolean, depth: number): number {
     const limit = this.limit;
     if (at > limit) {
@@ -381,7 +358,7 @@ class Walker {
       if (++this.empty > limit) this.stopped = true;
       return at;
     }
-    // The last write left `SLACK` bytes past it, and the key's own write makes room again.
+    // The last write left `SLACK` bytes past it; the key's own write makes room again.
     if (!first) this.buffer[at++] = 0x2c;
     const room = limit - at + 1;
     if (key.length > room) {
@@ -400,7 +377,7 @@ class Walker {
     return this.value(at, v, depth + 1);
   }
 
-  /** A JSON string literal, copied byte by byte when it is short printable ASCII, written natively otherwise. */
+  /** A JSON string literal: byte by byte for short printable ASCII, else native. */
   private quoted(at: number, s: string): number {
     const n = s.length;
     if (n > 64) return this.text(at, JSON.stringify(s));
@@ -409,7 +386,7 @@ class Walker {
     b[at] = 0x22;
     for (let i = 0; i < n; i++) {
       const c = s.charCodeAt(i);
-      // Outside space to tilde, a quote or a backslash: anything JSON escapes, or that UTF-8 writes in more than one byte.
+      // Anything JSON escapes, or that UTF-8 writes in more than one byte.
       if (c - 0x20 > 0x5e || c - 0x20 < 0 || c === 0x22 || c === 0x5c) return this.text(at, JSON.stringify(s));
       b[at + 1 + i] = c;
     }
@@ -417,7 +394,7 @@ class Walker {
     return at + n + 2;
   }
 
-  /** A number as `JSON.stringify` writes it; a small non-negative integer digit by digit, with no string made for it. */
+  /** A number as `JSON.stringify` writes it; a small integer digit by digit. */
   private number(at: number, v: number): number {
     if (!(v >= 0 && v < 1e9 && v === Math.floor(v))) return this.ascii(at, Number.isFinite(v) ? "" + v : "null");
     this.reserve(at, 9);
@@ -428,7 +405,7 @@ class Walker {
     return end;
   }
 
-  /** Short ASCII text: a number, a literal. */
+  /** Short ASCII text only: each unit is written as one byte. */
   private ascii(at: number, s: string): number {
     this.reserve(at, s.length);
     const b = this.buffer;
@@ -438,10 +415,9 @@ class Walker {
 
   /**
    * Text already escaped as JSON, written as UTF-8. It holds no lone
-   * surrogate, so its bytes are exact. Text that could pass the limit is
-   * written no further than four bytes past it, cut on a code point
-   * boundary, and once it passes the limit the walk stops, so escaping
-   * cannot make a walk hold several times the limit.
+   * surrogate, so its bytes are exact. Text that could pass the limit goes no
+   * further than four bytes past it, cut on a code point boundary, and the
+   * walk then stops, so escaping cannot hold several times the limit.
    */
   private text(at: number, s: string): number {
     const most = s.length * 3;
@@ -467,19 +443,17 @@ class Walker {
   }
 }
 
-/* ------------------------------------------------------------------ */
-
 export interface Encoded {
-  /** The JSON text `value` carries on the wire, or `undefined` when there is no room for any. */
+  /** The JSON text of `value`, or `undefined` when there is no room for any. */
   valueText: string | undefined;
   truncated: boolean;
-  /** Byte length of the whole serialization. Present when the encoder read the whole value and was asked to describe it. */
+  /** Byte length of the whole serialization, when the encoder read it whole. */
   bytes: number | undefined;
   /** Lowercase hex SHA-256 of the whole serialization, present with `bytes`. */
   hash: string | undefined;
   /** Binary was written as base64: the whole value, or somewhere inside it. */
   binary: boolean;
-  /** The value serializes to nothing: `undefined`, a function or a symbol, directly or through `toJSON`. */
+  /** Serializes to nothing: `undefined`, a function or a symbol. */
   omitted: boolean;
 }
 
@@ -492,25 +466,24 @@ export interface Literal {
 const OMITTED: Encoded = Object.freeze({ valueText: undefined, truncated: false, bytes: undefined, hash: undefined, binary: false, omitted: true });
 
 /**
- * Serializes values under the rule in `serialize.ts`, reading each once
- * and at most O(cap) of it. A walk writes its UTF-8 into a scratch buffer,
- * which gives the byte length, and the hash is taken over those bytes; a
- * primitive's text is written into it once the same way. A cut value is
- * found on a code point boundary and outside any escape. Nothing here runs
- * program code once the bytes are written and before they are read back,
- * and a capture that a getter starts from inside a walk works in buffers
- * of its own, so it cannot disturb the walk it interrupted.
+ * Serializes values under the rule in `serialize.ts`, reading each once and
+ * at most O(cap) of it. A walk writes UTF-8 into a scratch buffer, which
+ * gives the byte length, and the hash is taken over those bytes. A cut value
+ * is found on a code point boundary and outside any escape. Nothing runs
+ * program code between writing the bytes and reading them back, and a capture
+ * a getter starts from inside a walk works in buffers of its own, so it
+ * cannot disturb the walk it interrupted.
  */
 export class Encoder {
   private readonly scratch: Buffer;
-  /** A walk holds the scratch buffer: a capture a getter starts inside it works in buffers of its own. */
+  /** A walk holds the scratch buffer. */
   private walking = false;
 
   constructor(maxCap: number) {
     this.scratch = Buffer.allocUnsafe(Math.min(maxCap, SCRATCH_MAX) + SLACK);
   }
 
-  /** A value under `cap`. `describe` asks for `bytes` and `hash` when the whole value is read. */
+  /** `describe` asks for `bytes` and `hash` when the whole value is read. */
   encode(value: unknown, cap: number, describe: boolean): Encoded {
     const v = settle(value, "");
     switch (typeof v) {
@@ -537,7 +510,7 @@ export class Encoder {
     }
   }
 
-  /** The whole serialization of a resolved value, as `hash-only` reads it; `undefined` past `WHOLE_LIMIT`. */
+  /** The whole serialization, as `hash-only` reads it; `undefined` past `WHOLE_LIMIT`. */
   whole(v: unknown): Uint8Array | undefined {
     const w = this.walk(v, WHOLE_LIMIT, 0);
     return w.complete && w.size <= WHOLE_LIMIT ? w.buffer.subarray(0, w.size) : undefined;
@@ -553,12 +526,12 @@ export class Encoder {
     }
   }
 
-  /** JSON text the encoder holds in full, so `bytes` and `hash` are available even when the cap cuts `value`. */
+  /** Text held in full, so `bytes` and `hash` survive a cap that cuts `value`. */
   known(text: string, cap: number, describe: boolean): Encoded {
     const buffer = this.buffer(cap);
     const written = buffer.write(text, 0, cap, "utf8");
     if (written <= cap - 4 || buffer.toString("utf8", 0, written).length === text.length) {
-      // Every UTF-16 unit takes one to three bytes, so a count outside that range means the write stopped short unseen.
+      // One to three bytes per UTF-16 unit: outside that, the write stopped short unseen.
       invariant(written >= text.length && written <= text.length * 3, "bytes equals the byte length of the serialization the hash is taken over");
       return { valueText: text, truncated: false, bytes: written, hash: describe ? sha256(buffer.subarray(0, written)) : undefined, binary: false, omitted: false };
     }
@@ -569,9 +542,8 @@ export class Encoder {
   }
 
   /**
-   * The JSON string literal of the longest prefix of `s` whose literal,
-   * quotes and escapes included, fits in `cap` bytes: cut on a code point
-   * boundary and never inside an escape. Reads O(cap) of `s`.
+   * The longest prefix of `s` whose literal fits in `cap` bytes, quotes and
+   * escapes included: cut on a code point boundary, never inside an escape.
    */
   literal(s: string, cap: number): Literal {
     if (s.length * 6 + 2 <= cap) return { text: quote(s), cut: false };
@@ -583,7 +555,7 @@ export class Encoder {
     return { text: body.slice(0, escapeBoundary(body, this.fit(body, cap - 1))) + '"', cut: true };
   }
 
-  /** The byte length and hash of a text's UTF-8, from one write into the scratch buffer when it fits. */
+  /** Byte length and hash of a text's UTF-8, from one write into the scratch. */
   digest(text: string): { bytes: number; hash: string } {
     if (this.walking || text.length * 3 > this.scratch.length) return { bytes: Buffer.byteLength(text), hash: sha256(text) };
     const bytes = this.scratch.write(text, 0);
@@ -602,13 +574,13 @@ export class Encoder {
     return { valueText, truncated: true, bytes: undefined, hash: undefined, binary: false, omitted: false };
   }
 
-  /** A whole value that is binary: base64 with `bytes` and `hash` over the raw bytes (core.md 5.4). */
+  /** Binary: base64, with `bytes` and `hash` over the raw bytes (core.md 5.4). */
   private binary(b: Binary, cap: number, describe: boolean): Encoded {
     const size = b.length;
     if (Math.ceil(size / 3) * 4 + 2 <= cap) {
       return { valueText: '"' + b.base64(size) + '"', truncated: false, bytes: describe ? size : undefined, hash: describe ? sha256(b.view(size)) : undefined, binary: true, omitted: false };
     }
-    // A prefix `"<base64>` of the serialization travels as `"\"<base64>"`: four bytes around whole base64 groups.
+    // A prefix `"<base64>` travels as `"\"<base64>"`: four bytes around whole groups.
     const groups = Math.floor((cap - 4) / 4);
     const valueText = groups < 0 ? undefined : '"\\"' + b.base64(groups * 3) + '"';
     // The raw length is known without reading the bytes, so a cut binary value keeps it.
@@ -623,17 +595,16 @@ export class Encoder {
     return written <= bytes - 4 ? s.length : buffer.toString("utf8", 0, written).length;
   }
 
-  /** A buffer of at least `size` bytes: the scratch buffer, or a fresh one while a walk holds it or when it is too small. Every read and write of it is bounded by an offset and a length. */
+  /** The scratch, or a fresh `allocUnsafe` buffer; every read and write is bounded. */
   private buffer(size: number): Buffer {
     return this.walking || size > this.scratch.length ? Buffer.allocUnsafe(size) : this.scratch;
   }
 }
 
 /**
- * `end`, moved back to the backslash that starts the escape sequence it
- * would split. `body` is `JSON.stringify` output, where a backslash starts
- * an escape unless it closes a `\\` pair, so the parity of a run of
- * backslashes tells the two apart.
+ * `end`, moved back to the backslash that starts the escape it would split.
+ * In `JSON.stringify` output a backslash starts an escape unless it closes a
+ * `\\` pair, so the parity of a run of backslashes tells the two apart.
  */
 function escapeBoundary(body: string, end: number): number {
   for (let j = end - 1; j > 0 && j >= end - 6; j--) {
@@ -647,10 +618,9 @@ function escapeBoundary(body: string, end: number): number {
 }
 
 /**
- * The wire text of a Payload, in the key order `value`, `truncated`,
- * `redacted`, `bytes`, `hash`. `valueText` is the JSON text of `value`;
- * `hash` is bare hex. A redacted Payload carries neither `bytes` nor
- * `hash`.
+ * A Payload as wire text, in the key order `value`, `truncated`, `redacted`,
+ * `bytes`, `hash`. `hash` is bare hex. A redacted Payload carries neither
+ * `bytes` nor `hash`.
  */
 export function payloadWire(valueText: string | undefined, truncated: boolean, redacted: boolean, bytes: number | undefined, hash: string | undefined): string {
   invariant(!truncated || valueText === undefined || valueText.charCodeAt(0) === 34, "truncated implies value is a string prefix");
@@ -662,9 +632,7 @@ export function payloadWire(valueText: string | undefined, truncated: boolean, r
   return "{" + t + "}";
 }
 
-/* ------------------------------------------------------------------ */
-
-/** The wire text of a Payload, and whether its value holds binary written as base64. */
+/** The wire text of a Payload, and whether its value holds binary as base64. */
 export interface Captured {
   text: string;
   base64: boolean;
@@ -674,9 +642,8 @@ export const REDACTED_TEXT = '{"redacted":true}';
 const REDACTED: Captured = Object.freeze({ text: REDACTED_TEXT, base64: false });
 
 /**
- * What is left of a line's byte budget. A text spent is counted at three
- * bytes a UTF-16 unit, its most, and measured exactly only once a cap would
- * be cut by that estimate, so a line with ample room pays for no measuring.
+ * What is left of a line's byte budget. A text counts at three bytes a UTF-16
+ * unit, its most, measured exactly only once that estimate would cut a cap.
  */
 export class Budget {
   private readonly pending: string[] = [];
@@ -717,7 +684,7 @@ export class Capturer {
   private readonly encoder: Encoder;
 
   constructor(policy: CapturePolicy | undefined) {
-    // A key this version does not read would otherwise be a redaction rule that silently never applies.
+    // A key this version does not read would be a redaction rule that never applies.
     for (const key of Object.keys(policy ?? {})) if (key !== "caps" && key !== "rules") throw new RangeError(`mocon: unknown capture policy key "${key}"`);
     const caps = { ...DEFAULT_CAPS };
     if (policy?.caps !== undefined) {
@@ -747,7 +714,7 @@ export class Capturer {
     return this.apply("program", text, this.caps.program, undefined, undefined);
   }
 
-  /** A Payload slot. With a budget the slot's cap shrinks to what the line has left, and what it writes is spent. */
+  /** With a budget the slot's cap shrinks to what the line has left. */
   value(slot: Exclude<CaptureSlot, "program">, value: unknown, budget?: Budget, target?: string, channel?: string): Captured {
     const cap = budget === undefined ? this.caps[slot] : budget.cap(this.caps[slot]);
     const c = this.apply(slot, value, cap, target, channel);
@@ -756,10 +723,9 @@ export class Capturer {
   }
 
   /**
-   * An Error object (core.md 5.5) as wire text. Under the default encoder
-   * `message` is cut at the slot's cap and `value` is captured under it.
-   * Under a rule the rule decides `value` and no `message` is written, so a
-   * policy that withholds an error's content withholds all of it.
+   * An Error (core.md 5.5) as wire text. Under a rule the rule decides
+   * `value` and no `message` is written, so a policy that withholds an
+   * error's content withholds all of it.
    */
   error(slot: ErrorSlot, input: ErrorInput, budget?: Budget, target?: string): CapturedError {
     let text = '{"class":' + quote(input.class);
@@ -777,7 +743,7 @@ export class Capturer {
     return { text: text + ',"value":' + c.text + "}", base64: c.base64, messageTruncated };
   }
 
-  /** The target as the line carries it: a JSON string literal cut at the `crossing.target` cap, and the text it holds. */
+  /** The target as the line carries it, cut at the `crossing.target` cap. */
   target(target: string): { text: string; value: string; truncated: boolean } {
     const t = this.encoder.bounded(target, this.caps["crossing.target"]);
     if (!t.cut) return { text: t.text as string, value: target, truncated: false };
@@ -789,9 +755,7 @@ export class Capturer {
    * A Payload a rule built instead of taking it from `ctx.capture`. Each
    * field is read once, checked as core.md 5.4 and payload.json define it,
    * and written from what was read; `value` goes through the encoder under
-   * `cap`, so binary in it is base64 with the note that says so.
-   * `undefined` for anything else, a `value` that serializes to nothing or
-   * that the serialization rejects included.
+   * `cap`. `undefined` for anything else.
    */
   private payload(p: unknown, cap: number): Captured | undefined {
     if (p === null || typeof p !== "object" || isArray(p)) return undefined;
@@ -862,7 +826,7 @@ export class Capturer {
     }
   }
 
-  /** `{redacted: true, bytes, hash}` over the whole original, read in full by request up to a ceiling. */
+  /** `{redacted: true, bytes, hash}` over the whole original, up to `WHOLE_LIMIT`. */
   private hashOnly(slot: CaptureSlot, value: unknown): Captured {
     try {
       let bytes: number;
@@ -884,10 +848,9 @@ export class Capturer {
   }
 
   /**
-   * The default encoder under a cap. A value the serialization rejects,
-   * such as a BigInt or a cycle, is written as `{redacted: true}`, and one
-   * that serializes to nothing as `null`. A failed invariant is a bug in
-   * this package and is not hidden that way.
+   * A value the serialization rejects, a BigInt or a cycle, is written as
+   * `{redacted: true}`, and one that serializes to nothing as `null`. A
+   * failed invariant is a bug here and is not hidden that way.
    */
   private encode(slot: CaptureSlot, value: unknown, cap: number, redacted: boolean): Captured {
     try {

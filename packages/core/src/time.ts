@@ -1,13 +1,8 @@
 /**
  * Timestamps (core.md 7): RFC 3339, UTC, a `Z` suffix and up to nine
- * fractional digits.
- *
- * A clock belongs to one instance and reads with millisecond precision,
- * the text `Date.prototype.toISOString` produces. It formats the date and
- * time down to the second once per second and appends the milliseconds
- * itself, which is several times cheaper than `toISOString` on every
- * call. It never returns a reading earlier than the one before, so a wall
- * clock stepped backwards cannot put one of its own readings before
+ * fractional digits. A clock belongs to one instance, reads with millisecond
+ * precision, and never returns a reading earlier than the one before, so a
+ * wall clock stepped backwards cannot put one of its own readings before
  * another.
  */
 export type Clock = () => string;
@@ -34,11 +29,10 @@ export function createClock(): Clock {
 const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/;
 
 /**
- * Unix nanoseconds, as a decimal string, for an RFC 3339 UTC timestamp
- * with a `Z` suffix; `undefined` for anything else, a date that does not
- * exist such as February 30 included. A leap second, `:60`, reads as the
- * first second of the next minute. The one validator every package in
- * this repository applies to a timestamp.
+ * Unix nanoseconds as a decimal string, for an RFC 3339 UTC timestamp with a
+ * `Z` suffix; `undefined` for anything else, a date that does not exist such
+ * as February 30 included. A leap second, `:60`, reads as the first second of
+ * the next minute. The one timestamp validator every package here applies.
  */
 export function unixNanos(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -60,19 +54,14 @@ export function unixNanos(value: unknown): string | undefined {
   return (BigInt(seconds) * 1000000000n + BigInt(fraction)).toString();
 }
 
-/**
- * Whether `a` names an earlier instant than `b`. Both are timestamps that
- * already validated, so they compare as text once their fractions are
- * padded to nine digits.
- */
+/** Both must already have validated; compared as text, fractions padded. */
 export function earlier(a: string, b: string): boolean {
   return sortable(a) < sortable(b);
 }
 
 /**
- * `reading`, or `floor` when `reading` is the earlier instant. A default
- * `end.time` goes through this with a `start` the host gave, which may be
- * ahead of this instance's clock, so it is never before `start` (core.md 7).
+ * `reading`, or `floor` when earlier. A host-given `start` may be ahead of
+ * this clock, so a default `end.time` never falls before it (core.md 7).
  */
 export function notBefore(reading: string, floor: string): string {
   return earlier(reading, floor) ? floor : reading;

@@ -4,13 +4,16 @@
  * marker after the target covers `seq` and `end.outcome`, which follow it
  * (provenance.md 3). Host-observed fields carry no marker. Every line goes
  * through `safe` on the way out, so nothing in the stream reaches the
- * terminal as a control character.
+ * terminal as a control character, and every value the stream chose — a
+ * payload, and equally an id, a target, a session or an error class —
+ * goes through `field` or `payload`, so nothing in it reaches the terminal
+ * longer than the width either.
  */
 
 import type { HostLine } from "@mocon/core";
 import { payloadFlags, type CrossingNode, type ExecutionNode, type Model } from "./model.js";
 import type { ProvenanceMap } from "./provenance.js";
-import { head, isRecord, quoted, safe, text } from "./text.js";
+import { head, isRecord, quoted, safe } from "./text.js";
 
 const WIDTH = 100;
 /**
@@ -20,13 +23,15 @@ const WIDTH = 100;
  * program made 5 MB long costs what a 100-character one costs to show.
  */
 const SCAN = WIDTH + 1;
+/** Entries of `attested` the host line shows. A declaration naming more says how many it holds back. */
+const ATTESTED_ENTRIES = 8;
 
 export function renderView(model: Model): string {
   const out: string[] = [];
   for (const h of model.hosts) out.push(hostLine(h));
   if (model.hosts.length === 0) out.push("no host declaration: attested reads as [], observes_crossings as none");
   for (const s of model.sessions) {
-    out.push(s.session === null ? "session (none)" : `session ${s.session}`);
+    out.push(s.session === null ? "session (none)" : `session ${field(s.session)}`);
     for (const ex of s.executions) renderExecution(ex, out);
   }
   out.push(
@@ -38,24 +43,31 @@ export function renderView(model: Model): string {
 }
 
 function hostLine(h: HostLine): string {
-  const attested = h.attested !== undefined && h.attested.length > 0 ? h.attested.join(", ") : "none";
   return (
-    `host ${text(h.host)}  spec_version ${h.spec_version ?? "absent"}  observes_crossings ${h.observes_crossings ?? "absent (none)"}  ` +
-    `unmediated_egress ${h.unmediated_egress ?? "absent (unknown)"}  crossing_edge ${h.crossing_edge ?? "absent"}  attested ${attested}`
+    `host ${field(h.host)}  spec_version ${field(h.spec_version ?? "absent")}  observes_crossings ${field(h.observes_crossings ?? "absent (none)")}  ` +
+    `unmediated_egress ${field(h.unmediated_egress ?? "absent (unknown)")}  crossing_edge ${field(h.crossing_edge ?? "absent")}  attested ${attestedText(h.attested)}`
   );
+}
+
+/** The declaration's `attested` list: at most `ATTESTED_ENTRIES` entries, each cut to the width, and a count of the rest. */
+function attestedText(list: unknown): string {
+  if (!Array.isArray(list) || list.length === 0) return "none";
+  const shown = list.slice(0, ATTESTED_ENTRIES);
+  const more = list.length - shown.length;
+  return cut(shown.map((entry) => head(entry, SCAN)).join(", ")) + (more > 0 ? ` (+${more} more)` : "");
 }
 
 function renderExecution(ex: ExecutionNode, out: string[]): void {
   const r = ex.record;
   const m = ex.provenance;
   if (r === null) {
-    out.push(`  ${text(ex.id)}  no execution record  host ${text(ex.host)}`);
+    out.push(`  ${field(ex.id)}  no execution record  host ${field(ex.host)}`);
   } else {
-    const state = ex.running ? "running" : text(r.end?.disposition);
-    const parts = [text(ex.id), state + (ex.conflict ? " (conflict)" : ""), fmtDuration(ex.durationMs), r.language === undefined ? "" : text(r.language) + mark(m, "language"), `start ${text(r.start)}`];
+    const state = ex.running ? "running" : field(r.end?.disposition);
+    const parts = [field(ex.id), state + (ex.conflict ? " (conflict)" : ""), fmtDuration(ex.durationMs), r.language === undefined ? "" : field(r.language) + mark(m, "language"), `start ${field(r.start)}`];
     out.push("  " + parts.filter((s) => s !== "").join("  "));
     const context: unknown = r.context;
-    if (isRecord(context) && context["traceparent"] !== undefined) out.push(`    traceparent ${text(context["traceparent"])}`);
+    if (isRecord(context) && context["traceparent"] !== undefined) out.push(`    traceparent ${field(context["traceparent"])}`);
     if (r.program !== undefined) out.push(`    program${mark(m, "program.value")}  ${programLine(r.program)}`);
   }
   ex.crossings.forEach((c, i) => renderCrossing(c, i === ex.crossings.length - 1, out));
@@ -64,9 +76,9 @@ function renderExecution(ex: ExecutionNode, out: string[]): void {
     if (end["error"] !== undefined) out.push(`    error  ${errorText(end["error"], m, "end.error")}`);
     if (end["result"] !== undefined) out.push(`    result  ${payload(end["result"], m, "end.result.value")}`);
     const outputs = end["outputs"];
-    if (isRecord(outputs)) for (const channel of Object.keys(outputs)) out.push(`    ${channel}  ${payload(outputs[channel], m, `end.outputs.${channel}.value`)}`);
+    if (isRecord(outputs)) for (const channel of Object.keys(outputs)) out.push(`    ${field(channel)}  ${payload(outputs[channel], m, `end.outputs.${channel}.value`)}`);
   }
-  if (r?.ext !== undefined) out.push(`    ext  ${cut(head(r.ext, SCAN))}${mark(m, "ext")}`);
+  if (r?.ext !== undefined) out.push(`    ext  ${field(r.ext)}${mark(m, "ext")}`);
 }
 
 function renderCrossing(c: CrossingNode, last: boolean, out: string[]): void {
@@ -75,19 +87,19 @@ function renderCrossing(c: CrossingNode, last: boolean, out: string[]): void {
   const branch = last ? "└─ " : "├─ ";
   const indent = last ? "     " : "│    ";
   const seq = typeof r.seq === "number" ? `#${r.seq} ` : "";
-  const state = c.running ? "running" : text(r.end?.outcome);
-  const parts = [seq + text(r.target) + mark(m, "target"), state + (c.conflict ? " (conflict)" : ""), fmtDuration(c.durationMs)];
+  const state = c.running ? "running" : field(r.end?.outcome);
+  const parts = [seq + field(r.target) + mark(m, "target"), state + (c.conflict ? " (conflict)" : ""), fmtDuration(c.durationMs)];
   out.push("    " + branch + parts.filter((s) => s !== "").join("  "));
   out.push(`    ${indent}input  ${payload(r.input, m, "input.value")}`);
   const end: unknown = r.end;
   if (isRecord(end) && end["outcome"] === "output" && end["output"] !== undefined) out.push(`    ${indent}output  ${payload(end["output"], m, "end.output.value")}`);
   if (isRecord(end) && end["outcome"] === "error" && end["error"] !== undefined) out.push(`    ${indent}error  ${errorText(end["error"], m, "end.error")}`);
-  if (r.ext !== undefined) out.push(`    ${indent}ext  ${cut(head(r.ext, SCAN))}${mark(m, "ext")}`);
+  if (r.ext !== undefined) out.push(`    ${indent}ext  ${field(r.ext)}${mark(m, "ext")}`);
 }
 
 function errorText(e: unknown, m: ProvenanceMap, prefix: string): string {
   if (!isRecord(e)) return "(not an Error object)";
-  const parts = [text(e["class"]) + mark(m, `${prefix}.class`)];
+  const parts = [field(e["class"]) + mark(m, `${prefix}.class`)];
   if (e["message"] !== undefined) parts.push(cutQuoted(e["message"]) + mark(m, `${prefix}.message`));
   if (isRecord(e["value"])) parts.push("value " + payload(e["value"], m, `${prefix}.value`));
   return parts.join("  ");
@@ -126,6 +138,18 @@ function preview(p: unknown): string {
   const value = p["value"];
   if (value === undefined) return "(no value)";
   return cut(p["truncated"] === true && typeof value === "string" ? value : head(value, SCAN));
+}
+
+/**
+ * Any field the stream chose — an id, a host string, a target, a session,
+ * a language, a timestamp, a channel name, an error class, a closed-set
+ * value — shown like a value: at most `WIDTH` characters, with no more
+ * than `SCAN` of it read. Every one of these is a program's or a host's
+ * choice and none is bounded by core.md, so a line cannot flood the
+ * terminal through a field the display treats as short.
+ */
+function field(v: unknown): string {
+  return cut(head(v, SCAN));
 }
 
 /** At most `WIDTH` code points of `s`, made safe first so an escape counts toward the width it takes, reading no more of it than the cut can show. */
