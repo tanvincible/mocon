@@ -1,0 +1,1 @@
+extensions/links.md 4: counts is required on every entry. There is no safe default -- over-counting spend is loud and wrong, under-counting is silent and wrong -- and the host always knows which its case is.

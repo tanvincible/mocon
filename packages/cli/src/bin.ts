@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The `mocon` binary: validate, view, ui, otlp. Each command reads the
+ * The `mocon` binary: validate, lint, view, ui, otlp. Each command reads the
  * whole file once. `view` and `ui` apply the supersede rule once per key
  * through @mocon/core, so they show the same result for any permutation of
  * the lines; `validate` reports by line number, and `otlp` maps lines in
@@ -9,6 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { declarationWarnings } from "./dimensions.js";
 import { buildModel } from "./model.js";
 import { exportStream, requestText } from "./otlp.js";
 import { safe } from "./text.js";
@@ -23,6 +24,8 @@ const USAGE = `usage: mocon <command> <file> [options]
 
   validate <file>                  check every line against core.md and spec/schema;
                                    exit 1 when a line fails, 0 otherwise
+  lint <file>                      report every ext key the host did not declare, and the rest of
+                                   provenance.md 7's declaration and link rules; exit 1 on any finding
   view <file>                      print the stream as a tree with P and T provenance markers
   ui <file> [--port N] [--out path]
                                    serve the viewer on 127.0.0.1, port ${DEFAULT_PORT} unless --port
@@ -65,6 +68,15 @@ async function main(argv: string[]): Promise<number> {
       const report = validateStream(read());
       process.stdout.write(renderReport(file, report));
       return exitCode(report);
+    }
+    case "lint": {
+      // A declaration that drifted from the code is a legal stream, so this is a gate a host opts into
+      // and never part of `validate`, which provenance.md 7 forbids failing on a warning.
+      const warnings = declarationWarnings(read());
+      process.stdout.write(
+        [`${safe(file)}: ${warnings.length} declaration warning${warnings.length === 1 ? "" : "s"} -> ${warnings.length === 0 ? "OK" : "DRIFT"}`, ...warnings.map((w) => `    ${safe(w)}`)].join("\n") + "\n",
+      );
+      return warnings.length === 0 ? 0 : 1;
     }
     case "view":
       process.stdout.write(renderView(buildModel(read())));

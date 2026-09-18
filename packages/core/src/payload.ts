@@ -37,6 +37,14 @@ export const DEFAULT_CAPS: Readonly<Record<CapKey, number>> = {
   "crossing.error": 1 << 14,
 };
 
+/**
+ * Bytes of a Payload's `value` the default policy writes. The cap above is
+ * what the encoder reads, so a value between the two is written as a prefix
+ * with the `bytes` and `hash` of the whole; `capture.preview` moves it and
+ * `ctx.capture(v, { full: true })` opts one value out.
+ */
+export const DEFAULT_PREVIEW = 256;
+
 /** One line's payload budget: core.md 3's 1 MiB, less the envelope. */
 export const LINE_BUDGET = (1 << 20) - (1 << 12);
 
@@ -483,27 +491,31 @@ export class Encoder {
     this.scratch = Buffer.allocUnsafe(Math.min(maxCap, SCRATCH_MAX) + SLACK);
   }
 
-  /** `describe` asks for `bytes` and `hash` when the whole value is read. */
-  encode(value: unknown, cap: number, describe: boolean): Encoded {
+  /**
+   * `describe` asks for `bytes` and `hash` when the whole value is read. `cap` bounds the read; `preview`, at
+   * most `cap`, bounds the `value` written, so a value between the two is a prefix that still carries the
+   * `bytes` and `hash` of the whole.
+   */
+  encode(value: unknown, cap: number, describe: boolean, preview: number = cap): Encoded {
     const v = settle(value, "");
     switch (typeof v) {
       case "string":
-        return this.string(v, cap, describe);
+        return this.string(v, cap, describe, preview);
       case "number":
-        return this.known(Number.isFinite(v) ? "" + v : "null", cap, describe);
+        return this.known(Number.isFinite(v) ? "" + v : "null", cap, describe, preview);
       case "boolean":
-        return this.known(v ? "true" : "false", cap, describe);
+        return this.known(v ? "true" : "false", cap, describe, preview);
       case "bigint":
         throw bigintError();
       case "object": {
-        if (v === null) return this.known("null", cap, describe);
-        if (v instanceof Binary) return this.binary(v, cap, describe);
+        if (v === null) return this.known("null", cap, describe, preview);
+        if (v instanceof Binary) return this.binary(v, cap, describe, preview);
         const w = this.walk(v, cap, READ_FACTOR * cap);
         const { buffer, size, binary } = w;
         const hash = describe && w.complete ? sha256(buffer.subarray(0, size)) : undefined;
         const text = buffer.toString("utf8", 0, size);
-        if (w.complete && size <= cap) return { valueText: text, truncated: false, bytes: size, hash, binary, omitted: false };
-        return { valueText: this.literal(text, cap).text, truncated: true, bytes: hash === undefined ? undefined : size, hash, binary, omitted: false };
+        if (w.complete && size <= preview) return { valueText: text, truncated: false, bytes: size, hash, binary, omitted: false };
+        return { valueText: this.literal(text, preview).text, truncated: true, bytes: hash === undefined ? undefined : size, hash, binary, omitted: false };
       }
       default:
         return OMITTED;
@@ -526,16 +538,18 @@ export class Encoder {
     }
   }
 
-  /** Text held in full, so `bytes` and `hash` survive a cap that cuts `value`. */
-  known(text: string, cap: number, describe: boolean): Encoded {
+  /** Text held in full, so `bytes` and `hash` survive a cap or a preview that cuts `value`. */
+  known(text: string, cap: number, describe: boolean, preview: number = cap): Encoded {
     const buffer = this.buffer(cap);
     const written = buffer.write(text, 0, cap, "utf8");
     if (written <= cap - 4 || buffer.toString("utf8", 0, written).length === text.length) {
       // One to three bytes per UTF-16 unit: outside that, the write stopped short unseen.
       invariant(written >= text.length && written <= text.length * 3, "bytes equals the byte length of the serialization the hash is taken over");
-      return { valueText: text, truncated: false, bytes: written, hash: describe ? sha256(buffer.subarray(0, written)) : undefined, binary: false, omitted: false };
+      const hash = describe ? sha256(buffer.subarray(0, written)) : undefined;
+      if (written <= preview) return { valueText: text, truncated: false, bytes: written, hash, binary: false, omitted: false };
+      return { valueText: this.literal(text, preview).text, truncated: true, bytes: written, hash, binary: false, omitted: false };
     }
-    const valueText = this.literal(text, cap).text;
+    const valueText = this.literal(text, preview).text;
     return describe
       ? { valueText, truncated: true, bytes: Buffer.byteLength(text), hash: sha256(text), binary: false, omitted: false }
       : { valueText, truncated: true, bytes: undefined, hash: undefined, binary: false, omitted: false };
@@ -566,23 +580,24 @@ export class Encoder {
     return this.literal(s, cap);
   }
 
-  private string(s: string, cap: number, describe: boolean): Encoded {
-    if (s.length <= cap) return this.known(quote(s), cap, describe);
-    const valueText = s.length > READ_FACTOR * cap ? undefined : this.literal(quote(s.slice(0, cutAt(s, cap))), cap).text;
+  private string(s: string, cap: number, describe: boolean, preview: number): Encoded {
+    if (s.length <= cap) return this.known(quote(s), cap, describe, preview);
+    const valueText = s.length > READ_FACTOR * cap ? undefined : this.literal(quote(s.slice(0, cutAt(s, preview))), preview).text;
     return { valueText, truncated: true, bytes: undefined, hash: undefined, binary: false, omitted: false };
   }
 
   /** Binary: base64, with `bytes` and `hash` over the raw bytes (core.md 5.4). */
-  private binary(b: Binary, cap: number, describe: boolean): Encoded {
+  private binary(b: Binary, cap: number, describe: boolean, preview: number): Encoded {
     const size = b.length;
-    if (Math.ceil(size / 3) * 4 + 2 <= cap) {
-      return { valueText: '"' + b.base64(size) + '"', truncated: false, bytes: describe ? size : undefined, hash: describe ? sha256(b.view(size)) : undefined, binary: true, omitted: false };
-    }
+    const written = Math.ceil(size / 3) * 4 + 2;
+    // The raw length is known without reading the bytes, so a cut binary value keeps it; the hash needs the bytes.
+    const bytes = describe ? size : undefined;
+    const hash = describe && written <= cap ? sha256(b.view(size)) : undefined;
+    if (written <= preview) return { valueText: '"' + b.base64(size) + '"', truncated: false, bytes, hash, binary: true, omitted: false };
     // A prefix `"<base64>` travels as `"\"<base64>"`: four bytes around whole groups.
-    const groups = Math.floor((cap - 4) / 4);
+    const groups = Math.floor((preview - 4) / 4);
     const valueText = groups < 0 ? undefined : '"\\"' + b.base64(groups * 3) + '"';
-    // The raw length is known without reading the bytes, so a cut binary value keeps it.
-    return { valueText, truncated: true, bytes: describe ? size : undefined, hash: undefined, binary: true, omitted: false };
+    return { valueText, truncated: true, bytes, hash, binary: true, omitted: false };
   }
 
   /** How many UTF-16 units of `s`, whole code points, fit in `bytes` bytes of UTF-8. */
@@ -675,15 +690,28 @@ type ErrorSlot = "error" | "crossing.error";
 
 const RULE_SLOTS: ReadonlySet<string> = new Set<CaptureSlot>(["program", "result", "outputs", "error", "crossing.input", "crossing.output", "crossing.error"]);
 
+/**
+ * The slots the preview bounds: what the program submitted, returned or exchanged with a target. An error's
+ * Payload is its diagnosis, not that traffic — its `class` and `message` are outside the preview already, and a
+ * stack cut at 256 bytes is one frame — so the error slots keep their cap and a host shortens them with a cap
+ * or a rule.
+ */
+const PREVIEWED: ReadonlySet<string> = new Set<CaptureSlot>(["program", "result", "outputs", "crossing.input", "crossing.output"]);
+
 /** Caps, rules and the encoder for one instance. Compiled once. */
 export class Capturer {
   readonly caps: Readonly<Record<CapKey, number>>;
+  /** Bytes of a `value` written; the cap is still what is read, hashed and measured. */
+  readonly preview: number;
   private readonly rules: Partial<Record<CaptureSlot, CaptureRule>>;
   private readonly encoder: Encoder;
 
   constructor(policy: CapturePolicy | undefined) {
     // A key this version does not read would be a redaction rule that never applies.
-    for (const key of Object.keys(policy ?? {})) if (key !== "caps" && key !== "rules") throw new RangeError(`mocon: unknown capture policy key "${key}"`);
+    for (const key of Object.keys(policy ?? {})) if (key !== "caps" && key !== "rules" && key !== "preview") throw new RangeError(`mocon: unknown capture policy key "${key}"`);
+    const preview: unknown = policy?.preview;
+    if (preview !== undefined && (typeof preview !== "number" || !Number.isInteger(preview) || preview < 0)) throw new RangeError("mocon: preview must be a non-negative integer");
+    this.preview = preview === undefined ? DEFAULT_PREVIEW : preview;
     const caps = { ...DEFAULT_CAPS };
     if (policy?.caps !== undefined) {
       for (const slot of Object.keys(policy.caps)) {
@@ -796,7 +824,8 @@ export class Capturer {
 
   private apply(slot: CaptureSlot, value: unknown, cap: number, target: string | undefined, channel: string | undefined): Captured {
     const rule = this.rules[slot];
-    if (rule === undefined) return this.encode(slot, value, cap, false);
+    const preview = PREVIEWED.has(slot) ? this.preview : cap;
+    if (rule === undefined) return this.encode(slot, value, cap, false, preview);
     if (rule === "drop") return REDACTED;
     if (rule === "hash-only") return this.hashOnly(slot, value);
     const issued: Array<[Payload, Captured]> = [];
@@ -804,7 +833,7 @@ export class Capturer {
       slot,
       cap,
       capture: (v, options) => {
-        const c = this.encode(slot, v, cap, options?.redacted === true);
+        const c = this.encode(slot, v, cap, options?.redacted === true, options?.full === true ? cap : preview);
         const payload = parseFrozen<Payload>(c.text);
         issued.push([payload, c]);
         return payload;
@@ -850,15 +879,16 @@ export class Capturer {
    * `{redacted: true}`, and one that serializes to nothing as `null`. A
    * failed invariant is a bug here and is not hidden that way.
    */
-  private encode(slot: CaptureSlot, value: unknown, cap: number, redacted: boolean): Captured {
+  private encode(slot: CaptureSlot, value: unknown, cap: number, redacted: boolean, preview: number = cap): Captured {
     try {
       if (slot === "program" && typeof value === "string") {
-        const t = this.encoder.literal(value, cap);
+        const t = this.encoder.literal(value, Math.min(cap, preview));
         if (redacted) return { text: payloadWire(t.text, t.cut, true, undefined, undefined), base64: false };
+        // core.md 5.2 wants program.hash and program.bytes whatever the value shows, so the text is digested whole.
         const { bytes, hash } = this.encoder.digest(value);
         return { text: payloadWire(t.text, t.cut, false, bytes, hash), base64: false };
       }
-      let e = this.encoder.encode(value, cap, !redacted);
+      let e = this.encoder.encode(value, cap, !redacted, Math.min(cap, preview));
       if (e.omitted) e = this.encoder.known("null", cap, !redacted);
       return { text: payloadWire(e.valueText, e.truncated, redacted, e.bytes, e.hash), base64: e.binary };
     } catch (e) {

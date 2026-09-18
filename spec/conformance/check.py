@@ -27,7 +27,19 @@ DISPOSITIONS = {"completed", "failed", "terminated", "abandoned"}
 OUTCOMES = {"output", "error", "abandoned"}
 OBSERVES = {"all", "some", "none"}
 EDGES = {"invocation", "dispatch"}
-ATTESTED = {"crossing.target", "crossing.input", "crossing.output", "crossing.error", "execution.error.class"}
+ATTESTED = {"crossing.target", "crossing.input", "crossing.output", "crossing.error", "execution.error.class",
+            "ext.declared"}
+# core.md 5.1.1 and extensions/links.md. Closed to hosts, growing by minor version, so an
+# unknown value is a lint warning and never a validation failure -- the same treatment
+# ATTESTED gets, and the reason none of these has an invalid/ fixture.
+AGGS = {"sum", "last", "none"}
+CARDS = {"low", "high"}
+LINK_RELS = {"retry_of", "replay_of", "forked_from", "continues"}
+LINK_COUNTS = {"additive", "duplicate"}
+LINK_KINDS = {"execution", "crossing"}
+# core.md 3: reserved to the specification. No host authors these, so the declaration
+# lint never asks for them.
+RESERVED_EXT = "mocon."
 # core.md 3: the only characters that make a line blank. Not the language's own
 # trim/strip set, which differs between Python and JavaScript (U+001C, U+0085,
 # U+2028 and friends), and which would make `skipped` implementation-defined.
@@ -131,6 +143,54 @@ def require(obj, keys, label):
     return [f"{label}: missing required field: {k}" for k in keys if k not in obj]
 
 
+def dimensions_errors(o):
+    """core.md 5.1.1. Structure only: membership in `agg`/`card` grows by minor
+    version, so an unknown value there is cmd_lint's business, not a rejection."""
+    if "dimensions" not in o:
+        return []
+    d = o["dimensions"]
+    if not is_obj(d):
+        return ["host.dimensions: must be an object"]
+    errs = []
+    for key, entry in d.items():
+        where = f"host.dimensions.{key}"
+        if not is_obj(entry):
+            errs.append(f"{where}: must be an object")
+            continue
+        if "agg" not in entry:
+            errs.append(f"{where}: missing required field: agg")
+        errs += field(entry, "agg", is_str, "a string", where)
+        errs += field(entry, "unit", is_str, "a string", where)
+        errs += field(entry, "card", is_str, "a string", where)
+        errs += field(entry, "name", is_str, "a string", where)
+        errs += field(entry, "observed", is_bool, "a boolean", where)
+    return errs
+
+
+def links_errors(o, label):
+    """extensions/links.md 2. Structure only, for the same reason: `rel` and `counts`
+    grow by minor version. `kind` does not -- it names a core record kind."""
+    if "links" not in o:
+        return []
+    v = o["links"]
+    if not isinstance(v, list):
+        return [f"{label}.links: must be an array"]
+    errs = []
+    for i, entry in enumerate(v):
+        where = f"{label}.links[{i}]"
+        if not is_obj(entry):
+            errs.append(f"{where}: must be an object")
+            continue
+        errs += require(entry, ("rel", "kind", "id", "counts"), where)
+        errs += field(entry, "rel", is_str, "a string", where)
+        errs += field(entry, "id", is_str, "a string", where)
+        errs += field(entry, "counts", is_str, "a string", where)
+        errs += field(entry, "host", is_str, "a string", where)
+        errs += field(entry, "execution_id", is_str, "a string", where)
+        errs += closed_error(entry, "kind", LINK_KINDS, f"{where}.kind")
+    return errs
+
+
 def structural_errors(o):
     """core.md 3, 5, 7, 8; provenance.md 4. Required keys per kind, the type of every
     core field, closed enums, end completeness, the Payload rule, the timestamp Z
@@ -151,6 +211,7 @@ def structural_errors(o):
             errs.append("host.spec_version: must be MAJOR.MINOR")
         if "attested" in o and not (isinstance(o["attested"], list) and all(is_str(x) for x in o["attested"])):
             errs.append("host.attested: must be an array of strings")
+        errs += dimensions_errors(o)
         # attested membership is open (core.md 8): unknown entries are ignored, not
         # rejected. See cmd_lint for the provenance.md 7 warning on an unknown entry.
     elif kind == "execution":
@@ -158,6 +219,7 @@ def structural_errors(o):
         errs += field(o, "id", is_str, "a string", "execution")
         errs += field(o, "language", is_str, "a string", "execution")
         errs += context_errors(o, "execution")
+        errs += links_errors(o, "execution")
         if "program" in o:
             errs += payload_errors(o["program"], "execution.program")
         errs += ts_errors(o, "start", "execution")
@@ -186,6 +248,7 @@ def structural_errors(o):
         errs += field(o, "target", is_str, "a string", "crossing")
         errs += field(o, "seq", is_uint, "a non-negative integer", "crossing")
         errs += context_errors(o, "crossing")
+        errs += links_errors(o, "crossing")
         if "input" in o:
             errs += payload_errors(o["input"], "crossing.input")
         errs += ts_errors(o, "start", "crossing")
@@ -219,7 +282,8 @@ def load_schemas():
     each schema's own $ref to a sibling file (host.json, payload.json, ...)
     resolves without the deprecated, scope-stateful RefResolver."""
     schemas = {}
-    for fname in ("line.json", "host.json", "execution.json", "crossing.json", "payload.json", "error.json"):
+    for fname in ("line.json", "host.json", "execution.json", "crossing.json", "payload.json", "error.json",
+                  "links.json"):
         s = json.load(open(os.path.join(SCHEMA_DIR, fname)))
         schemas[s["$id"]] = s
     registry = Registry().with_resources((uri, Resource.from_contents(s)) for uri, s in schemas.items())
@@ -519,6 +583,84 @@ def cmd_order():
     return problems == 0
 
 
+def is_finite_number(v):
+    """core.md 5.1.1: `sum` and `last` apply only to a finite JSON number. A bool is
+    not one (Python says otherwise), and 1e400 parses to an infinity, which is not one
+    either even though the line that carried it was legal JSON (core.md 3)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and v not in (float("inf"), float("-inf"))
+
+
+def declaration_warnings(records, decls, warn_):
+    """core.md 5.1.1 and provenance.md 7's declaration rules. One pass over the
+    records already parsed, plus the declarations already folded.
+
+    `ext-key-undeclared` is scoped to namespaces the host already declares a key in.
+    That is what makes it runnable by the two hosts core.md licenses that cannot
+    satisfy an unscoped rule: a relay forwarding another vendor's keys verbatim
+    (core.md 2, 3), which cannot declare keys it did not author, and a host that has
+    not adopted declarations at all, which is not nagged for a feature it is not
+    using. A host that has started declaring still gets told about the key it forgot,
+    which is the drift the rule exists to catch."""
+    problems = 0
+    for host, decl in sorted(decls.items()):
+        dims = decl.get("dimensions")
+        dims = dims if is_obj(dims) else {}
+        attested = decl.get("attested") or []
+        observed_keys = {k for k, e in dims.items() if is_obj(e) and e.get("observed") is True}
+        if observed_keys and "ext.declared" not in attested:
+            problems += warn_(f"host {host} declares {len(observed_keys)} observed dimension(s) "
+                              f"without attesting ext.declared; consumers read those keys as P")
+        if "ext.declared" in attested and not observed_keys:
+            problems += warn_(f"host {host} attests ext.declared but no dimension carries observed: true")
+        for key, e in sorted(dims.items()):
+            if not is_obj(e):
+                continue
+            if is_str(e.get("agg")) and e["agg"] not in AGGS:
+                problems += warn_(f"host {host} dimension {key!r} agg outside the known list: {e['agg']!r}")
+            if is_str(e.get("card")) and e["card"] not in CARDS:
+                problems += warn_(f"host {host} dimension {key!r} card outside the known list: {e['card']!r}")
+
+    # Namespaces the host claims: the prefix before the first "." of each declared key.
+    claimed = {h: {k.split(".", 1)[0] for k in (d.get("dimensions") or {}) if is_str(k) and "." in k}
+               for h, d in decls.items() if is_obj(d.get("dimensions"))}
+    undeclared, mismatched = {}, {}
+    for o in records:
+        host, kind = o.get("host"), o.get("kind")
+        dims = (decls.get(host) or {}).get("dimensions")
+        dims = dims if is_obj(dims) else {}
+        for key, value in (o["ext"] if is_obj(o.get("ext")) else {}).items():
+            entry = dims.get(key) if is_str(key) else None
+            if not is_obj(entry) or not is_str(entry.get("agg")) or entry["agg"] not in AGGS:
+                if key.startswith(RESERVED_EXT) or not is_str(key) or "." not in key:
+                    continue
+                if key.split(".", 1)[0] in claimed.get(host, set()):
+                    undeclared[(host, key)] = undeclared.get((host, key), 0) + 1
+                continue
+            # A null is "no value", not a wrong value (core.md 5.1.1): absent from every
+            # total, and not a mismatch, so a legitimately nullable key does not warn.
+            if entry["agg"] in ("sum", "last") and value is not None and not is_finite_number(value):
+                mismatched[(host, key)] = mismatched.get((host, key), 0) + 1
+    for (host, key), n in sorted(undeclared.items()):
+        problems += warn_(f"host {host} emits undeclared ext key {key!r} in a namespace it declares ({n}x)")
+    for (host, key), n in sorted(mismatched.items()):
+        problems += warn_(f"host {host} dimension {key!r} is aggregatable but carried a non-number ({n}x)")
+
+    for o in records:
+        if not isinstance(o.get("links"), list):
+            continue
+        for e in o["links"]:
+            if not is_obj(e):
+                continue
+            if is_str(e.get("rel")) and e["rel"] not in LINK_RELS:
+                problems += warn_(f"{o['kind']} {o.get('id')} link rel outside the known list: {e['rel']!r}")
+            if is_str(e.get("counts")) and e["counts"] not in LINK_COUNTS:
+                problems += warn_(f"{o['kind']} {o.get('id')} link counts outside the known list: {e['counts']!r}")
+            same_host = e.get("host", o.get("host")) == o.get("host")
+            if same_host and e.get("kind") == o.get("kind") and e.get("id") == o.get("id"):
+                problems += warn_(f"{o['kind']} {o.get('id')} link names the record carrying it")
+    return problems
+
+
 def cmd_lint():
     """provenance.md 7's lint rules, plus core.md 7's end.time >= start. These are
     warnings about streams core.md calls legal, so `all` prints them without
@@ -533,6 +675,7 @@ def cmd_lint():
                 decls.setdefault(o["host"], o)
             elif o.get("kind") == "crossing":
                 crossings_by_host.setdefault(o.get("host"), []).append(o)
+        problems += declaration_warnings(records, decls, lambda m: warn(base_name, m))
         for o in records:
             end = o.get("end") if is_obj(o.get("end")) else {}
             if o.get("kind") in ("execution", "crossing") and is_str(o.get("start")) and is_str(end.get("time")):
@@ -551,8 +694,9 @@ def cmd_lint():
             for a in (decl.get("attested") or []):
                 if a not in ATTESTED:
                     problems += warn(base_name, f"host {host} attested entry outside the known list: {a!r}")
-    print("lint: OK (no warnings)" if problems == 0 else f"lint: {problems} warning(s)")
-    return problems == 0
+    print("lint: OK (no warnings)" if problems == 0 else
+          f"lint: {problems} warning(s) (warnings only; provenance.md 7 forbids failing a stream on one)")
+    return True  # provenance.md 7: "a runner MUST NOT fail a stream on one"
 
 
 def main():

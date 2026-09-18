@@ -15,7 +15,7 @@ export const specDir = fileURLToPath(new URL("../../spec/", import.meta.url));
 const Ajv2020 = Ajv2020Module.default ?? (Ajv2020Module as unknown as typeof Ajv2020Module.default);
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 ajv.addFormat("date-time", { validate: (s: string) => unixNanos(s) !== undefined });
-for (const file of ["line.json", "host.json", "execution.json", "crossing.json", "payload.json", "error.json"]) {
+for (const file of ["line.json", "host.json", "execution.json", "crossing.json", "payload.json", "error.json", "links.json"]) {
   ajv.addSchema(JSON.parse(readFileSync(`${specDir}schema/${file}`, "utf8")) as object);
 }
 const compiled = ajv.getSchema("https://github.com/tanvincible/mocon/spec/1.0/schema/line.json");

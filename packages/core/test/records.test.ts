@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { fold } from "../src/fold.js";
-import { mocon, memorySink, type Attestation, type Capabilities, type Ext, type Payload, type Sink } from "../src/index.js";
+import { mocon, memorySink, SPEC_VERSION, type Attestation, type Capabilities, type Ext, type Payload, type Sink } from "../src/index.js";
 import { assertValidStream, harness, SYNC_BRIDGE, sleep, type Rec } from "./helpers.js";
 
 function cyclic(): Rec {
@@ -608,15 +608,15 @@ test("declare writes the host line again byte for byte, with the version this pa
   assert.equal(h.sink.lines[0], h.sink.lines[1]);
   assert.equal(
     h.sink.lines[0],
-    '{"kind":"host","host":"example/mcp","spec_version":"1.0","observes_crossings":"all","unmediated_egress":false,"crossing_edge":"invocation","attested":["crossing.target","crossing.input"]}',
+    '{"kind":"host","host":"example/mcp","spec_version":"1.1","observes_crossings":"all","unmediated_egress":false,"crossing_edge":"invocation","attested":["crossing.target","crossing.input"]}',
   );
   const ext = { "vendor.build": "1.2.3", "vendor.region": "eu-west-1" };
   const withExt = harness({ capabilities: { observes_crossings: "all", ext } });
-  assert.equal(withExt.sink.lines[0], '{"kind":"host","host":"example/mcp","spec_version":"1.0","observes_crossings":"all","ext":{"vendor.build":"1.2.3","vendor.region":"eu-west-1"}}');
+  assert.equal(withExt.sink.lines[0], '{"kind":"host","host":"example/mcp","spec_version":"1.1","observes_crossings":"all","ext":{"vendor.build":"1.2.3","vendor.region":"eu-west-1"}}');
   assertValidStream(withExt.sink.lines);
   for (const spec_version of ["0.9", "2.0", "one"]) {
     const knob = harness({ capabilities: { observes_crossings: "all", spec_version } as never });
-    assert.equal((knob.records()[0] as Rec)["spec_version"], "1.0", `a library that implements 1.0 declares 1.0, not ${spec_version}`);
+    assert.equal((knob.records()[0] as Rec)["spec_version"], SPEC_VERSION, `a library that implements ${SPEC_VERSION} declares it, not ${spec_version}`);
   }
 });
 

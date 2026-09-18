@@ -8,8 +8,9 @@
  * running (core.md 8); `flagged` counts those lines.
  */
 
-import { invariant, type CrossingLine, type ExecutionLine, type HostLine } from "@mocon/core";
+import { invariant, type CrossingLine, type Dimension, type ExecutionLine, type HostLine } from "@mocon/core";
 import { fold, type ViewRef } from "@mocon/core/fold";
+import { declarationsOf, type HostDeclaration } from "./dimensions.js";
 import { attestedOf, crossingProvenance, executionProvenance, type ProvenanceMap } from "./provenance.js";
 import { isRecord, text } from "./text.js";
 
@@ -71,20 +72,25 @@ export function buildModel(stream: string): Model {
   // execution's own host and id are always strings, so this is its fold key and no two executions share it.
   const parents = new Map<string, ExecutionNode>();
   const hosts = Object.values(view.hosts).map(declared);
-  // Each declaration's attested list, read once here for the markers below and for the hosts the model returns.
-  const attested = new Map(hosts.map((h) => [h.host, new Set(h.attested)]));
+  // Each host's declaration, read once here: its `attested` list for the markers below, and its
+  // `dimensions` for the `ext` marker, which reads a key as host-observed only under `ext.declared`
+  // (provenance.md 4). A node keeps the declaration's own host string, so every later lookup compares
+  // two references rather than two strings whose length the stream chose.
+  const declarations = declarationsOf(hosts);
   const NONE = new Set<string>();
+  const observed = (d: HostDeclaration | undefined): Record<string, Dimension> | undefined => (d?.attestsDeclared === true ? d.dimensions : undefined);
   let running = 0;
 
   for (const [key, record] of Object.entries(view.executions)) {
+    const decl = declarations.get(record.host);
     const node: ExecutionNode = {
-      host: record.host,
+      host: decl?.host ?? record.host,
       id: record.id,
       record,
       running: unresolvedExecutions.has(key),
       conflict: conflictExecutions.has(key),
       durationMs: duration(record.start, record.end?.time),
-      provenance: executionProvenance(record, attested.get(record.host) ?? NONE),
+      provenance: executionProvenance(record, decl?.attested ?? NONE, observed(decl)),
       crossings: [],
     };
     invariant(node.running !== Object.hasOwn(record, "end"), "an execution is running exactly when its record has no end");
@@ -95,10 +101,11 @@ export function buildModel(stream: string): Model {
 
   let placed = 0;
   for (const [key, record] of Object.entries(view.crossings)) {
+    const decl = declarations.get(record.host);
     const parentKey = text(record.host) + "\0" + text(record.execution_id);
     let node = parents.get(parentKey);
     if (node === undefined) {
-      node = { host: record.host, id: record.execution_id, record: null, running: false, conflict: false, durationMs: null, provenance: {}, crossings: [] };
+      node = { host: decl?.host ?? record.host, id: record.execution_id, record: null, running: false, conflict: false, durationMs: null, provenance: {}, crossings: [] };
       nodes.push(node);
       parents.set(parentKey, node);
     }
@@ -107,7 +114,7 @@ export function buildModel(stream: string): Model {
       running: unresolvedCrossings.has(key),
       conflict: conflictCrossings.has(key),
       durationMs: duration(record.start, record.end?.time),
-      provenance: crossingProvenance(record, attested.get(record.host) ?? NONE),
+      provenance: crossingProvenance(record, decl?.attested ?? NONE, observed(decl)),
     };
     invariant(crossing.running !== Object.hasOwn(record, "end"), "a crossing is running exactly when its record has no end");
     if (crossing.running) running++;

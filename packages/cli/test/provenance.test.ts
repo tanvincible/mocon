@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { CrossingLine, ExecutionLine, HostLine } from "@mocon/core";
+import { dimensionsOf } from "@mocon/core/fold";
 import { exportStream } from "../src/otlp.js";
 import { attestedOf, crossingProvenance, executionProvenance } from "../src/provenance.js";
 import { streams } from "./helpers.js";
@@ -87,10 +88,12 @@ test("the CLI and @mocon/otel apply one table: every complete record of every go
     const lines = s.text.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as Record<string, unknown>);
     const declaration = lines.find((l) => l["kind"] === "host") as HostLine | undefined;
     const attested = new Set(attestedOf(declaration));
+    // Both gates: `dimensions` reaches the table only under `ext.declared`, which is how the sink reads them too.
+    const dimensions = attested.has("ext.declared") ? dimensionsOf(declaration) : undefined;
     for (const line of lines) {
       if ((line["kind"] !== "execution" && line["kind"] !== "crossing") || line["end"] === undefined) continue;
       const kind = line["kind"];
-      const cli = kind === "execution" ? executionProvenance(line as unknown as ExecutionLine, attested) : crossingProvenance(line as unknown as CrossingLine, attested);
+      const cli = kind === "execution" ? executionProvenance(line as unknown as ExecutionLine, attested, dimensions) : crossingProvenance(line as unknown as CrossingLine, attested, dimensions);
       const one = declaration === undefined ? JSON.stringify(line) : JSON.stringify(declaration) + "\n" + JSON.stringify(line);
       const span = (await exportStream(one)).request.resourceSpans[0]?.scopeSpans[0]?.spans[0];
       assert.ok(span !== undefined, `${s.name}: ${kind} ${String(line["id"])} maps to a span`);

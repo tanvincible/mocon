@@ -41,7 +41,7 @@ Hashes are SHA-256 over the host's serialization of the original, and `bytes` is
 The host line, written once when `mocon()` is called:
 
 ```json
-{"kind":"host","host":"example/mcp","spec_version":"1.0","observes_crossings":"all","unmediated_egress":false,"crossing_edge":"invocation","attested":["crossing.target","crossing.input"]}
+{"kind":"host","host":"example/mcp","spec_version":"1.1","observes_crossings":"all","unmediated_egress":false,"crossing_edge":"invocation","attested":["crossing.target","crossing.input"]}
 ```
 
 The start notice, written by `run` before it calls the body:
@@ -70,11 +70,75 @@ A settlement arrives late the same way after the host wrote the crossing as aban
 
 The library writes four keys of its own into a record's `ext`, all under `mocon.`: `mocon.encoding` names each slot whose value holds binary written as base64, the whole value or somewhere inside it; `mocon.target` says the target was cut at its cap; `mocon.message` says an error's `message` was cut at its slot's cap; and `mocon.ext` replaces an `ext` the serialization rejected. A `late_settlement` event carries the notes its payload needs in its own `ext`.
 
+## Declared dimensions
+
+`ext` is open, and a consumer is forbidden to treat an `ext` key as meaningful (core.md 12). `capabilities.dimensions` is how a host says, once per host string, what its own keys mean, so a viewer or an exporter that has never heard of this host can total, group and label them correctly. It declares meaning, never identity: an entry names an `ext` key and changes nothing about how a core field is read.
+
+```ts
+const m = mocon({
+  host: "example/mcp",
+  capabilities: {
+    observes_crossings: "all",
+    attested: ["crossing.target", "crossing.input", "ext.declared"],
+    dimensions: {
+      "example.credits_used": { agg: "sum", unit: "{credit}", name: "Credits spent", observed: true },
+      "example.credits_remaining": { agg: "last", unit: "{credit}", name: "Credits left", observed: true },
+      "example.guard": { agg: "none", card: "low", name: "Guard" },
+      "example.sandbox_id": { agg: "none" },
+    },
+  },
+  sinks: [fileSink("mocon.jsonl")],
+});
+```
+
+`agg` is required and closed: `sum` for a value that adds up, `last` for a level, `none` for anything that is not a quantity. `unit` is a free string compared only by equality, and only under `sum` or `last`. `card: "low"` says the key takes few enough distinct values to group by, and its absence reads as `high`, so a key is display-only until the host opts it in. `name` is a display name. `observed` says the host determined the value where the program cannot write through; it upgrades the key to host-observed only together with `ext.declared` in `attested`, because each gate alone is wrong (`provenance.md` 4).
+
+The declaration is validated when `mocon()` is called and refused rather than written when it contradicts itself: a `unit` on a key declared `none`, which is not a quantity and has no unit, or a `card` on a key declared `sum` or `last`, whose value is a measure and whose cardinality no consumer reads. An unknown `agg` or `card`, an entry that is not an object, and a key under the reserved `mocon.` namespace are refused the same way. Each field is read once and the line is written from what was read, so a getter cannot answer the check with one value and the wire with another. The map cannot vary per execution; to change it, change the host string.
+
+Reading one back is `dimensionsOf(hostLine)` from `@mocon/core/fold`, which applies core.md 8's rules for you: an entry whose `agg` this version does not know is left out, which makes its key undeclared, and `unit`, `card` and `observed` come back filled in with `"1"`, `"high"` and `false`.
+
+```ts
+import { dimensionsOf, fold } from "@mocon/core/fold";
+
+const view = fold(lines);
+const declared = dimensionsOf(view.hosts["example/mcp"]);
+// declared["example.credits_used"] -> { agg: "sum", unit: "{credit}", card: "high", name: "Credits spent", observed: true }
+```
+
+Nothing here enforces that every `ext` key a stream carries is declared: a declaration drifts from the code the way any pair of files does, so the check belongs in the host's own tests (`provenance.md` 7). `spec/conformance/check.py` runs it over a stream and warns per host and key, which is the check to point at a stream this package wrote.
+
+## Links
+
+`links` relates a record to an older one: a retry, a replay, a fork of a fan-out, a run resumed after a checkpoint (`spec/extensions/links.md`). The newer record always carries the link and points back, because a complete record is written once and carries every field it will ever have.
+
+```ts
+m.execution.start({ program, links: [{ rel: "replay_of", kind: "execution", id: previousRunId, counts: "duplicate" }] });
+ex.crossing.start({ target, input, links: [{ rel: "retry_of", kind: "crossing", id: failedCallId, counts: "additive" }] });
+```
+
+`rel` is one of `retry_of`, `replay_of`, `forked_from`, `continues`. `kind` says whether the id names an execution or a crossing, because ids are unique only within `(host, kind)`. `counts` is required and has no default: `additive` says this record's work happened in addition to the named record's, `duplicate` says it repeats it, and without the distinction a consumer totalling a declared `sum` dimension over fifty-one replays over-counts fifty-one-fold. `host` names another host's record, and `execution_id` accompanies a crossing whose execution is not this line's.
+
+An entry is validated when the handle is opened, in the order the extension's table gives, and an entry that names the record carrying it is refused when the host minted that id itself. Links go on the notice and on the complete record alike. Core performs no referential check on them, exactly as it performs none on `crossing.execution_id`, and an empty array is absent on the wire.
+
 ## Handles
 
 `mocon(options)` builds the instance. `m.execution.run(options, body)` is the wrapper. `m.execution.start(options)` is the same start without the bracket, for a host that opens a handle per turn and settles it later. Both write a start notice by default; pass `notice: false` for a host that does not want live views. A `notice: false` handle still owes the stream an execution record: when it writes its first crossing line, the notice goes out with it, so a crossing never reaches the stream while its dispatch has no record there (core.md 10).
 
 - `ex.instrument(fn, options?)` wraps a bridge. By default the first argument is the target: as it is when it is a string, its text when it is another primitive, and its type in brackets, `[object]` or `[function]`, when it is neither, because coercing an object runs code the program wrote and the host cannot bound — a proxy over three elements claiming a length of 1e8 costs the program nothing and the host sixteen seconds inside `Array.prototype.join`. A bridge whose first argument is an object passes a `target` function. The rest is the input; the call always reaches the bridge, which decides what a strange tool name means. A bridge shaped like `callTool({ name, arguments })` passes `target` and `input` functions. Those functions run on each call, inside the wrapper: one that throws, or that yields a target which is not a string or an `ext` which is not an object, costs that field and not the call, so the bridge is still reached and the crossing is still written. Only `instrument()` itself throws, and only for an option of the wrong shape. The wrapper forwards `this`. A native promise is followed and the derived promise returned, as under `run`; any other value, a thenable included, is returned unchanged and never subscribed. An iterator, stream or callback is not followed: the crossing records the value the bridge returned, at the moment it returned. A streaming bridge opens the crossing with `ex.crossing.start` and settles it when the stream ends or fails.
+- `end` is how a bridge says what its own answer means. The default is a guess that fits one shape — a return is the output, a throw is the error — and a bridge that answers `{ ok: false, ... }` instead of throwing is not that shape. The hook receives what the bridge returned or threw, with the call's arguments, and returns the crossing's end fields, `ext` included:
+
+  ```ts
+  const callTool = ex.instrument(bridge, {
+    end: (a) =>
+      a.threw
+        ? undefined
+        : a.value.ok
+          ? { outcome: "output", output: a.value.data, ext: { "example.credits_used": a.value.credits_used } }
+          : { outcome: "error", error: { class: a.value.errorType, message: a.value.message } },
+  });
+  ```
+
+  `threw` is the discriminant, so `a.value` is typed as what the bridge returns, awaited when it returns a promise. Returning `undefined` leaves the default for that answer, which is why a bridge that only ever answers with an envelope needs one line. The hook runs on every call, like the other derives, and a mistake in it costs the reading and not the call: one that throws, returns nothing, or returns an outcome the wire would refuse leaves the default outcome, and the bridge's answer reaches the program unchanged. With no `end` the two defaults above stand, so the common case needs nothing.
 - `ex.crossing.start({ target, input })` opens a crossing by hand and returns a `CrossingHandle` with `output(value)`, `error(cause)` and `end(options)`. Use it when there is no single function to wrap. It takes a string target, so `targetOf(value)` is exported for a host that holds whatever named the call: it is the coercion `instrument` applies, it never runs the value's own `toString` or reads a member of it, and `@mocon/adapter-mcp` names a call the same way through it.
 - `ex.complete({ result?, outputs? })` and `ex.fail(cause, { class? })` are shorthands for `ex.end({ disposition, ... })`. `end` takes the exact wire fields for `terminated` and `abandoned`, and `error.cause` in place of `message` and `value` when the host holds what it caught: `ex.end({ disposition: "terminated", error: { class: "timeout", cause } })` records the caught error the way `fail` does.
 
@@ -115,7 +179,21 @@ Idempotence belongs to a handle, not to a key. Two handles opened from the same 
 
 Every value goes through one encoder that produces a Payload: `value`, `truncated`, `redacted`, `bytes`, `hash`. Caps, redaction and hashing live in one policy so they cannot disagree. The encoder reads a value once: every property it reads is read once, every getter and `toJSON` runs at most once per capture, the text it produced is the text that is measured, hashed and cut, and no program code in the value runs after the capture returns.
 
-Default caps, in bytes, all overridable through `capture.caps`:
+**The default does not write full payloads.** Exactly what a host that sets no policy now records, for `program`, `result`, each `outputs` channel, `crossing.input` and `crossing.output`:
+
+- `value`: the first **256 bytes** of the serialization, as `capture.preview` sets it, cut on a code point boundary and outside any escape. A value that fits in 256 bytes is written whole, and a longer one carries `truncated: true`. For `program` the serialization is the submitted text itself, so its `value` is a prefix of the code.
+- `bytes` and `hash`: the length and SHA-256 of the **whole** value, not of the prefix, as far as the slot's cap — so a 40 KiB tool result is 256 bytes on the line and still matches another 40 KiB result by hash. Past the cap the encoder stopped reading and claims neither, as before.
+- `error` and `crossing.error` are **not** previewed. An error's Payload is its diagnosis rather than the traffic, its `class` and `message` were never previewed anyway, and a stack cut at 256 bytes is one frame. They keep their 16 KiB cap; a host shortens them with a cap or a rule.
+
+This changes what a stream holds for anyone who was already using the package: before, a value under its slot's cap was written in full, so a 40 KiB result was 40 KiB on the line. `capture: { preview: 65536 }` restores that everywhere, and `ctx.capture(v, { full: true })` inside a rule restores it for one value, which is how full capture is opted into per target:
+
+```ts
+capture: {
+  rules: { "crossing.input": (v, ctx) => ctx.capture(v, { full: ctx.target === "records_get" }) },
+}
+```
+
+Caps still say how much is *read*. Default caps, in bytes, all overridable through `capture.caps`:
 
 | slot | cap |
 |---|---|
@@ -128,11 +206,11 @@ Default caps, in bytes, all overridable through `capture.caps`:
 | `crossing.output` | 64 KiB |
 | `crossing.error` | 16 KiB |
 
-A cap bounds what the slot's `value` adds to a line, in UTF-8 bytes as written: a cut value is a JSON string, and its prefix is chosen so that the string, its quotes and escapes included, fits the cap. `crossing.target` caps the target string itself, which the program chooses: a longer target is cut on a code point boundary before any capture rule sees it, and the record's `ext` carries `"mocon.target": { "truncated": true }`. An error's `message` is cut at its slot's cap the same way, noted under `mocon.message`.
+A cap bounds how much of the slot the encoder reads, measures and hashes, in UTF-8 bytes as written, and it is the ceiling the preview sits under: a cut value is a JSON string, and its prefix is chosen so that the string, its quotes and escapes included, fits the bound. `crossing.target` caps the target string itself, which the program chooses: a longer target is cut on a code point boundary before any capture rule sees it, and the record's `ext` carries `"mocon.target": { "truncated": true }`. An error's `message` is cut at its slot's cap the same way, noted under `mocon.message`.
 
 The payloads of a complete execution record, its error, result and output channels in that order, share one budget with the line's head: 1 MiB, the size core.md 3 asks lines to stay under, less 4 KiB for the envelope. A slot gets its cap or what the line has left, whichever is less, so every channel is still recorded, cut to what is left. With the default caps no line this package writes passes 1 MiB, whatever a program's text holds and however many channels the host passes, apart from what the host supplies itself: the host string, ids, `language`, `context`, an error's class, channel names and `ext`. Those are outside the budget entirely and no cap bounds them, so a host that derives one of them from what a program handed it gives the program the size of the line: `ex.instrument(fn, { ext: (_n, a) => a })` puts a 3 M character argument into a 3 MB crossing line, and a `context.session` of a million characters writes a million characters onto the notice and again onto the complete record. core.md 3 makes such a line legal, since a consumer MUST accept one past 1 MiB, but the host is the only thing bounding it. Put program data in a payload slot, which has a cap, not in `ext` or `context`.
 
-Under the cap the Payload is `{ value, bytes, hash }`. Over it, `value` is a string prefix of the serialization cut on a code point boundary and `truncated` is `true`. `bytes` and `hash` describe the whole original or are absent: the encoder writes them when it read the whole value, and leaves them out when it stopped at the cap, because it will not claim a length or a hash for bytes it never read. There are two exceptions. `program` is hashed in full even when its value is cut, so two executions of the same text can always be matched. A binary value cut at the cap keeps `bytes`, whose length is known without reading it, and has no `hash`.
+Within the preview the Payload is `{ value, bytes, hash }`. Between the preview and the cap it is the same with a prefix and `truncated: true`. Past the cap `bytes` and `hash` are absent: the encoder writes them when it read the whole value, and leaves them out when it stopped at the cap, because it will not claim a length or a hash for bytes it never read. There are two exceptions. `program` is hashed in full even when its value is cut, so two executions of the same text can always be matched. A binary value cut at the cap keeps `bytes`, whose length is known without reading it, and has no `hash`.
 
 A binary value, an `ArrayBuffer`, a `SharedArrayBuffer` or a typed array from any realm, travels as a base64 string, which is the first place the serialization departs from `JSON.stringify`. Binary is recognised by its internal brand and read through the intrinsic `buffer`, `byteOffset` and `byteLength` getters, so an object that names itself `ArrayBuffer` is an ordinary object, and a `Buffer` whose own `byteOffset` or `byteLength` a program redefined yields its own bytes and no others. When the whole slot is binary, `bytes` and `hash` are over the raw bytes, as core.md 5.4 recommends. Binary nested inside a value is written as a base64 string within that value's JSON, bounded by the cap like any other string. Either way the record's `ext` names the slot under `mocon.encoding`, so a consumer can tell the base64 text from an ordinary string. A value the serialization rejects, such as a `BigInt` or a cyclic object, is written as `{ redacted: true }`. `undefined` is written as `null` where a Payload is required, a crossing's `input`, and omitted where it is optional: `result`, `output`, an output channel.
 
@@ -169,7 +247,7 @@ const m = mocon({
 
 - `"drop"` writes `{ redacted: true }`.
 - `"hash-only"` writes `{ redacted: true, bytes, hash }`, the withheld shape core.md 5.4 defines. It reads the whole value to hash it, up to 8 MiB of serialization and 256 levels of nesting; past either the slot is `{ redacted: true }`. The ceiling counts the bytes written, not the characters read, so a string of control characters, six bytes of serialization each, stops at the same 8 MiB. A value a program builds for free, such as `new Array(2 ** 32 - 1)` or a `toJSON` that nests itself forever, cannot exhaust the heap.
-- A function receives the raw value and a context with the slot, the target or channel, the cap and the default encoder. It returns a Payload or one of the two directives. `ctx.capture(value)` returns the frozen Payload the default encoder writes, and returning it unchanged writes exactly that, its `mocon.encoding` note included. `ctx.capture(replacement, { redacted: true })` encodes a replacement under the cap, sets the flag, and leaves `bytes` and `hash` off because they would describe the replacement, not the original.
+- A function receives the raw value and a context with the slot, the target or channel, the cap and the default encoder. It returns a Payload or one of the two directives. `ctx.capture(value)` returns the frozen Payload the default encoder writes, preview included, and returning it unchanged writes exactly that, its `mocon.encoding` note included. `ctx.capture(value, { full: true })` writes the value up to the slot's cap instead, which is how one target or one channel opts out of the preview. `ctx.capture(replacement, { redacted: true })` encodes a replacement under the bound, sets the flag, and leaves `bytes` and `hash` off because they would describe the replacement, not the original.
 
 The wrappers see the real call boundary, so a host built on `instrument` can declare `attested: ["crossing.target", "crossing.input"]` truthfully when the program cannot reach the host's realm. Whether to attest `crossing.output` or `crossing.error` is the host's call: it is true when the bridge relays the target's answer unchanged. A program that can reach the host's realm, as one in `node:vm` can, can change what the capture records, so such a host attests nothing.
 
@@ -239,24 +317,24 @@ The baselines in `BASELINE` are the lowest median of three runs on an idle machi
 
 One snapshot follows, so the orders of magnitude are on this page. It is a measurement and not a target; run the bench for the verdict. The last row writes through `fileSink` to a temporary file, to show what a synchronous append adds; that part is the operating system's cost, not the emitter's. The row of 23 small records is the shape of the `person_search` rows in core.md Appendix A, which costs the walker the most per byte.
 
-Measured on Node v24.16.0, darwin arm64, Apple M5, otherwise idle, on 2026-09-18. Null sink unless noted. Lowest median of three runs of 15 rounds.
+Measured on Node v24.16.0, darwin arm64, Apple M5, otherwise idle, on 2026-09-19, with the default preview. Null sink unless noted. Lowest median of three runs of 15 rounds.
 
 | case | ns per operation |
 |---|---|
-| crossing start + end, 24 B input, 100 B output | 3,915 |
-| crossing start + end, 24 B input, 1 KiB output | 5,799 |
-| crossing start + end, 1 KiB input, 1 KiB output | 7,565 |
-| crossing start + end, 24 B input, 1 KiB output of 23 records | 9,490 |
-| crossing start + end, 24 B input, 128 KiB string output | 190,900 |
-| crossing start + end, 24 B input, 1 MiB string output | 187,814 |
-| crossing start + end, 24 B input, 3 MiB string output | 192,172 |
-| crossing start + end, 24 B input, 5 MB string output | 1,627 |
-| crossing start + end, 24 B input, 5 MB object output | 2,382 |
-| crossing start + end, 24 B input, 10,000-key object output | 1,588,406 |
-| execution start + end, 204 B program, notice on | 3,690 |
-| crossing start + end, 24 B input, 1 KiB output, fileSink | 15,599 |
+| crossing start + end, 24 B input, 100 B output | 3,961 |
+| crossing start + end, 24 B input, 1 KiB output | 7,191 |
+| crossing start + end, 1 KiB input, 1 KiB output | 10,078 |
+| crossing start + end, 24 B input, 1 KiB output of 23 records | 11,066 |
+| crossing start + end, 24 B input, 128 KiB string output | 3,698 |
+| crossing start + end, 24 B input, 1 MiB string output | 3,616 |
+| crossing start + end, 24 B input, 3 MiB string output | 3,692 |
+| crossing start + end, 24 B input, 5 MB string output | 1,946 |
+| crossing start + end, 24 B input, 5 MB object output | 2,754 |
+| crossing start + end, 24 B input, 10,000-key object output | 1,425,480 |
+| execution start + end, 204 B program, notice on | 3,931 |
+| crossing start + end, 24 B input, 1 KiB output, fileSink | 14,341 |
 
-The 5 MB rows cost less than the 1 KiB ones because a string more than 64 times the 64 KiB output cap is not read at all; a 3 MB string output is read only as far as the cap. No `bytes` or `hash` is computed over an original the encoder did not read in full. About a third of a 1 KiB crossing is native work that any emitter pays: two SHA-256 digests and a UTF-8 decode of each payload. The 10,000-key row is the own-key cost the paragraphs below measure, and it is the one cost no cap reduces.
+A large payload is cheap because the preview keeps it off the line: a string over the preview is cut there, and one more than 64 times the 64 KiB output cap is not read at all. A payload over the preview and under the cap is still read and hashed in full, which is what the two 1 KiB rows pay, and about a quarter of each is the cut the preview adds. About a third of a 1 KiB crossing is native work that any emitter pays: two SHA-256 digests and a UTF-8 decode of each payload. The 10,000-key row is the own-key cost the paragraphs below measure, and it is the one cost no cap reduces.
 
 Where the time goes:
 
@@ -278,8 +356,8 @@ The published tarball carries `dist` and `src`, so the source maps in `dist` res
 
 ## Conformance
 
-`spec/conformance/README.md` defines producer conformance. The tests in this package feed emitted streams to the same structural checks `check.py` applies and to the JSON schema in `spec/schema/`, check that each of the nine invalid fixtures is refused at the emitter's boundary wherever its API can express it, and run the reference checker itself on an emitted stream when `python3` is available. `npm run conformance` at the repository root runs the checker over the whole suite.
+`spec/conformance/README.md` defines producer conformance. The tests in this package feed emitted streams to the same structural checks `check.py` applies and to the JSON schema in `spec/schema/`, check that each invalid fixture is refused at the emitter's boundary wherever its API can express it, and run the reference checker itself on an emitted stream when `python3` is available. `npm run conformance` at the repository root runs the checker over the whole suite.
 
-`@mocon/core/fold` carries the consumer-side tools, which the emitter's main entry does not. `CLOSED` holds the closed sets of core.md 8, `disposition`, `outcome`, `observes_crossings` and `crossing_edge`, and the `attested` entries this version knows, as `ReadonlySet`s; the emitter, `fold`, `@mocon/otel` and `@mocon/cli` test membership against that one copy. `unixNanos(text)` is the one timestamp validator they all apply: unix nanoseconds for an RFC 3339 UTC time that exists, `undefined` otherwise. `canonical(text)` is the canonical JSON check.py compares records by, and `sameMajor(version)` the one rule of core.md 11. `sha256(data)` is the one digest in this repository, the emitter's and the derived span ids of `@mocon/otel` alike. `stringifyDeep(value, keysOf?)` writes a value a consumer parsed out of a line at any depth, where `JSON.stringify` recurses on the native stack and gives up a few thousand levels down; `keysOf` gives an object's keys in the order the line carried them, which the engine does not preserve for an array-index key. It writes a bigint as its digits, which is how an int64 past 2^53 survives a second parse, and rejects a value that holds itself with the `TypeError` `JSON.stringify` raises; both hold whether or not `keysOf` is given, because whatever the native call refuses the loop decides.
+`@mocon/core/fold` carries the consumer-side tools, which the emitter's main entry does not. `CLOSED` holds the closed sets of core.md 8, `disposition`, `outcome`, `observes_crossings`, `crossing_edge`, `agg` and `card`, the `attested` entries this version knows, and the `rel`, `counts` and `kind` of a link, as `ReadonlySet`s; the emitter, `fold`, `@mocon/otel` and `@mocon/cli` test membership against that one copy. `unixNanos(text)` is the one timestamp validator they all apply: unix nanoseconds for an RFC 3339 UTC time that exists, `undefined` otherwise. `canonical(text)` is the canonical JSON check.py compares records by, and `sameMajor(version)` the one rule of core.md 11. `sha256(data)` is the one digest in this repository, the emitter's and the derived span ids of `@mocon/otel` alike. `stringifyDeep(value, keysOf?)` writes a value a consumer parsed out of a line at any depth, where `JSON.stringify` recurses on the native stack and gives up a few thousand levels down; `keysOf` gives an object's keys in the order the line carried them, which the engine does not preserve for an array-index key. It writes a bigint as its digits, which is how an int64 past 2^53 survives a second parse, and rejects a value that holds itself with the `TypeError` `JSON.stringify` raises; both hold whether or not `keysOf` is given, because whatever the native call refuses the loop decides.
 
-`fold(lines)` builds the canonical view that `spec/conformance/README.md` section 3 defines: the supersede rule applied once per key, order-independently, with `unresolved`, `conflicts` and `skipped`. It keys executions and crossings by host and id, `host + "\0" + id`, because core.md 6 scopes ids to a host; the maps have no prototype, so a key such as `__proto__` is an entry like any other. That key is not injective: a host `a` with id `b\0c` and a host `a\0b` with id `c` share one key, and both are legal on the wire, where neither field is patterned or bounded. Two such records fold as one, which check.py, keying by the pair itself, does not do. Which one the view then keeps is decided by the tie-break below, never by the order the lines arrived in, so every permutation of a stream still gives one view. A line whose `host`, or whose `id` on an execution or crossing, is not a string is skipped and counted, so one hostile line costs that line and not the fold. Of two conflicting complete records it keeps the one check.py keeps: the one whose canonical JSON sorts first, where canonical JSON is `json.dumps(sort_keys=True)`, with keys sorted by code point, non-ASCII escaped and `1` distinct from `1.0`. A record whose `end` carries a value outside its closed set reads as having no `end`, and a declaration loses such a key (core.md 8); `flagged` counts those lines, and a record is copied without the key as own data, so an own `__proto__` key in the line never becomes the copy's prototype. `unresolved` and `conflicts` are sorted by kind, host and id compared by Unicode code point, which is the order check.py's lists come out in; JavaScript's `<` compares UTF-16 units and would put U+1F600 before U+FFFD. A record is kept as `JSON.parse` returns it, so an integer outside the double range is not preserved: a `seq` of 12345678901234567890, which no schema in this repository bounds, reads back as 12345678901234567000 here and exactly in check.py. The tie-break is unaffected, because `canonical` reads the digits from the text. The tests fold every golden stream, compare the result with `spec/conformance/expected/` after dropping the host prefix, and check that any permutation gives the same view.
+`dimensionsOf(hostLine)` reads a host's declared dimensions back with core.md 8's rules applied, as the Declared dimensions section above shows. `fold(lines)` builds the canonical view that `spec/conformance/README.md` section 3 defines: the supersede rule applied once per key, order-independently, with `unresolved`, `conflicts` and `skipped`. It keys executions and crossings by host and id, `host + "\0" + id`, because core.md 6 scopes ids to a host; the maps have no prototype, so a key such as `__proto__` is an entry like any other. That key is not injective: a host `a` with id `b\0c` and a host `a\0b` with id `c` share one key, and both are legal on the wire, where neither field is patterned or bounded. Two such records fold as one, which check.py, keying by the pair itself, does not do. Which one the view then keeps is decided by the tie-break below, never by the order the lines arrived in, so every permutation of a stream still gives one view. A line whose `host`, or whose `id` on an execution or crossing, is not a string is skipped and counted, so one hostile line costs that line and not the fold. Of two conflicting complete records it keeps the one check.py keeps: the one whose canonical JSON sorts first, where canonical JSON is `json.dumps(sort_keys=True)`, with keys sorted by code point, non-ASCII escaped and `1` distinct from `1.0`. A record whose `end` carries a value outside its closed set reads as having no `end`, and a declaration loses such a key (core.md 8); `flagged` counts those lines, and a record is copied without the key as own data, so an own `__proto__` key in the line never becomes the copy's prototype. `unresolved` and `conflicts` are sorted by kind, host and id compared by Unicode code point, which is the order check.py's lists come out in; JavaScript's `<` compares UTF-16 units and would put U+1F600 before U+FFFD. A record is kept as `JSON.parse` returns it, so an integer outside the double range is not preserved: a `seq` of 12345678901234567890, which no schema in this repository bounds, reads back as 12345678901234567000 here and exactly in check.py. The tie-break is unaffected, because `canonical` reads the digits from the text. The tests fold every golden stream, compare the result with `spec/conformance/expected/` after dropping the host prefix, and check that any permutation gives the same view.

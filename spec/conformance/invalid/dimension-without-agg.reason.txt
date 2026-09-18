@@ -1,0 +1,1 @@
+core.md 5.1.1: agg is the one required field of an entry. Without it there is nothing to say how the value combines, and a unit alone does not imply one. This is structure, not vocabulary: an agg outside the known list is a lint warning (provenance.md 7), because that list grows by minor version, while an absent agg is malformed in every version.

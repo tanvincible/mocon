@@ -63,6 +63,35 @@ function tsErrors(o: Rec, key: string, where: string): string[] {
   return key in o && !TS.test(String(o[key])) ? [`${where}.${key}: not RFC 3339 UTC with Z`] : [];
 }
 
+/** core.md 5.1.1 and extensions/links.md 2, structure only: an unknown `agg`, `card`, `rel` or `counts` is a lint warning, because those lists grow by minor version. */
+function dimensionErrors(o: Rec): string[] {
+  if (!("dimensions" in o)) return [];
+  const d = o["dimensions"];
+  if (!isRec(d)) return ["host.dimensions: not an object"];
+  const errs: string[] = [];
+  for (const [key, entry] of Object.entries(d)) {
+    if (!isRec(entry)) errs.push(`host.dimensions.${key}: not an object`);
+    else if (typeof entry["agg"] !== "string") errs.push(`host.dimensions.${key}: missing agg`);
+  }
+  return errs;
+}
+
+function linkErrors(o: Rec, label: string): string[] {
+  if (!("links" in o)) return [];
+  const v = o["links"];
+  if (!Array.isArray(v)) return [`${label}.links: not an array`];
+  const errs: string[] = [];
+  v.forEach((entry, i) => {
+    if (!isRec(entry)) {
+      errs.push(`${label}.links[${i}]: not an object`);
+      return;
+    }
+    for (const k of ["rel", "kind", "id", "counts"]) if (typeof entry[k] !== "string") errs.push(`${label}.links[${i}]: missing ${k}`);
+    if ("kind" in entry && !["execution", "crossing"].includes(String(entry["kind"]))) errs.push(`${label}.links[${i}]: kind`);
+  });
+  return errs;
+}
+
 /** The rules check.py applies without jsonschema: required keys, closed sets, end completeness, the Payload rule, timestamps, hash shape. */
 export function structuralErrors(o: unknown): string[] {
   if (!isRec(o)) return ["line is not an object"];
@@ -72,8 +101,10 @@ export function structuralErrors(o: unknown): string[] {
   if (kind === "host") {
     if ("observes_crossings" in o && !["all", "some", "none"].includes(String(o["observes_crossings"]))) errs.push("observes_crossings");
     if ("crossing_edge" in o && !["invocation", "dispatch"].includes(String(o["crossing_edge"]))) errs.push("crossing_edge");
+    errs.push(...dimensionErrors(o));
   } else if (kind === "execution") {
     for (const k of ["id", "start"]) if (!(k in o)) errs.push(`execution: missing ${k}`);
+    errs.push(...linkErrors(o, "execution"));
     if ("program" in o) errs.push(...payloadErrors(o["program"], "execution.program"));
     errs.push(...tsErrors(o, "start", "execution"));
     if ("end" in o) {
@@ -92,6 +123,7 @@ export function structuralErrors(o: unknown): string[] {
     }
   } else if (kind === "crossing") {
     for (const k of ["id", "execution_id", "target", "input"]) if (!(k in o)) errs.push(`crossing: missing ${k}`);
+    errs.push(...linkErrors(o, "crossing"));
     if ("input" in o) errs.push(...payloadErrors(o["input"], "crossing.input"));
     errs.push(...tsErrors(o, "start", "crossing"));
     if ("end" in o) {
@@ -162,6 +194,13 @@ export function readInvalid(): Array<{ name: string; line: string; reason: strin
 /* ------------------------------------------------------------------ */
 /* Harness                                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Capture with no preview: every value written up to its slot's cap, which is what the default did before the
+ * preview. A test that pins a cap rule, a depth cut or a whole-value assertion passes this, so the default
+ * preview is exercised only where a test names it.
+ */
+export const NO_PREVIEW: CapturePolicy = { preview: 1 << 20 };
 
 export const SYNC_BRIDGE: Capabilities = {
   observes_crossings: "all",

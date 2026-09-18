@@ -1,0 +1,96 @@
+{
+  "conflicts": [],
+  "crossings": {},
+  "executions": {
+    "8ad04f1c62b9e735401cb8d92f6a3e50": {
+      "end": {
+        "disposition": "completed",
+        "result": {
+          "bytes": 11,
+          "hash": "sha256:4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+          "value": {
+            "ok": true
+          }
+        },
+        "time": "2026-09-18T15:00:04.012Z"
+      },
+      "ext": {
+        "runner.memory": 9840,
+        "runner.queue": "batch",
+        "runner.wall_time_ms": 4009
+      },
+      "host": "example/fronted-runner",
+      "id": "8ad04f1c62b9e735401cb8d92f6a3e50",
+      "kind": "execution",
+      "language": "python",
+      "program": {
+        "bytes": 42,
+        "hash": "sha256:b65406383271c10513659df6cb5ae38cd36d61d693f266ce35fb887696530ece",
+        "value": "return await run_job({source: 'main.py'});"
+      },
+      "start": "2026-09-18T15:00:00.000Z"
+    },
+    "9be15a2d73c0f846512dc9ea3f7b4c61": {
+      "end": {
+        "disposition": "completed",
+        "result": {
+          "bytes": 11,
+          "hash": "sha256:4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93",
+          "value": {
+            "ok": true
+          }
+        },
+        "time": "2026-09-18T15:01:03.815Z"
+      },
+      "ext": {
+        "runner.memory": null,
+        "runner.queue": "batch",
+        "runner.wall_time_ms": "3.812"
+      },
+      "host": "example/fronted-runner",
+      "id": "9be15a2d73c0f846512dc9ea3f7b4c61",
+      "kind": "execution",
+      "language": "python",
+      "program": {
+        "bytes": 42,
+        "hash": "sha256:b65406383271c10513659df6cb5ae38cd36d61d693f266ce35fb887696530ece",
+        "value": "return await run_job({source: 'main.py'});"
+      },
+      "start": "2026-09-18T15:01:00.000Z"
+    }
+  },
+  "hosts": {
+    "example/fronted-runner": {
+      "attested": [
+        "ext.declared"
+      ],
+      "dimensions": {
+        "runner.memory": {
+          "agg": "last",
+          "name": "Peak memory",
+          "observed": true,
+          "unit": "KiBy"
+        },
+        "runner.queue": {
+          "agg": "none",
+          "card": "low",
+          "name": "Queue",
+          "observed": true
+        },
+        "runner.wall_time_ms": {
+          "agg": "sum",
+          "name": "Wall time",
+          "observed": true,
+          "unit": "ms"
+        }
+      },
+      "host": "example/fronted-runner",
+      "kind": "host",
+      "observes_crossings": "none",
+      "spec_version": "1.1",
+      "unmediated_egress": true
+    }
+  },
+  "skipped": 0,
+  "unresolved": []
+}

@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { memorySink, mocon, type MemorySink } from "@mocon/core";
+import { memorySink, mocon, SPEC_VERSION, type MemorySink } from "@mocon/core";
 import { fold } from "@mocon/core/fold";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -19,6 +19,18 @@ import { lineSchema } from "../../../packages/testkit/schema.js";
 import { CAPABILITIES, createServer, HOST } from "../src/codemode.js";
 
 export { completeExecution, text, waitFor, type Rec } from "../../../packages/testkit/mcp.js";
+
+/**
+ * The program as the default capture policy records it: a prefix of the submitted text, with the byte length
+ * and hash of the whole, so two runs of the same program still match. A host that wants the whole text on the
+ * line raises `capture.preview` or captures the slot with `ctx.capture(v, { full: true })`.
+ */
+export function assertProgramOf(record: Rec, program: string, message?: string): void {
+  const payload = record["program"] as Rec;
+  assert.ok(program.startsWith(payload["value"] as string), message ?? "the program value is a prefix of the submitted text");
+  assert.equal(payload["bytes"], Buffer.byteLength(program), message);
+  assert.equal(typeof payload["hash"], "string", message);
+}
 
 export const packageDir = fileURLToPath(new URL("../", import.meta.url));
 export const serverEntry = join(packageDir, "dist", "server.js");
@@ -67,7 +79,7 @@ export function assertHostRules(lines: readonly string[]): Rec[] {
     }
   });
   assert.equal(records[0]?.["kind"], "host", "the declaration is the first line");
-  assert.deepEqual(records[0], { kind: "host", host: HOST, spec_version: "1.0", ...CAPABILITIES });
+  assert.deepEqual(records[0], { kind: "host", host: HOST, spec_version: SPEC_VERSION, ...CAPABILITIES });
   assert.equal(records.filter((r) => r["kind"] === "host").length, 1, "one declaration");
 
   const view = fold(lines);

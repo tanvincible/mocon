@@ -88,5 +88,8 @@ test("a far side that opens a handle per call pays for the program once per call
   const [hashedUs, hashUs] = await interleaved(per(large, true), hash, 9, 20);
   // core.md 5.2 wants program.bytes and program.hash on every record, so hash-only still reads the whole text, natively, and nothing more.
   assert.ok(hashedUs <= (smallUs + hashUs) * 5, `hash-only cost ${hashedUs.toFixed(1)} us for a 256 KiB program: ${smallUs.toFixed(1)} us of handle plus ${hashUs.toFixed(1)} us of SHA-256`);
-  assert.ok(hashedUs < largeUs, `hash-only cost ${hashedUs.toFixed(1)} us against ${largeUs.toFixed(1)} us for the default encoder`);
+  // The default policy writes a preview and hashes the whole text (core README, Capture and redaction), so both
+  // paths now pay one SHA-256 over the program and neither writes it: `hash-only` buys the prefix's absence, not
+  // speed. The two stay the same order of magnitude, which is the claim this line protects.
+  assert.ok(hashedUs < largeUs * 2, `hash-only cost ${hashedUs.toFixed(1)} us against ${largeUs.toFixed(1)} us for the default encoder`);
 });

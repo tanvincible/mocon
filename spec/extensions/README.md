@@ -12,6 +12,7 @@ Concretely, an extension:
 
 - MAY add a new record kind, as `events.md` does with `event`.
 - MAY add a new optional field to a documented `ext` key.
+- MAY add a new optional top-level field to a core record kind, as `links.md` does with `links`. `core.md` section 3's rule that consumers ignore unknown top-level keys is what makes this safe; the MUST NOTs below about required fields, closed sets and supersede are untouched by it.
 - MAY add a new recommended value to an open set (`error.class`, output channel names, `language`, `ext` namespaces).
 - MAY define an `ext.<extension>` entry usable in `host.attested` (`provenance.md` section 4), naming the `ext` keys it upgrades to host-observed. (An `ext.<extension>` attested entry becomes usable only once a later core minor version adds it to `provenance.md`'s list; using the extension's kind or its `ext` keys needs no such bump.)
 - MUST NOT add a required field to `host`, `execution`, or `crossing`. A field an extension needs cannot be required, because a stream that predates the extension, or a host that never implements it, would then be unable to produce a conformant complete record.
@@ -29,13 +30,13 @@ Concretely, an extension:
 
 The names below are reserved. No other extension should reuse them for something else, and a future file at this path is expected to give each of them a specified shape. None of them has one yet. Where a paragraph below describes a shape, that shape illustrates the problem; it is not a commitment, and `core.md` is silent on all of it. This file does not resolve that silence, it names it.
 
-- `links[]`: relates one execution record to another via a closed `rel` (`parent`, `replay_of`, `forked_from`, `continues`); shape unspecified today.
+- `links[]`: **specified**, `links.md`. Relates one record to an earlier one via a closed `rel`: `retry_of`, `replay_of`, `forked_from`, `continues`, on executions and crossings both. The reserved `parent` is deliberately not specified — `links.md` 6 explains why cross-host nesting stays `context.traceparent`'s job.
 - `ext.segments`: an ordered array, one Payload-shaped entry per part of a multi-part submission (`ran`/`not_run`, optional `exit`), upgradable through an `ext.segments` attested entry; shape unspecified today.
-- `attempts[]` on crossings: per-dispatch retry/fallback detail subordinate to one crossing record, so a silent retry needs no extra crossing (core.md 5.3 already routes it to `ext` meanwhile); shape unspecified today.
+- `attempts[]` on crossings: per-dispatch retry/fallback detail subordinate to one crossing record, so a silent retry needs no extra crossing (core.md 5.3 already routes it to `ext` meanwhile); shape unspecified today. Its boundary with `links` is now fixed, in `links.md` 6: a retry the host recorded as one crossing is `attempts[]` on that crossing; a retry it recorded as a second crossing record is two crossings related by `retry_of`.
 - `execution_host` on crossings: lets a crossing-only observer (a network proxy, say) name the execution it is watching without claiming to be its owning host; shape unspecified today.
 - per-record `attested`: would let one host string carry records of differing fidelity honestly instead of forcing a host-string split; shape unspecified today.
 - `positions`: a place to record a line/column or other notation-specific location for an error, distinct from `message`; shape unspecified today.
-- `limits`: lets a host declare what it enforces (wall time, memory, step count, output size, concurrency) so a consumer can tell "no limits" from "unpublished limits"; shape unspecified today.
+- `limits`: lets a host declare what it enforces (wall time, memory, step count, output size, concurrency) so a consumer can tell "no limits" from "unpublished limits"; shape unspecified today. It overlaps `core.md` 5.1.1's declared dimensions, which can describe an `ext` key holding a configured setting as easily as one holding a measurement. Until `limits` is written, the guidance is: declare a configured setting `{"agg": "none"}` so no consumer charts it, and leave `sum` and `last` for what was actually measured.
 
 ## 4. What this file leaves open
 

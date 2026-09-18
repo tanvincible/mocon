@@ -1,7 +1,7 @@
 /** The version of spec/core.md this package implements (core.md 11). */
 
 /** Every host line declares it. */
-export const SPEC_VERSION = "1.0";
+export const SPEC_VERSION = "1.1";
 
 const MAJOR = SPEC_VERSION.slice(0, SPEC_VERSION.indexOf("."));
 

@@ -1,6 +1,6 @@
 # mocon conformance suite
 
-Status: draft 1.0, 2026-09-17. Normative for the term "producer conformant" used
+Status: draft 1.1, 2026-09-19. Normative for the term "producer conformant" used
 below. Companion to `../core.md`, `../provenance.md` and `../schema/`.
 
 This suite is executable, not just descriptive. `check.py` is the reference
@@ -13,7 +13,7 @@ truth: `core.md` and `provenance.md` are the actual spec.
 
 ```
 conformance/
-  streams/         26 golden *.jsonl streams, each a legal mocon stream
+  streams/         30 golden *.jsonl streams, each a legal mocon stream
   expected/        the canonical view (see below) each stream must produce
   invalid/         one *.jsonl line per file that MUST fail validation, plus a
                    sibling *.reason.txt naming the rule it breaks
@@ -22,7 +22,7 @@ conformance/
   README.md        this file
 ```
 
-## 2. The 26 golden streams
+## 2. The 30 golden streams
 
 The first 16 rows below are shaped after real code-mode implementations
 (noted below as "X-shaped"), so the fixtures exercise real, not
@@ -31,9 +31,11 @@ rows extend that set to implementation classes the first 16 did not cover
 (durable jobs, notebook kernels, multi-block executors, WASM hosts); each
 is a golden stream that validates, permutes and self-concatenates cleanly,
 and each earns its place by exercising some shape the original 16 lacked.
-The last 3 rows are not shaped after a named product: each exists to pin a
+The next 3 rows are not shaped after a named product: each exists to pin a
 rule that two conforming implementations could otherwise read differently,
-and each is named in core.md at the rule it pins.
+and each is named in core.md at the rule it pins. The last 4 rows are the
+1.1 additions: they exercise `dimensions` (core.md 5.1.1) and `links`
+(../extensions/links.md), which no 1.0 stream carries.
 Every stream opens with the `host` line for each host string it carries,
 which `check.py order` now checks directly against file order (section 4);
 no fixture here is *about* that line's absence.
@@ -66,6 +68,10 @@ no fixture here is *about* that line's absence.
 | `two-hosts` | Two hosts' streams merged into one file, which core.md 3 explicitly allows. The only golden stream with more than one `host` string: it exercises `check.py permute` and `check.py order` across host strings, and it is what "Id scope" below is about — its execution and crossing ids are distinct across the two hosts, because this suite's view is keyed by bare `id`. |
 | `notice-drift` | Two differing start notices for one execution key, no complete record ever: the host emits a provisional notice and re-emits it once it learns `context.session`, which core.md 4.2 contemplates. core.md 4.3 settles it — the same content-only tie-break as for two completes, and not a conflict. Before that sentence existed, two suite-passing, permutation-stable consumers attributed this execution to different sessions. |
 | `oom-terminated` | A container-based host whose own 512 MiB memory limit was enforced by the kernel's OOM killer rather than by the host itself. core.md 5.2 now fixes this as `terminated` with `error.class: "resource_limit"` — the limit was the host's, whoever performed the stop — where the earlier text supported `failed` just as well. `observes_crossings: "none"`, `unmediated_egress: true`, an empty-but-captured `stderr`, exit code and cgroup detail in `ext`. |
+| `declared-dimensions` | A host declaring five dimensions and a consumer reading them. All three `agg` values, both `card` values, and both `observed` states in one declaration: `metered.credits_used` (`sum`, `{credit}`) beside `metered.credits_remaining` (`last`, same unit), which is the pair a single "amount" kind would have collapsed — a consumer that totals the second reports a meaningless number. `metered.guard` is `none`/`low`, so it may be grouped by and may become a metric point attribute; `metered.sandbox_id` is `none` with `card` absent, so it reads as `high` and is display-only; `metered.model` is declared but carries no `observed`, so it stays program-determined even under an attested `ext.declared` — the fixture for the two gates in provenance.md 4. |
+| `undeclared-ext-key` | A host that declares one key of its own (`frontdoor.hops`) while relaying two keys of another vendor's (`upstream.queue_depth`, `upstream.region`) verbatim, which core.md 2 and 3 both license. The undeclared keys are legal and stay display-only, and the drift lint does not ask for them: it is scoped to namespaces the host already declares a key in, which is what makes it runnable by a relay that cannot declare keys it did not author. Also the only stream carrying a reserved `mocon.` envelope note (`mocon.target`), which is host-observed by core.md 3 and is never declared by anyone. |
+| `dimension-mismatch` | A declared key whose value contradicts its declaration: `runner.wall_time_ms` is `sum`/`ms` and one record carries the string `"3.812"`, the shape a real backend row produces. The stream **validates** — that is the assertion. A mismatch is a legal stream that a consumer reads as undeclared for that record, never a rejection and never a licence to parse the string into a number (core.md 5.1.1, 12). It is the one golden stream that produces a lint warning, deliberately. The same stream carries `runner.memory: null` under a `last` declaration, which is "no value": absent from every total, and *not* a mismatch, so a legitimately nullable key does not warn. |
+| `links-retry-fanout` | All four link relations and both `counts` values. A crossing that errored, then a second crossing `retry_of` it and `additive`; three executions `forked_from` one root and `additive`; one execution `replay_of` the root and `duplicate`, which is the bit that keeps an aggregator from counting a replayed run's spend twice; and one `continues` naming a record under a different host string, the cross-host case events.md 5 points at. Every link points backward from the newer record, because a forward link is unrepresentable (links.md 3). |
 
 `batch-at-end` doubles as the fixture for one more settled rule: its
 `end.outputs.stdout` is an empty-but-present channel next to a non-empty
@@ -193,8 +199,11 @@ python3 check.py permute 5  # shuffle each stream 5x and re-check the view;
 python3 check.py invalid    # every invalid/*.jsonl line must fail validation, and
                              # a bad `end` must leave the record unresolved in a view
 python3 check.py lint       # provenance.md 7's lint rules, plus end.time >= start,
-                             # over streams/*.jsonl (warnings about legal streams;
-                             # a clean golden suite should print none)
+                             # over streams/*.jsonl. Warnings about legal streams:
+                             # provenance.md 7 forbids failing a stream on one, so
+                             # this command always exits 0 and `all` never takes its
+                             # exit status from it. `dimension-mismatch` is the one
+                             # golden stream that prints a warning, on purpose.
 ```
 
 `check.py` imports nothing outside the standard library at module scope, but
@@ -204,10 +213,47 @@ third-party `jsonschema` package and the `referencing` package it depends on
 `RefResolver`). Without them `check.py` prints a two-line notice saying the
 run was degraded and falls back to the built-in structural checks alone.
 
+### The declaration and link lint (1.1)
+
+`check.py lint` gained the rules provenance.md 7 states for `dimensions` and
+`links`. All are warnings; none is a validation failure, because a checker
+must never reject a stream over a vocabulary a later minor version may have
+added — the same reasoning that keeps an unknown `attested` entry out of
+`invalid/`. `invalid/` therefore carries six new fixtures for *structure*
+only (a `dimensions` that is not an object, an entry that is not an object,
+an entry with no `agg`, a `links` that is not an array, a link entry with no
+`counts`, a link entry whose `kind` is not a core record kind) and none for
+an unknown `agg`, `card`, `rel` or `counts`.
+
+- `ext-key-undeclared` — a key with no entry in its host's `dimensions`,
+  **scoped to namespaces that host already declares a key in**. That scope is
+  what makes the rule runnable: a relay forwarding another vendor's keys
+  (core.md 2, 3) cannot declare keys it did not author, and a host that has
+  not adopted declarations is not nagged for a feature it is not using. The
+  reserved `mocon.` namespace is skipped — no host authors those notes.
+  `undeclared-ext-key` is the fixture that pins the scoping.
+- `dimension-agg-mismatch` — a key declared `sum` or `last` carried a value
+  that is not a finite JSON number. A `null` is "no value" and does not warn.
+- `dimension-agg-unknown` / `dimension-card-unknown` — a value outside the
+  1.1 list. Warn, never fail: both lists grow by minor version.
+- `dimension-observed-unattested` — `observed: true` without `ext.declared`
+  in `attested`, so consumers read the key as program-determined anyway.
+- `attested-declared-without-observed` — `ext.declared` attested while no
+  entry carries `observed: true`; the host attested nothing.
+- `link-self` and `link-rel-unknown` / `link-counts-unknown`.
+
+One direction of drift is deliberately not checked: "declared but never seen
+in this stream". One stream is not the population — a key on the error path
+appears only when something fails — so the rule would fire on every clean
+run. A host that wants that direction unions the `ext` keys over its whole
+fixture corpus and diffs against its own declaration, which is a few lines in
+its own tests. This is a known and stated gap, not an oversight.
+
 The structural checks are written to be independently sufficient: required
 keys per kind, the type of every core field, the closed enums,
 end-completeness, the Payload rule, the timestamp `Z` suffix, the `hash` and
-`spec_version` patterns, and `seq`/`bytes` ranges (core.md 3, 4, 5, 7, 8).
+`spec_version` patterns, `seq`/`bytes` ranges, and the shape of a
+`dimensions` entry and a `links` entry (core.md 3, 4, 5, 7, 8, 5.1.1).
 They are not a summary of the schema — they are a second implementation of
 the same rules, and `invalid/` is rejected identically on both paths, which
 is what the per-fixture output lets you check. Two fixtures are rejected by
@@ -239,14 +285,23 @@ and are checked against the stream as written; and (4) every
 `attested` entry it emits is one its declared `spec_version` knows and is
 true of every record it emits under that host string (provenance.md 4; a
 host with both an observed and a parsed path for one field uses two host
-strings instead). This restates core.md 10 and provenance.md 4; it adds no
-new obligation.
+strings instead); and (5), for an adaptor that declares any dimension at all,
+`check.py lint` reports no `ext-key-undeclared` for it, and every entry it
+marks `observed: true` names a value the host determines at a point the
+program cannot write through (core.md 5.1.1, provenance.md 4). Points (1) to
+(4) restate core.md 10 and provenance.md 4 and add no new obligation; point
+(5) binds only an adaptor that opted into declarations, since `dimensions` is
+optional and a host that declares nothing is conformant.
 
 ## 6. What this suite does not cover
 
 - **OpenTelemetry export** (core.md 6's id derivation, `otel-mapping.md`).
   No fixture here derives trace/span ids or checks sink behavior; that is a
-  separate concern with its own normative document.
+  separate concern with its own normative document. That includes the 1.1
+  additions: the span links a `links` array produces (otel-mapping.md 13) and
+  the metric points a declared `sum` or `last` dimension produces
+  (otel-mapping.md 14). `links-retry-fanout` and `declared-dimensions` carry
+  the input those rules read; nothing here checks their output.
 - **The `event` extension kind** (`../extensions/events.md`). Core consumers
   ignore unknown kinds by design (core.md 3), which `unknown-kind` already
   exercises generically; this suite does not additionally model `event`

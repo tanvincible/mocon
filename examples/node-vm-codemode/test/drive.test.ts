@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { assertHostRules, cliEntry, completeExecution, crossingsOf, driveEntry, DRIVER_PROGRAM, packageDir } from "./helpers.js";
+import { assertHostRules, assertProgramOf, cliEntry, completeExecution, crossingsOf, driveEntry, DRIVER_PROGRAM, packageDir } from "./helpers.js";
 
 function run(entry: string, args: string[], env?: Record<string, string>): { status: number | null; stdout: string; stderr: string } {
   const r = spawnSync(process.execPath, [entry, ...args], { cwd: packageDir, env: { ...process.env, ...env }, encoding: "utf8", timeout: 30_000 });
@@ -33,7 +33,7 @@ test("the driver leaves a stream that mocon validate accepts and mocon view show
   assert.ok(!lines.some((l) => l.includes("left over")), "each run starts the stream afresh");
   const done = completeExecution(records);
   assert.equal(done["end"]["disposition"], "completed");
-  assert.equal(done["program"]["value"], DRIVER_PROGRAM, "the in-process tests exercise the program the driver sends");
+  assertProgramOf(done, DRIVER_PROGRAM, "the in-process tests exercise the program the driver sends");
   assert.deepEqual(
     crossingsOf(records).map((c) => [c["target"], c["end"]["outcome"]]),
     [

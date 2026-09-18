@@ -10,7 +10,9 @@
 
 import { byCodePoint, canonical } from "./canonical.js";
 import { CLOSED } from "./closed.js";
-import type { CrossingLine, ExecutionLine, HostLine } from "./types.js";
+import type { CrossingLine, Dimension, ExecutionLine, HostLine } from "./types.js";
+
+export type { Dimension, Link } from "./types.js";
 
 export { canonical } from "./canonical.js";
 export { CLOSED } from "./closed.js";
@@ -144,6 +146,33 @@ export function fold(input: string | Iterable<string>): View {
   unresolved.sort(byRef);
   conflicts.sort(byRef);
   return { hosts: table(hostView), executions: executionView, crossings: crossingView, unresolved, conflicts, skipped, flagged };
+}
+
+/**
+ * What a host declared its own `ext` keys to mean (core.md 5.1.1), read from its `host` record with the
+ * "absent reads as" column applied: `unit` `"1"`, `card` `"high"`, `observed` `false`. An entry whose `agg` is
+ * missing or is a value this version does not know reads as absent and is left out, which makes its key
+ * undeclared (core.md 8); so does an entry that is not an object, and a `dimensions` that is not an object.
+ * A key present here is still only the host's claim about its own values: `provenance.md` 4 says what it is
+ * worth, and the claim is host-observed only where `observed` is true and `attested` carries `ext.declared`.
+ */
+export function dimensionsOf(host: HostLine | unknown): Record<string, Dimension> {
+  const declared = (host as { dimensions?: unknown } | null)?.dimensions;
+  const out: Record<string, Dimension> = Object.create(null) as Record<string, Dimension>;
+  if (declared === null || typeof declared !== "object" || Array.isArray(declared)) return out;
+  for (const [key, entry] of Object.entries(declared as Record<string, unknown>)) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const { agg, unit, card, name, observed } = entry as Dimension;
+    if (!CLOSED.agg.has(agg)) continue;
+    out[key] = {
+      agg,
+      unit: typeof unit === "string" ? unit : "1",
+      card: CLOSED.card.has(card) ? (card as Dimension["card"]) : "high",
+      ...(typeof name === "string" ? { name } : {}),
+      observed: observed === true,
+    };
+  }
+  return out;
 }
 
 /** No prototype, so `__proto__` or `constructor` is an own entry. */

@@ -8,3 +8,4 @@
 
 export { otlpSink, type FetchLike, type OtlpSink, type OtlpSinkOptions } from "./sink.js";
 export type { ExportTraceServiceRequest, SkipReason } from "./map.js";
+export type { ExportMetricsServiceRequest } from "./metrics.js";

@@ -1,0 +1,1 @@
+extensions/links.md 2 and core.md 6: a link entry's kind names the core record kind whose id space the id belongs to, and ids are unique only within (host, kind). Unlike rel and counts this set does not grow by minor version, so an unknown value here is a rejection rather than a lint warning.

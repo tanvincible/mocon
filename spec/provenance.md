@@ -1,6 +1,6 @@
 # mocon provenance
 
-Status: draft 1.0, 2026-09-17. Normative. Companion to `core.md`.
+Status: draft 1.1, 2026-09-19. Normative. Companion to `core.md`.
 
 ## 1. Why provenance exists
 
@@ -44,12 +44,14 @@ Baseline provenance for every field in `core.md`. "After attestation" applies wh
 | `crossing.input.value` | P | H | `crossing.input` |
 | `crossing.end.output.value` | P | T | `crossing.output` |
 | `crossing.end.error.class`, `crossing.end.error.message`, `crossing.end.error.value.value` | P | T | `crossing.error` |
-| `ext.<key>` on an `execution`, `crossing`, or extension record | P | H, for the keys an extension documents — no entry is defined in 1.0 | `ext.<extension>` (section 4) |
-| `host.spec_version`, `host.observes_crossings`, `host.unmediated_egress`, `host.crossing_edge`, `host.attested`, `host.ext.<key>` | H, self-asserted | | |
+| `ext.<key>` on an `execution`, `crossing`, or extension record | P | H, for a declared key whose `dimensions` entry carries `observed: true`, or for the keys an extension documents | `ext.declared`, `ext.<extension>` (section 4) |
+| `ext.mocon.target`, `ext.mocon.encoding`, `ext.mocon.message`, `ext.mocon.ext` — the reserved envelope notes (`core.md` 3) | H | | |
+| `execution.links[].*`, `crossing.links[].*` (`extensions/links.md`) | H | | |
+| `host.spec_version`, `host.observes_crossings`, `host.unmediated_egress`, `host.crossing_edge`, `host.attested`, `host.dimensions`, `host.ext.<key>` | H, self-asserted | | |
 
 Reading the table:
 
-- Payload envelope fields are always H because the host computes them from whatever it captured, and no entry in section 4 moves one. `hash` of a program-determined value is a host-observed hash of program-determined content.
+- Payload envelope fields are always H because the host computes them from whatever it captured, and no entry in section 4 moves one. `hash` of a program-determined value is a host-observed hash of program-determined content. The four reserved `mocon.` `ext` notes are envelope fields by the same definition — each is the emitter's own record of what it did to its own capture — and they sit in their own row for that reason, not in the `ext.<key>` row above. No entry in section 4 moves them either, and a host does not author them, so a host neither declares them nor is asked to.
 - `context.traceparent` is H in the sense that the host copied it faithfully, but its content came from the caller. Consumers MUST NOT use it for authorization or billing attribution.
 - The `host` record's `ext` keys are part of the declaration, not program output: the record is emitted before any program exists and no program channel can write it. That is why they sit in the last row with the rest of the declaration and not in the `ext.<key>` row above it.
 - This table MUST cover every field in `core.md` exactly once. That is an obligation on this document, checked by reading it against `core.md`'s field tables and `schema/`, not a rule a stream validator can run; section 7's lint rules are about streams.
@@ -65,6 +67,7 @@ Reading the table:
 | `crossing.output` | `crossing.end.output.value` | T |
 | `crossing.error` | `crossing.end.error.class`, `crossing.end.error.message`, `crossing.end.error.value.value` | T |
 | `execution.error.class` | `execution.end.error.class` | H |
+| `ext.declared` (1.1) | every `ext` key whose `host.dimensions` entry carries `observed: true` | H |
 
 Rules:
 
@@ -73,14 +76,16 @@ Rules:
 - A host that declares `crossing_edge: "dispatch"` SHOULD attest `crossing.target`: `dispatch` names what the host itself sent, so claiming that edge while not observing the target is contradictory. Lint warns. `crossing_edge: "invocation"` carries no such expectation — an invocation record is the program's view by definition (`core.md` 5.1), which the next rule is written for.
 - A host that derives crossings from program-written channels MAY still emit them. It simply does not attest them, and consumers read them as program claims.
 - A host that observes crossings at the network layer (`crossing_edge: "dispatch"`) MAY attest `crossing.target` and `crossing.input` because the host saw the request leave; it MAY attest `crossing.output` because the response came from the target.
-- An extension under `spec/extensions/` MAY define an entry `ext.<extension>` (for example `ext.segments`) that upgrades to H exactly the `ext` keys that extension documents as host-observed. A host attests it only when every such key it emits under that host string is determined at a point the program cannot write through (section 2). A consumer that does not know the extension ignores the entry (core.md 8) and reads those keys as P. **No such entry exists in 1.0.** An extension defining one names it, and it becomes usable only once a later core minor version adds it to the table above (`core.md` 8, `extensions/README.md` 1); until then a 1.0 host that emits it is emitting an entry outside the list its `spec_version` knows, which this section's first paragraph forbids and section 7 warns on.
+- `ext.declared` needs **both** gates: the entry in `attested`, and `observed: true` on that key's `dimensions` entry. An `ext` key is H when both hold and P otherwise — one condition, in one place. Two gates rather than one, because each alone is wrong. `observed` alone would be a second upgrade path invisible in `host.attested`, which is the one place `core.md`, this file and `otel-mapping.md` all point at for an observation claim; a consumer would see no claim while the key quietly stopped being labelled P. `ext.declared` alone would upgrade every declared key at once, forcing a host to choose between declaring a key the program shaped — a model name the caller passed in — and attesting its own meter. Section 4's standing rules carry over unchanged: a host attests only what is true for **every** record under that host string, so a host with an observed path and a parsed path for one key uses two host strings. `observed` never reaches **T**: a cost the host read out of a target's reply is honestly P-or-T and one boolean cannot say which, so such a host leaves the key unattested. T stays where this document put it, on crossing output and error.
+- What `ext.declared` does **not** establish. It is the host's claim that it determined the value itself, and it is worth exactly what section 2 says H is worth: faithfully observed by that host, relative to its own isolation. Nothing in a record distinguishes a host reading its own meter from a host copying a number out of the program's return value and attesting it anyway. mocon does not detect that, any more than it detects a forged crossing (section 6); attestation makes the claim visible and attributable, which is all a format can do.
+- An extension under `spec/extensions/` MAY define an entry `ext.<extension>` (for example `ext.segments`) that upgrades to H exactly the `ext` keys that extension documents as host-observed. A host attests it only when every such key it emits under that host string is determined at a point the program cannot write through (section 2). A consumer that does not know the extension ignores the entry (core.md 8) and reads those keys as P. **No `ext.<extension>` entry exists in 1.0 or 1.1.** (`ext.declared`, above, is not one: core defines it, so it needs no extension and no further sequencing.) An extension defining one names it, and it becomes usable only once a later core minor version adds it to the table above (`core.md` 8, `extensions/README.md` 1); until then a 1.0 host that emits it is emitting an entry outside the list its `spec_version` knows, which this section's first paragraph forbids and section 7 warns on.
 
 ## 5. Consumer rules
 
 For any field whose effective class is P:
 
 1. **Display.** Render it distinguishably from H fields. A viewer shows a "program-reported" marker or a distinct style. A text export includes a per-record provenance map, for example `{"target": "P", "input": "P", "end.outcome": "P"}`.
-2. **Aggregate.** Exclude it from any aggregate presented as host-observed fact. Aggregates over program claims are legitimate when labelled as such.
+2. **Aggregate.** Exclude it from any aggregate presented as host-observed fact. Aggregates over program claims are legitimate when labelled as such. A declared `ext` key (`core.md` 5.1.1) that stays P is therefore chartable in a viewer that carries the label alongside, and is **not** exportable as a metric: an OpenTelemetry metric point has no per-point provenance channel, and a label added as a point attribute would become a cardinality dimension and make the metric un-summable across it. That is why `otel-mapping.md` 14 emits a metric only for a key this section makes H, and leaves every other declared value on the span with its `P` label, exactly as in 1.0.
 3. **Hand to a model.** When records are given to a language model, supply the provenance map alongside and state that P fields are unverified program output.
 4. **Never parse.** Do not scan P values for structure or markers (core.md 5.4).
 
@@ -99,5 +104,13 @@ A validator SHOULD warn when:
 - `crossing_edge` is `"dispatch"` and `crossing.target` is not attested (section 4). Declaring `"invocation"` without attesting is expected, not suspicious, and MUST NOT warn.
 - `attested` contains an unknown entry.
 - `observes_crossings` is `"none"` and the stream contains crossings for that host. Not an error: the host may emit program-reported crossings, or may be a host that declared the weakest value because its substrate is opaque (core.md 5.1) while still recording what it observed; the combination deserves a look, not suppression.
+- **`ext-key-undeclared`**: an `ext` key with no entry in its host's `dimensions`, *whose namespace that host already declares at least one key in*. This is the drift check a host runs in its own tests, and the namespace condition is what makes it runnable. A host that declares nothing is not nagged; a relay forwarding another vendor's keys verbatim (core.md 2 and 3 both license one) is not asked to declare keys it did not author and whose meaning it does not know; and a host that has started declaring is told about the key it forgot. The reserved `mocon.` namespace is skipped: no host authors those notes. One warning per (host, key), with a count.
+- **`dimension-agg-mismatch`**: a key declared `sum` or `last` carried a value that is not a finite JSON number (core.md 5.1.1). Per (host, key), with a count.
+- **`dimension-agg-unknown`** / **`dimension-card-unknown`**: an entry whose `agg` or `card` this checker does not know. Warn, never fail: both lists grow by minor version (core.md 8).
+- **`dimension-observed-unattested`**: an entry carries `observed: true` while `attested` lacks `ext.declared`. The host describes an observation it does not claim, and consumers read the key as P.
+- **`attested-declared-without-observed`**: `ext.declared` is attested while no entry carries `observed: true`. Harmless, but the host attested nothing and the drift should be visible.
+- **`link-self`** / **`link-rel-unknown`**: a link entry naming its own carrier, or carrying a `rel` outside the known list (`extensions/links.md`).
+
+Deliberately **not** a rule: "declared but never seen in this stream". One stream is not the population — a key on the error path appears only when something fails — and the warning would fire on every clean run. That leaves one half of drift uncaught: a key deleted from the code and left in the declaration is never flagged here. A host that wants that direction unions the `ext` keys over its whole fixture corpus and diffs against its own declaration, which is a few lines in its own test suite and needs nothing from this specification. Saying so is more honest than a rule that cries wolf.
 
 Every rule here describes a legal stream that deserves a second look. None of them is a validation failure, and a runner MUST NOT fail a stream on one: `conformance/check.py lint` prints them and `check.py all` does not take its exit status from them. The obligation that this document's own table covers every field exactly once is stated where it belongs, in section 3, and is not one of these rules — a stream validator has no way to check it.

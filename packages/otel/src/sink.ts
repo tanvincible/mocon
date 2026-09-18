@@ -13,7 +13,8 @@
 
 import type { HostLine, Sink } from "@mocon/core";
 import { canonical, sameMajor } from "@mocon/core/fold";
-import { buildRequest, mapLine, type Mapped, type SkipReason } from "./map.js";
+import { buildRequest, mapLine, type Mapped, type MetricPoint, type SkipReason } from "./map.js";
+import { buildMetricsRequest } from "./metrics.js";
 
 /** The part of `fetch` the sink uses, so a test can hand in a stand-in. */
 export type FetchLike = (
@@ -24,6 +25,12 @@ export type FetchLike = (
 export interface OtlpSinkOptions {
   /** The collector's traces endpoint, usually ending in `/v1/traces`. Credentials go in `headers`, never in the URL. */
   url: string;
+  /**
+   * The collector's metrics endpoint, usually ending in `/v1/metrics`.
+   * Without one the sink is trace-only and emits no metrics, and every
+   * declared value still rides its span as an attribute (otel-mapping.md 14).
+   */
+  metricsUrl?: string;
   /** Sent on every request, after `content-type: application/json`. */
   headers?: Record<string, string>;
   /** Default: the global `fetch`. */
@@ -53,6 +60,12 @@ export interface OtlpSink extends Sink {
   close(): Promise<void>;
 }
 
+/** One collector endpoint: where a POST goes, and how the sink's errors print it. */
+interface Target {
+  url: string;
+  endpoint: string;
+}
+
 /** Host strings whose declaration the sink holds. A declaration for a further host string is not stored. */
 const MAX_HOSTS = 256;
 /**
@@ -76,8 +89,9 @@ const EXCERPT_READS = 32;
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export function otlpSink(options: OtlpSinkOptions): OtlpSink {
-  const { url, cap, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
-  const endpoint = printable(url);
+  const { url, metricsUrl, cap, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const traces: Target = { url, endpoint: printable(url) };
+  const metrics: Target | undefined = metricsUrl === undefined ? undefined : { url: metricsUrl, endpoint: printable(metricsUrl) };
   if (cap !== undefined && !(Number.isSafeInteger(cap) && cap >= 0)) throw new RangeError("mocon otel: cap must be a non-negative integer");
   if (!(Number.isFinite(timeoutMs) && timeoutMs > 0)) throw new RangeError("mocon otel: timeoutMs must be a positive number of milliseconds");
   const doFetch: FetchLike = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
@@ -129,12 +143,22 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
     await Promise.allSettled([...inFlight]);
   };
 
-  const post = async (body: string): Promise<void> => {
+  /** Holds a POST until it settles, so `flush` waits for it. */
+  const track = (request: Promise<void>): Promise<void> => {
+    const tracked: Promise<void> = request.finally(() => {
+      inFlight.delete(tracked);
+    });
+    inFlight.add(tracked);
+    return tracked;
+  };
+
+  const post = async (target: Target, body: string): Promise<void> => {
+    const { endpoint } = target;
     const signal = AbortSignal.timeout(timeoutMs);
     let response: Awaited<ReturnType<FetchLike>>;
     try {
       // A redirect is not followed: fetch strips only `authorization` on a cross-origin hop, and a vendor key header would go along.
-      response = await deadline(doFetch(url, { method: "POST", headers, body, redirect: "manual", signal }), signal);
+      response = await deadline(doFetch(target.url, { method: "POST", headers, body, redirect: "manual", signal }), signal);
     } catch (e) {
       throw new Error(`mocon otel: POST ${endpoint} failed: ${reason(e)}`, { cause: e });
     }
@@ -160,6 +184,7 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
     },
     write(lines: readonly string[]) {
       const spans: Array<Extract<Mapped, { kind: "span" }>> = [];
+      const points: MetricPoint[] = [];
       for (const line of lines) {
         // Only text: an object handed over in its place is never serialized here, so none of its code runs inside the sink.
         if (typeof line !== "string") {
@@ -167,19 +192,20 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
           continue;
         }
         const m = mapLine(line, lookup, cap);
-        if (m.kind === "span") spans.push(m);
-        else if (m.kind === "skip") skipped[m.reason]++;
+        if (m.kind === "span") {
+          spans.push(m);
+          if (metrics !== undefined) for (const p of m.points) points.push(p);
+        } else if (m.kind === "skip") skipped[m.reason]++;
         else remember(m.declaration, line);
       }
       if (spans.length === 0) return undefined;
       if (inFlight.size >= MAX_IN_FLIGHT) {
-        return Promise.reject(new Error(`mocon otel: ${MAX_IN_FLIGHT} POSTs in flight to ${endpoint}; a write of ${spans.length} spans was dropped`));
+        return Promise.reject(new Error(`mocon otel: ${MAX_IN_FLIGHT} POSTs in flight to ${traces.endpoint}; a write of ${spans.length} spans was dropped`));
       }
-      const tracked: Promise<void> = post(JSON.stringify(buildRequest(spans))).finally(() => {
-        inFlight.delete(tracked);
-      });
-      inFlight.add(tracked);
-      return tracked;
+      const sent = track(post(traces, JSON.stringify(buildRequest(spans))));
+      if (metrics === undefined || points.length === 0) return sent;
+      // Two requests, because OTLP takes traces and metrics at two endpoints. The write settles when both have.
+      return Promise.all([sent, track(post(metrics, JSON.stringify(buildMetricsRequest(points))))]).then(ignore);
     },
     flush: settle,
     close: settle,

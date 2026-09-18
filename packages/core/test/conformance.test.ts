@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fold } from "../src/fold.js";
-import { memorySink, mocon, type Attestation, type ExecutionContext, type Payload } from "../src/index.js";
+import { memorySink, mocon, type Attestation, type Capabilities, type ExecutionContext, type Link, type Payload } from "../src/index.js";
 import { assertValidStream, harness, lineErrors, readInvalid, readStream, specDir, SYNC_BRIDGE, sleep, type Rec } from "./helpers.js";
 
 const sha = (s: string): string => "sha256:" + createHash("sha256").update(s).digest("hex");
@@ -108,7 +108,7 @@ test("batch at end: one complete failed execution with stdout and stderr, no cro
   assert.deepEqual(view.hosts["jx-codes/codemode-mcp"], {
     kind: "host",
     host: "jx-codes/codemode-mcp",
-    spec_version: "1.0",
+    spec_version: "1.1",
     observes_crossings: "none",
     unmediated_egress: true,
     attested: [],
@@ -293,11 +293,20 @@ test("the emitter writes no invalid fixture: each rule the API can express is en
   const hc = harness();
   const exc = hc.m.execution.start({ program: "p", notice: false });
   const crossing = exc.crossing.start({ target: "t", input: 1 });
+  /** A fixture's `dimensions` through the capabilities, and its `links` through the handle that would carry them. */
+  const declaring = (name: string): unknown => mocon({ host: "h", capabilities: { observes_crossings: "all", dimensions: fixtures[name]?.["dimensions"] as Capabilities["dimensions"] }, sinks: [memorySink()] });
+  const linking = (name: string): unknown => ex.crossing.start({ target: "t", input: 1, links: fixtures[name]?.["links"] as Link[] });
   const refused: Record<string, () => unknown> = {
     "attested-not-strings": () => mocon({ host: "h", capabilities: { observes_crossings: "all", attested: fixtures["attested-not-strings"]?.["attested"] as Attestation[] }, sinks: [memorySink()] }),
     "context-session-not-a-string": () => h.m.execution.start({ program: "p", context: fixtures["context-session-not-a-string"]?.["context"] as ExecutionContext }),
     "crossing-end-not-an-object": () => crossing.end(fixtures["crossing-end-not-an-object"]?.["end"] as never),
     "crossing-target-not-a-string": () => ex.crossing.start({ target: fixtures["crossing-target-not-a-string"]?.["target"] as string, input: 1 }),
+    "dimension-entry-not-an-object": () => declaring("dimension-entry-not-an-object"),
+    "dimension-without-agg": () => declaring("dimension-without-agg"),
+    "dimensions-not-an-object": () => declaring("dimensions-not-an-object"),
+    "link-entry-kind-unknown": () => linking("link-entry-kind-unknown"),
+    "link-entry-without-counts": () => linking("link-entry-without-counts"),
+    "links-not-an-array": () => linking("links-not-an-array"),
     "disposition-outside-closed-set": () => ex.end({ disposition: ((fixtures["disposition-outside-closed-set"]?.["end"] as Rec)["disposition"]) as "completed" }),
     "end-without-disposition": () => ex.end((fixtures["end-without-disposition"]?.["end"]) as never),
     "execution-end-not-an-object": () => ex.end(fixtures["execution-end-not-an-object"]?.["end"] as never),

@@ -31,14 +31,45 @@
     },
     "attested": {
       "type": "array",
-      "description": "Entries from the list in provenance.md section 4, which grows by minor version (core.md section 8). Absent reads as []. This schema validates the shape (a string array), not membership in a specific version's list, so a 1.0 schema does not reject a future minor version's entries; a consumer ignores an entry it does not know. The 1.0 list is: crossing.target, crossing.input, crossing.output, crossing.error, execution.error.class.",
+      "description": "Entries from the list in provenance.md section 4, which grows by minor version (core.md section 8). Absent reads as []. This schema validates the shape (a string array), not membership in a specific version's list, so a 1.0 schema does not reject a future minor version's entries; a consumer ignores an entry it does not know. The 1.1 list is: crossing.target, crossing.input, crossing.output, crossing.error, execution.error.class, ext.declared.",
       "items": {
         "type": "string"
       }
     },
+    "dimensions": {
+      "type": "object",
+      "description": "core.md section 5.1.1. Maps an ext key name, exactly as it appears on the wire, to a declaration of what that key means. Absent reads as {}. Per host string: a re-declaration with a different map is a conflict. Keys may name ext keys only, never a core field.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "agg": {
+            "type": "string",
+            "description": "One of sum, last, none in 1.1. This schema validates the shape (a string), not membership in a specific version's list, for the same reason attested does: a 1.1 schema must not reject a future minor version's value, and a consumer that meets an unknown one reads the whole entry as absent (core.md section 8). How a consumer may combine values of this key: sum means the values are additive, last means each is a level, none means it is not a quantity. sum and last apply only to a finite JSON number; a non-number under either is a mismatch and reads as undeclared for that record."
+          },
+          "unit": {
+            "type": "string",
+            "description": "The unit of the value, compared only by equality and copied verbatim into an exporter's instrument unit. Absent reads as \"1\". Meaningful only under agg sum or last."
+          },
+          "card": {
+            "type": "string",
+            "description": "low or high in 1.1; the shape, not the membership, is validated here, as for agg. How many distinct values to expect. Absent reads as \"high\", so a key is display-only until the host opts it in. Read only under agg none. Grows by minor version like agg."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name. Absent, a consumer displays the key itself."
+          },
+          "observed": {
+            "type": "boolean",
+            "description": "The host determines this value at a point the program cannot write through. Absent reads as false. It upgrades the key to host-observed only together with the ext.declared entry in attested (provenance.md section 4)."
+          }
+        },
+        "required": ["agg"],
+        "additionalProperties": true
+      }
+    },
     "ext": {
       "type": "object",
-      "description": "Open map of namespaced keys, vendor.key. Core consumers ignore it; relays preserve it."
+      "description": "Open map of namespaced keys, vendor.key. The mocon. namespace is reserved to the specification (core.md section 3). Core consumers ignore it; relays preserve it."
     }
   },
   "required": ["kind", "host"],

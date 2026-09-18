@@ -13,7 +13,7 @@ import type { HostLine } from "@mocon/core";
 import { sameMajor } from "@mocon/core/fold";
 import fc from "fast-check";
 import type { ExportTraceServiceRequest, FetchLike } from "../src/index.js";
-import { buildRequest, mapLine, type SkipReason, type Span } from "../src/map.js";
+import { buildRequest, mapLine, type MetricPoint, type SkipReason, type Span } from "../src/map.js";
 
 export type Rec = Record<string, unknown>;
 export const isRec = (v: unknown): v is Rec => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -228,18 +228,20 @@ export function mergeRequests(requests: readonly ExportTraceServiceRequest[]): E
 }
 
 /** Runs a whole stream line by line, holding the latest declaration as it goes, the way the sink does over one batch. */
-export function convertStream(lines: readonly string[], options?: MapOptionsAt): { request: ExportTraceServiceRequest; skipped: string[] } {
+export function convertStream(lines: readonly string[], options?: MapOptionsAt): { request: ExportTraceServiceRequest; skipped: string[]; points: MetricPoint[] } {
   let declaration: HostLine | undefined;
   const requests: ExportTraceServiceRequest[] = [];
   const skipped: string[] = [];
+  const points: MetricPoint[] = [];
   for (const line of lines) {
     const parsed = JSON.parse(line) as Rec;
     if (parsed["kind"] === "host") declaration = parsed as unknown as HostLine;
     const result = mapOne(line, declaration, options);
     requests.push(result.request);
+    points.push(...result.points);
     if (result.skipped !== undefined) skipped.push(result.skipped);
   }
-  return { request: mergeRequests(requests), skipped };
+  return { request: mergeRequests(requests), skipped, points };
 }
 
 /** The attribute values of a span as a plain map, for assertions. */
@@ -264,6 +266,8 @@ export function attrs(span: Span): Record<string, unknown> {
 /** One line's mapping, for a line given as text or as one of the objects the builders above return. */
 export interface MappedLine {
   request: ExportTraceServiceRequest;
+  /** The metric points the line's declared dimensions produced (otel-mapping.md 14); empty for anything else. */
+  points: MetricPoint[];
   skipped?: SkipReason;
 }
 
@@ -287,8 +291,8 @@ function mapOne(line: string, declaration: HostLine | undefined, options: MapOpt
   if (now !== undefined) Date.now = now;
   try {
     const m = mapLine(line, (host) => (held?.host === host ? held : undefined), cap);
-    if (m.kind === "span") return { request: buildRequest([m]) };
-    return m.kind === "skip" ? { request: { resourceSpans: [] }, skipped: m.reason } : { request: { resourceSpans: [] } };
+    if (m.kind === "span") return { request: buildRequest([m]), points: m.points };
+    return m.kind === "skip" ? { request: { resourceSpans: [] }, points: [], skipped: m.reason } : { request: { resourceSpans: [] }, points: [] };
   } finally {
     Date.now = real;
   }

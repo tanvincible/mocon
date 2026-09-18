@@ -30,6 +30,8 @@ interface CrossingFields {
   startText: string;
   /** `start` when the host gave it, so a clock-read `end.time` cannot fall below it. */
   floor: string | undefined;
+  /** `,"links":[...]` or nothing, already validated and serialized. */
+  links: string | undefined;
   /** The host's `ext` as given at initiation, with the library's own notes. */
   ext: string | undefined;
 }
@@ -58,7 +60,7 @@ export class Crossing implements CrossingHandle {
     const owner = this.owner;
     let head = '{"kind":"crossing","host":' + owner.inst.hostText + ',"id":' + f.idText + ',"execution_id":' + owner.idText + ',"target":' + f.targetText + ',"input":' + f.inputText;
     if (f.seq !== undefined) head += ',"seq":' + f.seq;
-    return (this.headText = head + owner.crossingContextText + ',"start":' + f.startText);
+    return (this.headText = head + owner.crossingContextText + ',"start":' + f.startText + (f.links ?? ""));
   }
 
   /**

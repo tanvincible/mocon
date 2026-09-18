@@ -1,0 +1,151 @@
+{
+  "conflicts": [],
+  "crossings": {
+    "d1a0b2c3d4e5f607": {
+      "end": {
+        "outcome": "output",
+        "output": {
+          "bytes": 39,
+          "hash": "sha256:f56e6aff04514e860b3d7cf74649f0d7c404a786ca87247c6ef95ea72aa0ab5e",
+          "value": [
+            {
+              "id": "r-1",
+              "title": "Quarterly plan"
+            }
+          ]
+        },
+        "time": "2026-09-18T08:00:00.612Z"
+      },
+      "execution_id": "3fbb1c40a2d74e5b8f0c6913ad25e874",
+      "ext": {
+        "metered.credits_used": 12,
+        "metered.guard": "allow"
+      },
+      "host": "example/metered",
+      "id": "d1a0b2c3d4e5f607",
+      "input": {
+        "bytes": 12,
+        "hash": "sha256:2a8276f650319ab72da96dfdddb5ea2b42884eb8b8691099d76cdb56df8ca66e",
+        "value": {
+          "limit": 50
+        }
+      },
+      "kind": "crossing",
+      "seq": 1,
+      "start": "2026-09-18T08:00:00.140Z",
+      "target": "records_search"
+    },
+    "d2b1c3d4e5f60718": {
+      "end": {
+        "outcome": "output",
+        "output": {
+          "bytes": 37,
+          "hash": "sha256:a231467ca36aac236802230db66bbd5ff54df833298b80f9af7e78d915b60006",
+          "value": {
+            "id": "r-1",
+            "title": "Quarterly plan"
+          }
+        },
+        "time": "2026-09-18T08:00:01.004Z"
+      },
+      "execution_id": "3fbb1c40a2d74e5b8f0c6913ad25e874",
+      "ext": {
+        "metered.credits_used": 24,
+        "metered.guard": "review"
+      },
+      "host": "example/metered",
+      "id": "d2b1c3d4e5f60718",
+      "input": {
+        "bytes": 12,
+        "hash": "sha256:4f84416ee902422e89ef8806a9af4072fe78842af5db0a42e98fef7a9cfb7ca2",
+        "value": {
+          "id": "r-1"
+        }
+      },
+      "kind": "crossing",
+      "seq": 2,
+      "start": "2026-09-18T08:00:00.618Z",
+      "target": "records_get"
+    }
+  },
+  "executions": {
+    "3fbb1c40a2d74e5b8f0c6913ad25e874": {
+      "context": {
+        "session": "s-4471"
+      },
+      "end": {
+        "disposition": "completed",
+        "result": {
+          "bytes": 36,
+          "hash": "sha256:265b63ca2c601c344edf0d07515ebd73dc38ed750359c81a59b3d371a5bdb205",
+          "value": {
+            "count": 1,
+            "title": "Quarterly plan"
+          }
+        },
+        "time": "2026-09-18T08:00:01.060Z"
+      },
+      "ext": {
+        "metered.credits_remaining": 9964,
+        "metered.model": "planner-2",
+        "metered.sandbox_id": "sbx-0f3a91c4e7"
+      },
+      "host": "example/metered",
+      "id": "3fbb1c40a2d74e5b8f0c6913ad25e874",
+      "kind": "execution",
+      "language": "javascript",
+      "program": {
+        "bytes": 167,
+        "hash": "sha256:34892537a10ad3220ceb224e59cf6d69c1267e7dca405c7757b86be027296808",
+        "value": "const rows = await callTool('records_search', {limit: 50});\nconst one = await callTool('records_get', {id: rows[0].id});\nreturn {count: rows.length, title: one.title};"
+      },
+      "start": "2026-09-18T08:00:00.000Z"
+    }
+  },
+  "hosts": {
+    "example/metered": {
+      "attested": [
+        "crossing.target",
+        "crossing.input",
+        "ext.declared"
+      ],
+      "crossing_edge": "invocation",
+      "dimensions": {
+        "metered.credits_remaining": {
+          "agg": "last",
+          "name": "Credits left",
+          "observed": true,
+          "unit": "{credit}"
+        },
+        "metered.credits_used": {
+          "agg": "sum",
+          "name": "Credits spent",
+          "observed": true,
+          "unit": "{credit}"
+        },
+        "metered.guard": {
+          "agg": "none",
+          "card": "low",
+          "name": "Guard",
+          "observed": true
+        },
+        "metered.model": {
+          "agg": "none",
+          "card": "low",
+          "name": "Model"
+        },
+        "metered.sandbox_id": {
+          "agg": "none",
+          "observed": true
+        }
+      },
+      "host": "example/metered",
+      "kind": "host",
+      "observes_crossings": "all",
+      "spec_version": "1.1",
+      "unmediated_egress": false
+    }
+  },
+  "skipped": 0,
+  "unresolved": []
+}

@@ -11,7 +11,7 @@ import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import type { CaptureContext, Payload } from "../src/index.js";
 import { DEFAULT_CAPS, Encoder } from "../src/payload.js";
-import { assertValidStream, harness, type Rec } from "./helpers.js";
+import { assertValidStream, harness, NO_PREVIEW, type Rec } from "./helpers.js";
 
 const sha = (s: string | Uint8Array): string => "sha256:" + createHash("sha256").update(s).digest("hex");
 /** The default encoder on its own; a value that serializes to nothing is written as `null`, as the capture writes it. */
@@ -41,7 +41,7 @@ function inputLine(h: ReturnType<typeof harness>, value: unknown): Rec {
 
 test("a 3 MB string output is cut so its value fills the cap on the wire, with a true prefix and no claim about bytes it did not read", () => {
   const big = "a".repeat(3 * 1024 * 1024);
-  const out = outputOf(harness(), "big", big);
+  const out = outputOf(harness({ capture: NO_PREVIEW }), "big", big);
   assert.equal(out["truncated"], true);
   const value = out["value"] as string;
   assert.ok(JSON.stringify(big).startsWith(value));
@@ -391,7 +391,7 @@ test("a truncated output from another realm is a prefix of the same serializatio
 test("a value nested deeper than 256 levels is cut there, so the line that carries it survives recursive JSON code", () => {
   let v: unknown = 0;
   for (let i = 0; i < 5000; i++) v = [v];
-  const h = harness();
+  const h = harness({ capture: NO_PREVIEW });
   const ex = h.m.execution.start({ program: "p", notice: false });
   ex.crossing.start({ target: "t", input: v, notice: true });
   const input = h.last("crossing")["input"] as Rec;
@@ -463,7 +463,7 @@ test("a getter or toJSON that answers small first and 50 MB next cannot make the
 });
 
 test("a getter that opens a crossing during a capture neither disturbs the outer capture nor runs twice", () => {
-  const h = harness();
+  const h = harness({ capture: NO_PREVIEW });
   const ex = h.m.execution.start({ program: "p", notice: false });
   const result = {
     get inner() {

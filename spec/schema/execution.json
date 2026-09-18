@@ -58,6 +58,7 @@
         "start": { "$ref": "#/$defs/timestamp" },
         "language": { "type": "string" },
         "context": { "$ref": "#/$defs/context" },
+        "links": { "$ref": "links.json" },
         "ext": { "type": "object" }
       },
       "required": ["kind", "host", "id", "start"],
@@ -76,6 +77,7 @@
         "language": { "type": "string" },
         "context": { "$ref": "#/$defs/context" },
         "end": { "$ref": "#/$defs/end" },
+        "links": { "$ref": "links.json" },
         "ext": { "type": "object" }
       },
       "required": ["kind", "host", "id", "program", "start", "end"],

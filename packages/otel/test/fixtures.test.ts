@@ -134,6 +134,10 @@ test("every invalid line: skipped and counted by otel-mapping.md 3's reason, or 
     "seq-negative": "notice",
     "seq-not-an-integer": "notice",
     "timestamp-with-trailing-newline": "notice",
+    // 1.1 link entries, all on notices: a notice never becomes a span, whatever its links say.
+    "links-not-an-array": "notice",
+    "link-entry-without-counts": "notice",
+    "link-entry-kind-unknown": "notice",
     // A declaration: the unknown closed-set value costs its one attribute.
     "observes-crossings-unknown-value": "host",
     // Declarations too: a key outside its type costs that one attribute and nothing else (core.md 8).
@@ -141,6 +145,10 @@ test("every invalid line: skipped and counted by otel-mapping.md 3's reason, or 
     "observes-crossings-not-a-string": "host",
     "spec-version-not-major-minor": "host",
     "unmediated-egress-not-a-boolean": "host",
+    // 1.1: `dimensions` is read, never exported (otel-mapping.md 6.2), so a broken one costs nothing at all.
+    "dimensions-not-an-object": "host",
+    "dimension-entry-not-an-object": "host",
+    "dimension-without-agg": "host",
     // Copied verbatim and never recomputed (8.1).
     "hash-wrong-length": "span",
     // The error field is read only under outcome error (7.2).
@@ -175,7 +183,7 @@ test("every invalid line through one sink write: the counters by reason, and one
   const f = fakeFetch();
   const sink = otlpSink({ url: "https://collector.example/v1/traces", fetch: f.fetch });
   await sink.write(invalidLines().map(([, line]) => line));
-  assert.deepEqual(sink.skipped, { notice: 9, malformed: 6, unknown_kind: 0, bad_enum: 1, bad_timestamp: 0 });
+  assert.deepEqual(sink.skipped, { notice: 12, malformed: 6, unknown_kind: 0, bad_enum: 1, bad_timestamp: 0 });
   assert.equal(f.calls.length, 1);
   assert.equal(spansOf(f.calls[0]?.body as ExportTraceServiceRequest).length, 4);
 });

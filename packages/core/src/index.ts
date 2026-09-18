@@ -3,7 +3,7 @@
  * handles; it keeps no registry of executions and runs nothing in the background.
  */
 
-import { checkExt, checkString, checkTimestamp } from "./check.js";
+import { checkDimensions, checkExt, checkString, checkTimestamp, linksText } from "./check.js";
 import { CLOSED } from "./closed.js";
 import { Execution } from "./execution.js";
 import { createRuntime, follow } from "./instance.js";
@@ -31,12 +31,13 @@ export function mocon(options: MoconOptions): Mocon {
   runtime.declare();
 
   const start = (o: ExecutionStartOptions): ExecutionHandle => {
-    const { program, id, language, start: given, context, ext, notice } = o as { [K in keyof ExecutionStartOptions]: unknown };
+    const { program, id, language, start: given, context, links, ext, notice } = o as { [K in keyof ExecutionStartOptions]: unknown };
     const programText = checkString(program, "program");
     const ownId = id === undefined ? undefined : checkString(id, "execution id");
     const lang = language === undefined ? undefined : checkString(language, "language");
     const floor = given === undefined ? undefined : checkTimestamp(given, "start");
     const ctx = normalizeContext(context);
+    const linkText = linksText(links, "execution", ownId);
     const extText = extJson(checkExt(ext, "ext"));
     const executionId = ownId ?? inst.ids.execution();
     const startTime = floor ?? inst.now();
@@ -49,6 +50,7 @@ export function mocon(options: MoconOptions): Mocon {
       programText: inst.inert ? REDACTED_TEXT : inst.capture.program(programText).text,
       language: lang,
       context: ctx,
+      links: linkText,
       ext: extText,
     });
     if (notice !== false) execution.announce();
@@ -84,7 +86,7 @@ function buildHostLine(options: MoconOptions): HostLine {
   const { host, capabilities } = options;
   if (typeof host !== "string" || host === "") throw new TypeError("mocon: host must be a non-empty string");
   if (capabilities === null || typeof capabilities !== "object") throw new TypeError("mocon: capabilities are required");
-  const { observes_crossings: observes, unmediated_egress: egress, crossing_edge: edge, attested, ext: extIn } = capabilities as Capabilities;
+  const { observes_crossings: observes, unmediated_egress: egress, crossing_edge: edge, attested, dimensions, ext: extIn } = capabilities as Capabilities;
   if (!CLOSED.observes_crossings.has(observes)) {
     throw new RangeError(`mocon: observes_crossings must be "all", "some" or "none"`);
   }
@@ -105,6 +107,8 @@ function buildHostLine(options: MoconOptions): HostLine {
     }
     line.attested = entries as Attestation[];
   }
+  const declared = checkDimensions(dimensions);
+  if (declared !== undefined) line.dimensions = declared;
   // Serialized once and parsed back, so the declaration carries plain data and a toJSON inside runs once.
   const ext = objectJson(checkExt(extIn, "capabilities.ext"));
   if (ext === null) throw new TypeError("mocon: capabilities.ext must serialize to a JSON object");

@@ -18,29 +18,29 @@ import { attrs, crossing, declared, EMPTY, execution, EXECUTION_ID, fakeFetch, H
 const rawAttrs = (line: string): Record<string, AnyValue> => Object.fromEntries(spanOf(mapped(line).request).attributes.map((kv) => [kv.key, kv.value]));
 
 test("line handling: skip reasons, and a host line with neither span nor reason", () => {
-  assert.deepEqual(mapped("{not json"), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped("[1,2]"), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped({ kind: "metric", host: HOST, id: "x" }), { request: EMPTY, skipped: "unknown_kind" });
-  assert.deepEqual(mapped({ kind: "metric" }), { request: EMPTY, skipped: "unknown_kind" });
-  assert.deepEqual(mapped({ kind: "execution", id: "x", start: "2026-09-16T10:00:00Z", end: {} }), { request: EMPTY, skipped: "malformed" }, "no host");
-  assert.deepEqual(mapped({ kind: "host", host: HOST }), { request: EMPTY });
-  assert.deepEqual(mapped(JSON.stringify(declared([]))), { request: EMPTY });
-  assert.deepEqual(mapped({ kind: "host" }), { request: EMPTY, skipped: "malformed" });
+  assert.deepEqual(mapped("{not json"), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped("[1,2]"), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped({ kind: "metric", host: HOST, id: "x" }), { request: EMPTY, points: [], skipped: "unknown_kind" });
+  assert.deepEqual(mapped({ kind: "metric" }), { request: EMPTY, points: [], skipped: "unknown_kind" });
+  assert.deepEqual(mapped({ kind: "execution", id: "x", start: "2026-09-16T10:00:00Z", end: {} }), { request: EMPTY, points: [], skipped: "malformed" }, "no host");
+  assert.deepEqual(mapped({ kind: "host", host: HOST }), { request: EMPTY, points: [] });
+  assert.deepEqual(mapped(JSON.stringify(declared([]))), { request: EMPTY, points: [] });
+  assert.deepEqual(mapped({ kind: "host" }), { request: EMPTY, points: [], skipped: "malformed" });
   const { end: _end, ...notice } = execution();
-  assert.deepEqual(mapped(notice), { request: EMPTY, skipped: "notice" });
-  assert.deepEqual(mapped(execution({ end: "soon" })), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped(execution({}, { disposition: "crashed" })), { request: EMPTY, skipped: "bad_enum" });
-  assert.deepEqual(mapped(crossing({}, { outcome: "ok" })), { request: EMPTY, skipped: "bad_enum" });
-  assert.deepEqual(mapped(execution({ program: undefined })), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped(execution({ start: undefined })), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped(execution({}, { time: undefined })), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped(crossing({ input: undefined })), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped(crossing({ target: 7 })), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped(execution({ start: "2026-09-16 10:00:00" })), { request: EMPTY, skipped: "bad_timestamp" });
-  assert.deepEqual(mapped(execution({ start: "2026-09-16T10:00:00.000+02:00" })), { request: EMPTY, skipped: "bad_timestamp" });
-  assert.deepEqual(mapped(execution({}, { time: "2026-13-16T10:00:00Z" })), { request: EMPTY, skipped: "bad_timestamp" });
-  assert.deepEqual(mapped(crossing({ start: "yesterday" })), { request: EMPTY, skipped: "bad_timestamp" });
-  assert.deepEqual(mapped(crossing({}, { time: 1 })), { request: EMPTY, skipped: "bad_timestamp" });
+  assert.deepEqual(mapped(notice), { request: EMPTY, points: [], skipped: "notice" });
+  assert.deepEqual(mapped(execution({ end: "soon" })), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped(execution({}, { disposition: "crashed" })), { request: EMPTY, points: [], skipped: "bad_enum" });
+  assert.deepEqual(mapped(crossing({}, { outcome: "ok" })), { request: EMPTY, points: [], skipped: "bad_enum" });
+  assert.deepEqual(mapped(execution({ program: undefined })), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped(execution({ start: undefined })), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped(execution({}, { time: undefined })), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped(crossing({ input: undefined })), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped(crossing({ target: 7 })), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped(execution({ start: "2026-09-16 10:00:00" })), { request: EMPTY, points: [], skipped: "bad_timestamp" });
+  assert.deepEqual(mapped(execution({ start: "2026-09-16T10:00:00.000+02:00" })), { request: EMPTY, points: [], skipped: "bad_timestamp" });
+  assert.deepEqual(mapped(execution({}, { time: "2026-13-16T10:00:00Z" })), { request: EMPTY, points: [], skipped: "bad_timestamp" });
+  assert.deepEqual(mapped(crossing({ start: "yesterday" })), { request: EMPTY, points: [], skipped: "bad_timestamp" });
+  assert.deepEqual(mapped(crossing({}, { time: 1 })), { request: EMPTY, points: [], skipped: "bad_timestamp" });
 });
 
 test("a raw string and its parsed form map identically; unknown top-level keys are not exported", () => {
@@ -362,16 +362,16 @@ test("hashed ids on the wire: a native execution id and a native crossing id", (
 /* ------------------------------------------------------------------ */
 
 test("a complete line with no end.disposition or end.outcome is missing a required field: malformed, not bad_enum", () => {
-  assert.deepEqual(mapped(execution({}, { disposition: undefined })), { request: EMPTY, skipped: "malformed" });
-  assert.deepEqual(mapped(crossing({}, { outcome: undefined, output: undefined })), { request: EMPTY, skipped: "malformed" });
+  assert.deepEqual(mapped(execution({}, { disposition: undefined })), { request: EMPTY, points: [], skipped: "malformed" });
+  assert.deepEqual(mapped(crossing({}, { outcome: undefined, output: undefined })), { request: EMPTY, points: [], skipped: "malformed" });
 });
 
 test("a present closed-set value outside the set is bad_enum whatever its type, and wins over a missing field, because end then reads as absent", () => {
   for (const value of ["success", "", "Completed", 1, null, true, ["completed"], { completed: true }]) {
-    assert.deepEqual(mapped(execution({}, { disposition: value })), { request: EMPTY, skipped: "bad_enum" }, JSON.stringify(value));
-    assert.deepEqual(mapped(crossing({}, { outcome: value })), { request: EMPTY, skipped: "bad_enum" }, JSON.stringify(value));
+    assert.deepEqual(mapped(execution({}, { disposition: value })), { request: EMPTY, points: [], skipped: "bad_enum" }, JSON.stringify(value));
+    assert.deepEqual(mapped(crossing({}, { outcome: value })), { request: EMPTY, points: [], skipped: "bad_enum" }, JSON.stringify(value));
   }
-  assert.deepEqual(mapped(execution({ program: undefined }, { disposition: "crashed", time: undefined })), { request: EMPTY, skipped: "bad_enum" });
+  assert.deepEqual(mapped(execution({ program: undefined }, { disposition: "crashed", time: undefined })), { request: EMPTY, points: [], skipped: "bad_enum" });
 });
 
 /* ------------------------------------------------------------------ */
@@ -507,9 +507,9 @@ test("otel-mapping.md 3 with core.md 5.5: a line whose end.error carries no clas
   const noClass = [{ message: "boom" }, { value: { value: 1 } }, "boom", null, { class: 7 }];
   for (const error of noClass) {
     const ex = mapped(execution({}, { disposition: "failed", error }));
-    assert.deepEqual(ex, { request: EMPTY, skipped: "malformed" }, `execution end.error ${JSON.stringify(error)} produced ${JSON.stringify(ex.request)}`);
+    assert.deepEqual(ex, { request: EMPTY, points: [], skipped: "malformed" }, `execution end.error ${JSON.stringify(error)} produced ${JSON.stringify(ex.request)}`);
     const c = mapped(crossing({}, { outcome: "error", output: undefined, error }));
-    assert.deepEqual(c, { request: EMPTY, skipped: "malformed" }, `crossing end.error ${JSON.stringify(error)} produced ${JSON.stringify(c.request)}`);
+    assert.deepEqual(c, { request: EMPTY, points: [], skipped: "malformed" }, `crossing end.error ${JSON.stringify(error)} produced ${JSON.stringify(c.request)}`);
   }
   // An error under an outcome that does not carry one is not this line's error, so it is left alone.
   assert.equal(mapped(crossing({}, { outcome: "output", output: { value: 1 }, error: { message: "boom" } })).skipped, undefined);

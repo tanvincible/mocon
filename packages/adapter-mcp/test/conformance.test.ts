@@ -85,7 +85,11 @@ test("pre-run-rejection: a body that rejects the program before it runs gives th
     },
   });
   await execute({ code: "const x = await callTool('unknown_tool_name', {});\nreturn x;" }, extraOf());
-  assert.deepEqual(compare("pre-run-rejection", h.sink.lines), []);
+  assert.deepEqual(compare("pre-run-rejection", h.sink.lines), [
+    // The golden streams are 1.0. This package writes the `mocon.` envelope notes core.md 3 documents in 1.1, so
+    // every stream it produces declares 1.1; core.md 11 makes 1.1 additive and the rest of the view identical.
+    "~ hosts/0/spec_version: 1.0 became 1.1",
+  ]);
 });
 
 test("sync-bridge: overlapping instrumented calls, a truncated output and credits on the complete record", async () => {
@@ -114,6 +118,9 @@ test("sync-bridge: overlapping instrumented calls, a truncated output and credit
     // The encoder stops reading a value at the cap and will not claim a length or hash for bytes it never read (core README, Capture and redaction).
     "- crossings/1/end/output/bytes",
     "- crossings/1/end/output/hash",
+    // The golden streams are 1.0. This package writes the `mocon.` envelope notes core.md 3 documents in 1.1, so
+    // every stream it produces declares 1.1; core.md 11 makes 1.1 additive and the rest of the view identical.
+    "~ hosts/0/spec_version: 1.0 became 1.1",
   ]);
 });
 
@@ -140,5 +147,8 @@ test("terminated-timeout: the host's own step limit, surfacing as a throw and na
     "+ executions/0/end/error/value/bytes",
     "+ executions/0/end/error/value/hash",
     "+ executions/0/end/error/value/value",
+    // The golden streams are 1.0. This package writes the `mocon.` envelope notes core.md 3 documents in 1.1, so
+    // every stream it produces declares 1.1; core.md 11 makes 1.1 additive and the rest of the view identical.
+    "~ hosts/0/spec_version: 1.0 became 1.1",
   ]);
 });

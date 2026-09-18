@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mocon } from "@mocon/core";
 import { CAPABILITIES, createServer, HOST } from "../src/codemode.js";
-import { assertHostRules, completeExecution, connect, crossingsOf, DRIVER_PROGRAM, settled, text, waitFor, type Rec } from "./helpers.js";
+import { assertHostRules, assertProgramOf, completeExecution, connect, crossingsOf, DRIVER_PROGRAM, settled, text, waitFor, type Rec } from "./helpers.js";
 
 test("the driver's program completes with three crossings, two of them overlapping and one failed", async () => {
   const host = await connect();
@@ -20,7 +20,7 @@ test("the driver's program completes with three crossings, two of them overlappi
 
     const records = assertHostRules(host.sink.lines);
     const done = completeExecution(records);
-    assert.equal(done["program"]["value"], DRIVER_PROGRAM);
+    assertProgramOf(done, DRIVER_PROGRAM);
     assert.equal(done["language"], "javascript");
     assert.equal(done["end"]["disposition"], "completed");
     assert.deepEqual(done["end"]["result"]["value"], result);

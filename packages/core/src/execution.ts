@@ -9,7 +9,7 @@
  */
 
 import { errorInput } from "./cause.js";
-import { checkEndTime, checkExt, checkSeq, checkString, checkTimestamp, targetOf } from "./check.js";
+import { checkEndTime, checkExt, checkSeq, checkString, checkTimestamp, linksText, targetOf } from "./check.js";
 import { CLOSED } from "./closed.js";
 import { Crossing } from "./crossing.js";
 import { follow, type Instance } from "./instance.js";
@@ -17,7 +17,7 @@ import { invariant } from "./invariants.js";
 import { Budget, LINE_BUDGET, REDACTED_TEXT } from "./payload.js";
 import { EXT_REDACTED, extJson, extText, mergeExt, note, quote, raw, type Notes } from "./serialize.js";
 import { notBefore } from "./time.js";
-import type { CompleteOptions, CrossingHandle, CrossingStartOptions, Disposition, ErrorInput, ExecutionContext, ExecutionEndOptions, ExecutionHandle, Ext, InstrumentOptions } from "./types.js";
+import type { BridgeAnswer, CompleteOptions, CrossingEndOptions, CrossingHandle, CrossingStartOptions, Disposition, ErrorInput, ExecutionContext, ExecutionEndOptions, ExecutionHandle, Ext, InstrumentOptions } from "./types.js";
 
 /** A `...Text` field is the JSON text the line writes for the field before it. */
 export interface ExecutionFields {
@@ -30,11 +30,21 @@ export interface ExecutionFields {
   programText: string;
   language: string | undefined;
   context: ExecutionContext | undefined;
+  /** `,"links":[...]` or nothing, already validated and serialized. */
+  links: string | undefined;
   ext: string | undefined;
 }
 
 /** An input `instrument` could not derive, written as `{ redacted: true }`. */
 const WITHHELD = Symbol("withheld");
+
+/** What the host gave a crossing at initiation, checked. `links` is wire text. */
+interface Given {
+  id?: string | undefined;
+  seq?: number | undefined;
+  start?: string | undefined;
+  links?: string | undefined;
+}
 
 export class Execution implements ExecutionHandle {
   readonly crossing: ExecutionHandle["crossing"];
@@ -62,6 +72,7 @@ export class Execution implements ExecutionHandle {
     head += ',"start":' + fields.startText;
     // From the validated strings: `Object.prototype.toJSON` answers for `JSON.stringify`.
     if (fields.context !== undefined) head += ',"context":' + contextText(fields.context);
+    if (fields.links !== undefined) head += fields.links;
     this.head = head;
     this.crossing = { start: (options) => this.startCrossing(options) };
   }
@@ -92,32 +103,25 @@ export class Execution implements ExecutionHandle {
     this.tracked.delete(crossing);
   }
 
-  instrument<F extends (...args: any[]) => unknown>(fn: F, options?: InstrumentOptions<Parameters<F>>): F {
+  instrument<F extends (...args: any[]) => unknown>(fn: F, options?: InstrumentOptions<Parameters<F>, Awaited<ReturnType<F>>>): F {
     if (typeof fn !== "function") throw new TypeError("mocon: instrument() takes a function");
-    const { target, input, ext } = instrumentOptions(options);
+    const { target, input, ext, end } = instrumentOptions(options);
     const fixedExt = typeof ext === "function" ? undefined : extJson(ext);
     const execution = this;
     const wrapped = function (this: unknown, ...args: Parameters<F>): unknown {
-      const crossing = execution.open(
-        targetFrom(target, args),
-        inputOf(input, target === undefined, args),
-        typeof ext === "function" ? extOf(ext, args) : fixedExt,
-        undefined,
-        undefined,
-        undefined,
-        false,
-      );
+      const derivedExt = typeof ext === "function" ? extOf(ext, args) : fixedExt;
+      const crossing = execution.open(targetFrom(target, args), inputOf(input, target === undefined, args), derivedExt, undefined, false);
       let result: unknown;
       try {
         result = fn.apply(this, args);
       } catch (e) {
-        crossing.error(e);
+        settle(crossing, end, { args, threw: true, error: e });
         throw e;
       }
       return follow(
         result,
-        (value) => crossing.output(value),
-        (e) => crossing.error(e),
+        (value) => settle(crossing, end, { args, threw: false, value }),
+        (e) => settle(crossing, end, { args, threw: true, error: e }),
       );
     };
     Object.defineProperties(wrapped, {
@@ -172,21 +176,26 @@ export class Execution implements ExecutionHandle {
   }
 
   private startCrossing(options: CrossingStartOptions): CrossingHandle {
-    const { target, input, id, seq, start, ext, notice } = options as { [K in keyof CrossingStartOptions]: unknown };
+    const { target, input, id, seq, start, links, ext, notice } = options as { [K in keyof CrossingStartOptions]: unknown };
+    const ownId = id === undefined ? undefined : checkString(id, "crossing id");
     return this.open(
       checkString(target, "crossing target"),
       input,
       extJson(checkExt(ext, "ext")),
-      id === undefined ? undefined : checkString(id, "crossing id"),
-      seq === undefined ? undefined : checkSeq(seq),
-      start === undefined ? undefined : checkTimestamp(start, "crossing start"),
+      {
+        id: ownId,
+        seq: seq === undefined ? undefined : checkSeq(seq),
+        start: start === undefined ? undefined : checkTimestamp(start, "crossing start"),
+        links: linksText(links, "crossing", ownId),
+      },
       notice === true,
     );
   }
 
   /** Opens a crossing from checked values, tracked unless the execution ended during capture. */
-  private open(given: string, input: unknown, ext: string | undefined, ownId: string | undefined, ownSeq: number | undefined, ownStart: string | undefined, notice: boolean): Crossing {
+  private open(given: string, input: unknown, ext: string | undefined, own: Given | undefined, notice: boolean): Crossing {
     const inst = this.inst;
+    const { id: ownId, seq: ownSeq, start: ownStart, links } = own ?? {};
     const id = ownId ?? inst.ids.crossing();
     let seq = ownSeq;
     if (ownSeq === undefined) seq = this.seq < Number.MAX_SAFE_INTEGER ? ++this.seq : undefined;
@@ -204,6 +213,7 @@ export class Execution implements ExecutionHandle {
       start,
       startText: raw(start),
       floor: ownStart,
+      links,
       ext: mergeExt(ext, undefined, notes),
     });
     // Tracked before the input is captured, not after: that capture runs program code, and one
@@ -281,16 +291,40 @@ function contextText(context: ExecutionContext): string {
 }
 
 type Derive<T> = (...args: any[]) => T;
+type End = (answer: BridgeAnswer<unknown[]>) => CrossingEndOptions | undefined | void;
 
 /** The options of one `instrument` call, read once and checked for type. */
-function instrumentOptions(options: unknown): { target: string | Derive<unknown> | undefined; input: Derive<unknown> | undefined; ext: Ext | Derive<unknown> | undefined } {
-  if (options === undefined) return { target: undefined, input: undefined, ext: undefined };
+function instrumentOptions(options: unknown): { target: string | Derive<unknown> | undefined; input: Derive<unknown> | undefined; ext: Ext | Derive<unknown> | undefined; end: End | undefined } {
+  if (options === undefined) return { target: undefined, input: undefined, ext: undefined, end: undefined };
   if (options === null || typeof options !== "object") throw new TypeError("mocon: instrument() options must be an object");
-  const { target, input, ext } = options as Record<string, unknown>;
+  const { target, input, ext, end } = options as Record<string, unknown>;
   if (target !== undefined && typeof target !== "string" && typeof target !== "function") throw new TypeError("mocon: instrument() target must be a string or a function");
   if (input !== undefined && typeof input !== "function") throw new TypeError("mocon: instrument() input must be a function");
+  if (end !== undefined && typeof end !== "function") throw new TypeError("mocon: instrument() end must be a function");
   if (typeof ext !== "function") checkExt(ext, "instrument() ext");
-  return { target: target as string | Derive<unknown> | undefined, input: input as Derive<unknown> | undefined, ext: ext as Ext | Derive<unknown> | undefined };
+  return { target: target as string | Derive<unknown> | undefined, input: input as Derive<unknown> | undefined, ext: ext as Ext | Derive<unknown> | undefined, end: end as End | undefined };
+}
+
+/**
+ * The crossing's end, from the host's own reading of the bridge's answer when it supplied one and from the
+ * default otherwise. The hook is the mechanism: a bridge that never throws reads its error envelope here. A
+ * hook that throws, returns nothing, or returns fields the wire would refuse costs the reading and not the
+ * call, exactly as a `target` or `input` derive does: the default outcome still records the crossing.
+ */
+function settle(crossing: Crossing, end: End | undefined, answer: BridgeAnswer<unknown[]>): void {
+  if (end !== undefined) {
+    try {
+      const given = end(answer);
+      if (given !== null && typeof given === "object") {
+        crossing.end(given);
+        return;
+      }
+    } catch {
+      // `crossing.end` validates before it writes, so the crossing is still open for the default below.
+    }
+  }
+  if (answer.threw) crossing.error(answer.error);
+  else crossing.output(answer.value);
 }
 
 /** The option's string, what its function returned, or the first argument, via `targetOf`. */

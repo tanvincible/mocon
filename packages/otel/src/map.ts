@@ -7,7 +7,7 @@
  */
 
 import type { HostLine } from "@mocon/core";
-import { CLOSED, unixNanos } from "@mocon/core/fold";
+import { CLOSED, dimensionsOf, unixNanos, type Dimension } from "@mocon/core/fold";
 import { crossingSpanIdOf, executionSpanIdOf, parseTraceparent, traceIdOf } from "./ids.js";
 import { keysOf, parse, stringify, type KeyOrder } from "./json.js";
 
@@ -42,6 +42,27 @@ export interface Status {
 export interface SpanLink {
   traceId: string;
   spanId: string;
+  /** `mocon.rel` and `mocon.counts` on a link from `links`; absent on the one core.md 6 requires (otel-mapping.md 13). */
+  attributes?: KeyValue[];
+}
+
+/**
+ * One data point a declared `sum` or `last` dimension produces
+ * (otel-mapping.md 14). The instrument is `(name, unit, agg)`; the point
+ * carries its own attributes, which are the closed list section 14 gives.
+ */
+export interface MetricPoint {
+  host: string;
+  /** `mocon.ext.<key>`, the key verbatim. */
+  name: string;
+  /** The declared `unit`, or `1`. */
+  unit: string;
+  agg: "sum" | "last";
+  /** As OTLP writes a number data point: an integer within int64 keeps its digits. */
+  value: { asInt: string } | { asDouble: number };
+  attributes: KeyValue[];
+  startTimeUnixNano: string;
+  timeUnixNano: string;
 }
 
 /** `kind` is 1 (INTERNAL) for an execution and 3 (CLIENT) for a crossing. */
@@ -76,7 +97,7 @@ export interface ExportTraceServiceRequest {
 export type SkipReason = "notice" | "malformed" | "unknown_kind" | "bad_enum" | "bad_timestamp";
 
 export type Mapped =
-  | { kind: "span"; host: string; span: Span }
+  | { kind: "span"; host: string; span: Span; points: MetricPoint[] }
   | { kind: "skip"; reason: SkipReason }
   | { kind: "host"; declaration: HostLine };
 
@@ -89,12 +110,15 @@ type Label = "P" | "T" | undefined;
 
 const INT64 = 2 ** 63;
 const NAME_CODE_POINTS = 128;
+/** The four reserved envelope notes (core.md 3), host-observed wherever they appear and never declared (provenance.md 3). Any other `mocon.` key is an ordinary host-written one. */
+const RESERVED: ReadonlySet<string> = new Set(["mocon.target", "mocon.encoding", "mocon.message", "mocon.ext"]);
 const isRec = (v: unknown): v is Rec => v !== null && typeof v === "object" && !Array.isArray(v);
 const isInt = (v: unknown): v is number | bigint => typeof v === "bigint" || (typeof v === "number" && Number.isInteger(v) && v < INT64 && v >= -INT64);
 const str = (s: string): AnyValue => ({ stringValue: s });
 const bool = (b: boolean): AnyValue => ({ boolValue: b });
 // Past 2^53 `String(n)` prints the shortest round-trip form, not the integer's digits; BigInt prints them. A bigint is an int64 token `parse` kept exact.
-const int = (n: number | bigint): AnyValue => ({ intValue: typeof n === "bigint" || Number.isSafeInteger(n) ? String(n) : BigInt(n).toString() });
+const intText = (n: number | bigint): string => (typeof n === "bigint" || Number.isSafeInteger(n) ? String(n) : BigInt(n).toString());
+const int = (n: number | bigint): AnyValue => ({ intValue: intText(n) });
 const TRUE = bool(true);
 const skip = (reason: SkipReason): Mapped => ({ kind: "skip", reason });
 
@@ -167,6 +191,8 @@ function executionSpan(line: Rec, host: string, end: Rec, declaration: HostLine 
   // core.md 5.5 makes `class` required: an error object without one is a malformed line, not an error with no class (otel-mapping.md 3).
   if (error !== undefined && !classed(error)) return skip("malformed");
   const attested = attestedSet(declaration);
+  // provenance.md 4: a declared key is host-observed only under both gates, so without the entry no key is, and none becomes a metric (otel-mapping.md 14).
+  const dimensions = attested.has("ext.declared") ? dimensionsFor(declaration) : undefined;
 
   const a = new Attributes(cap, order);
   a.put("mocon.host", str(host));
@@ -185,7 +211,8 @@ function executionSpan(line: Rec, host: string, end: Rec, declaration: HostLine 
   const outputs = end["outputs"];
   if (isRec(outputs)) for (const channel of a.keys(outputs)) a.payload("execution.outputs." + channel, outputs[channel], "P");
   a.error("execution.error", error, attested.has("execution.error.class") ? undefined : "P", "P");
-  a.ext(line["ext"]);
+  a.ext(line["ext"], dimensions);
+  const links = a.links(line["links"], host, "execution", id, undefined);
   a.put("gen_ai.operation.name", str("execute_tool"));
 
   const span: Span = {
@@ -201,9 +228,12 @@ function executionSpan(line: Rec, host: string, end: Rec, declaration: HostLine 
   if (tp !== undefined) {
     span.parentSpanId = tp.parentId;
     // The crossings may not have copied the value; the link leads from the caller's trace to the derived one (core.md 6).
-    span.links = [{ traceId: derivedTraceId, spanId }];
+    links.unshift({ traceId: derivedTraceId, spanId });
   }
-  return { kind: "span", host, span };
+  if (links.length > 0) span.links = links;
+  // Nothing declared and attested: no point can qualify, so the record kind's point attributes are not built either.
+  const points = dimensions === undefined ? [] : metricPoints(host, line["ext"], dimensions, [{ key: "mocon.execution.disposition", value: str(disposition as string) }], order, start, endTime);
+  return { kind: "span", host, span, points };
 }
 
 function executionStatus(disposition: string, error: unknown): Status {
@@ -235,9 +265,13 @@ function crossingSpan(line: Rec, host: string, end: Rec, declaration: HostLine |
   let endTime: string | undefined;
   if (line["start"] !== undefined && (start = unixNanos(line["start"])) === undefined) return skip("bad_timestamp");
   if (end["time"] !== undefined && (endTime = unixNanos(end["time"])) === undefined) return skip("bad_timestamp");
+  // otel-mapping.md 14: a point's window is the record's own times, falling back to receipt where 7.3 does, so it is read before 7.3 fills the span's.
+  const receipt = endTime === undefined ? receiptNanos() : undefined;
+  const pointStart = start ?? endTime ?? (receipt as string);
+  const pointTime = endTime ?? (receipt as string);
   let timing: string | undefined;
   if (start === undefined && endTime === undefined) {
-    start = endTime = receiptNanos();
+    start = endTime = receipt;
     timing = "none";
   } else if (endTime === undefined) {
     endTime = start;
@@ -254,6 +288,7 @@ function crossingSpan(line: Rec, host: string, end: Rec, declaration: HostLine |
   const traceparent = context?.["traceparent"];
   const tp = parseTraceparent(traceparent);
   const attested = attestedSet(declaration);
+  const dimensions = attested.has("ext.declared") ? dimensionsFor(declaration) : undefined;
   const targetLabel: Label = attested.has("crossing.target") ? undefined : "P";
 
   const a = new Attributes(cap, order);
@@ -277,7 +312,8 @@ function crossingSpan(line: Rec, host: string, end: Rec, declaration: HostLine |
     const label: Label = attested.has("crossing.error") ? "T" : "P";
     a.error("crossing.error", end["error"], label, label);
   }
-  a.ext(line["ext"]);
+  a.ext(line["ext"], dimensions);
+  const links = a.links(line["links"], host, "crossing", id, executionId);
   a.put("gen_ai.operation.name", str("execute_tool"));
   a.put("gen_ai.tool.name", str(target));
   a.put("gen_ai.tool.call.id", str(id));
@@ -293,7 +329,23 @@ function crossingSpan(line: Rec, host: string, end: Rec, declaration: HostLine |
     attributes: a.finish(),
     status: outcome === "output" ? { code: 1 } : outcome === "error" ? { code: 2, message: "error" } : { code: 0 },
   };
-  return { kind: "span", host, span };
+  if (links.length > 0) span.links = links;
+  const points =
+    dimensions === undefined
+      ? []
+      : metricPoints(
+          host,
+          line["ext"],
+          dimensions,
+          [
+            { key: "mocon.crossing.target", value: str(target) },
+            { key: "mocon.crossing.outcome", value: str(outcome as string) },
+          ],
+          order,
+          pointStart,
+          pointTime,
+        );
+  return { kind: "span", host, span, points };
 }
 
 /**
@@ -337,6 +389,74 @@ function attestedSet(declaration: HostLine | undefined): ReadonlySet<string> {
 const EMPTY: ReadonlySet<string> = new Set();
 /** Keyed on the declaration object, so an entry goes when the caller stops holding it. */
 const ATTESTED = new WeakMap<HostLine, ReadonlySet<string>>();
+
+/**
+ * The declaration's `dimensions` with core.md 5.1.1's "absent reads as"
+ * column applied, computed once per declaration for the same reason
+ * `attestedSet` is: a host declaring forty keys must not cost every line a
+ * pass over all forty. The map has a null prototype, so a `__proto__` or
+ * `constructor` entry is an own key and an undeclared key stays undeclared.
+ */
+function dimensionsFor(declaration: HostLine | undefined): Record<string, Dimension> | undefined {
+  if (declaration === undefined) return undefined;
+  const held = DIMENSIONS.get(declaration);
+  if (held !== undefined) return held;
+  const dimensions = dimensionsOf(declaration);
+  DIMENSIONS.set(declaration, dimensions);
+  return dimensions;
+}
+const DIMENSIONS = new WeakMap<HostLine, Record<string, Dimension>>();
+
+/**
+ * The metric points one complete line's `ext` produces (otel-mapping.md 14):
+ * one per key the host declared `sum` or `last` whose value here is a finite
+ * JSON number. The caller has already established that `ext.declared` is
+ * attested, and each entry must carry `observed: true`, so only a
+ * host-observed value becomes a point — a metric point has no provenance
+ * channel to carry a program claim's label (provenance.md 5).
+ *
+ * `scope` is the record kind's share of the point attributes; the rest are
+ * `mocon.host` and this record's low-cardinality declared `none` keys. The
+ * list is closed, so nothing here caps a string: a cap would need a
+ * `truncated` flag beside it, and there is no room in the list for one.
+ */
+function metricPoints(
+  host: string,
+  ext: unknown,
+  dimensions: Record<string, Dimension>,
+  scope: KeyValue[],
+  order: KeyOrder | undefined,
+  startTimeUnixNano: string,
+  timeUnixNano: string,
+): MetricPoint[] {
+  if (!isRec(ext)) return [];
+  const keys = keysOf(ext, order);
+  let attributes: KeyValue[] | undefined;
+  const points: MetricPoint[] = [];
+  for (const key of keys) {
+    const d = dimensions[key];
+    if (d === undefined || d.observed !== true) continue;
+    const value = ext[key];
+    if (d.agg === "none") {
+      if (d.card === "low") (attributes ??= [{ key: "mocon.host", value: str(host) }, ...scope]).push({ key: "mocon.ext." + key, value: encode(value, order) });
+      continue;
+    }
+    // An aggregation a later minor version adds has no shape here (core.md 8), so it stays on the span like any other value.
+    if (d.agg !== "sum" && d.agg !== "last") continue;
+    if (typeof value === "bigint") points.push(point(host, key, d.agg, d.unit, { asInt: intText(value) }, startTimeUnixNano, timeUnixNano));
+    // core.md 5.1.1: a value that is not a finite number is a mismatch, displayed on the span and not exported.
+    else if (typeof value === "number" && Number.isFinite(value)) points.push(point(host, key, d.agg, d.unit, isInt(value) ? { asInt: intText(value) } : { asDouble: value }, startTimeUnixNano, timeUnixNano));
+  }
+  if (points.length === 0) return points;
+  attributes ??= [{ key: "mocon.host", value: str(host) }, ...scope];
+  for (const p of points) p.attributes = attributes;
+  return points;
+}
+
+function point(host: string, key: string, agg: "sum" | "last", unit: string | undefined, value: MetricPoint["value"], startTimeUnixNano: string, timeUnixNano: string): MetricPoint {
+  // `dimensionsOf` fills the unit; the fallback is core.md 5.1.1's "absent reads as 1" for a declaration read some other way.
+  return { host, name: "mocon.ext." + key, unit: unit ?? "1", agg, value, attributes: [], startTimeUnixNano, timeUnixNano };
+}
 
 /** `mocon.host.*` from the declaration (otel-mapping.md 6.2). An unknown closed-set value drops that one attribute (core.md 8). */
 function hostAttributes(a: Attributes, d: HostLine): void {
@@ -415,13 +535,61 @@ class Attributes {
     this.payload(prefix + ".value", e["value"], restLabel);
   }
 
-  /** `mocon.ext.<key>` per key (otel-mapping.md 8.2). Every key is P in this version, so each is listed in `mocon.provenance.ext.p`. */
-  ext(ext: unknown): void {
+  /**
+   * `mocon.ext.<key>` per key (otel-mapping.md 8.2), and the key's name in
+   * `mocon.provenance.ext.p` unless it is host-observed: a reserved envelope
+   * note, or a declared key under both of provenance.md 4's gates, which
+   * `dimensions` being defined is half of.
+   */
+  ext(ext: unknown, dimensions: Record<string, Dimension> | undefined): void {
     if (!isRec(ext)) return;
     for (const key of this.keys(ext)) {
       if (this.json("mocon.ext." + key, ext[key])) this.put("mocon.ext." + key + ".truncated", TRUE);
-      this.extKeys.push(key);
+      if (!RESERVED.has(key) && dimensions?.[key]?.observed !== true) this.extKeys.push(key);
     }
+  }
+
+  /**
+   * `mocon.links` holding the array's JSON text, and the span links each
+   * entry derives from its own fields (otel-mapping.md 13). An entry this
+   * version cannot read — an unknown `rel`, `counts` or `kind`, no `id`, a
+   * crossing entry with no execution to derive a trace id from, or one
+   * naming the record carrying it (links.md 7) — is dropped from the span
+   * links and stays in `mocon.links`. `links` is H, so it takes no label.
+   */
+  links(value: unknown, host: string, kind: "execution" | "crossing", id: string, executionId: string | undefined): SpanLink[] {
+    if (!Array.isArray(value)) return [];
+    this.text("mocon.links", stringify(value, this.order), undefined);
+    const links: SpanLink[] = [];
+    for (const entry of value as unknown[]) {
+      if (!isRec(entry)) continue;
+      const { rel, counts, id: linkId } = entry;
+      const linkKind = entry["kind"];
+      if (!CLOSED.rel.has(rel) || !CLOSED.counts.has(counts) || !CLOSED.linked.has(linkKind) || typeof linkId !== "string") continue;
+      const linkHost = typeof entry["host"] === "string" ? entry["host"] : host;
+      if (linkHost === host && linkKind === kind && linkId === id) continue;
+      let traceId: string;
+      let spanId: string;
+      if (linkKind === "execution") {
+        traceId = traceIdOf(linkHost, linkId);
+        spanId = executionSpanIdOf(linkHost, linkId);
+      } else {
+        // links.md 2: absent on a crossing line means this line's own execution; on an execution line there is nothing to default from.
+        const linkExecution = typeof entry["execution_id"] === "string" ? entry["execution_id"] : executionId;
+        if (linkExecution === undefined) continue;
+        traceId = traceIdOf(linkHost, linkExecution);
+        spanId = crossingSpanIdOf(linkHost, linkId);
+      }
+      links.push({
+        traceId,
+        spanId,
+        attributes: [
+          { key: "mocon.rel", value: str(rel as string) },
+          { key: "mocon.counts", value: str(counts as string) },
+        ],
+      });
+    }
+    return links;
   }
 
   finish(): KeyValue[] {
@@ -435,28 +603,33 @@ class Attributes {
 
   /** A JSON value from the line as one attribute (otel-mapping.md 8.2). Returns whether a string was cut. */
   private json(key: string, value: unknown): boolean {
-    switch (typeof value) {
-      case "string":
-        return this.string(key, value);
-      case "boolean":
-        this.put(key, bool(value));
-        return false;
-      case "number":
-        // A number literal past the double range parses to an infinity, which proto3 JSON writes as a string.
-        this.put(key, isInt(value) ? int(value) : { doubleValue: Number.isFinite(value) ? value : value > 0 ? "Infinity" : "-Infinity" });
-        return false;
-      case "bigint":
-        this.put(key, int(value));
-        return false;
-      default:
-        return this.string(key, stringify(value, this.order));
-    }
+    const encoded = encode(value, this.order);
+    if ("stringValue" in encoded) return this.string(key, encoded.stringValue);
+    this.put(key, encoded);
+    return false;
   }
 
   private string(key: string, value: string): boolean {
     const kept = this.cap === undefined ? value : truncateUtf8(value, this.cap);
     this.put(key, str(kept));
     return kept !== value;
+  }
+}
+
+/** One JSON value from a line as an attribute value (otel-mapping.md 8.2), before any cap: a primitive stays primitive, anything else is its JSON text. */
+function encode(value: unknown, order: KeyOrder | undefined): AnyValue {
+  switch (typeof value) {
+    case "string":
+      return str(value);
+    case "boolean":
+      return bool(value);
+    case "number":
+      // A number literal past the double range parses to an infinity, which proto3 JSON writes as a string.
+      return isInt(value) ? int(value) : { doubleValue: Number.isFinite(value) ? value : value > 0 ? "Infinity" : "-Infinity" };
+    case "bigint":
+      return int(value);
+    default:
+      return str(stringify(value, order));
   }
 }
 

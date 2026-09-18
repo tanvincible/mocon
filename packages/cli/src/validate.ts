@@ -44,6 +44,10 @@ const CROSSING_TYPES: Record<string, Rule> = { id: STRING, execution_id: STRING,
 const CROSSING_CONTEXT: Record<string, Rule> = { traceparent: STRING };
 const PAYLOAD_TYPES: Record<string, Rule> = { truncated: BOOLEAN, redacted: BOOLEAN, bytes: COUNT };
 const ERROR_TYPES: Record<string, Rule> = { class: STRING, message: STRING };
+const DIMENSION_TYPES: Record<string, Rule> = { agg: STRING, unit: STRING, card: STRING, name: STRING, observed: BOOLEAN };
+const LINK_TYPES: Record<string, Rule> = { rel: STRING, id: STRING, counts: STRING, host: STRING, execution_id: STRING };
+/** A link entry names a core record kind, which unlike `rel` and `counts` does not grow by minor version. */
+const KINDS_LINKED: ReadonlySet<unknown> = new Set(["execution", "crossing"]);
 
 /** One error per present key whose value breaks its rule. */
 function typed(o: Rec, where: string, rules: Record<string, Rule>, errs: string[]): void {
@@ -87,12 +91,52 @@ function context(o: Rec, where: string, fields: Record<string, Rule>, errs: stri
   else typed(c, where + ".context", fields, errs);
 }
 
+/** core.md 5.1.1. Structure only: membership in `agg`/`card` grows by minor version, so an unknown value there is a lint warning, not a failure. */
+function dimensions(o: Rec, errs: string[]): void {
+  if (!has(o, "dimensions")) return;
+  const d = o["dimensions"];
+  if (!isRec(d)) {
+    errs.push("host.dimensions: must be an object");
+    return;
+  }
+  for (const [key, entry] of Object.entries(d)) {
+    const where = `host.dimensions.${key}`;
+    if (!isRec(entry)) {
+      errs.push(`${where}: must be an object`);
+      continue;
+    }
+    if (!has(entry, "agg")) errs.push(`${where}: missing required field: agg`);
+    typed(entry, where, DIMENSION_TYPES, errs);
+  }
+}
+
+/** extensions/links.md 2. Structure only, for the same reason; `kind` is a core closed set and is checked. */
+function links(o: Rec, label: string, errs: string[]): void {
+  if (!has(o, "links")) return;
+  const v = o["links"];
+  if (!Array.isArray(v)) {
+    errs.push(`${label}.links: must be an array`);
+    return;
+  }
+  v.forEach((entry, i) => {
+    const where = `${label}.links[${i}]`;
+    if (!isRec(entry)) {
+      errs.push(`${where}: must be an object`);
+      return;
+    }
+    required(entry, ["rel", "kind", "id", "counts"], where, errs);
+    typed(entry, where, LINK_TYPES, errs);
+    if (has(entry, "kind") && !KINDS_LINKED.has(entry["kind"])) errs.push(`${where}.kind not in closed set`);
+  });
+}
+
 function execution(o: Rec, errs: string[]): void {
   required(o, ["id", "start"], "execution", errs);
   typed(o, "execution", EXECUTION_TYPES, errs);
   if (has(o, "program")) payload(o["program"], "execution.program", errs);
   timestamp(o, "start", "execution", errs);
   context(o, "execution", EXECUTION_CONTEXT, errs);
+  links(o, "execution", errs);
   if (!has(o, "end")) return;
   const end = o["end"];
   if (!isRec(end)) {
@@ -118,6 +162,7 @@ function crossing(o: Rec, errs: string[]): void {
   if (has(o, "input")) payload(o["input"], "crossing.input", errs);
   timestamp(o, "start", "crossing", errs);
   context(o, "crossing", CROSSING_CONTEXT, errs);
+  links(o, "crossing", errs);
   if (!has(o, "end")) return;
   const end = o["end"];
   if (!isRec(end)) {
@@ -145,6 +190,7 @@ export function structuralErrors(o: unknown): string[] {
     if (has(o, "observes_crossings") && !CLOSED.observes_crossings.has(o["observes_crossings"])) errs.push("observes_crossings not in closed set");
     if (has(o, "crossing_edge") && !CLOSED.crossing_edge.has(o["crossing_edge"])) errs.push("crossing_edge not in closed set");
     typed(o, "host", HOST_TYPES, errs);
+    dimensions(o, errs);
   } else if (kind === "execution") {
     execution(o, errs);
   } else if (kind === "crossing") {

@@ -1,12 +1,12 @@
 # mocon OpenTelemetry mapping
 
-Status: draft 1.0, 2026-09-17. Normative for sinks. Companion to `core.md` and `provenance.md`.
+Status: draft 1.1, 2026-09-19. Normative for sinks. Companion to `core.md` and `provenance.md`.
 
 ## 1. Scope
 
 This document says how a sink turns a mocon stream into OpenTelemetry spans. It exists so that any two sinks produce the same trace ids, the same span ids, the same span names and the same attributes from the same stream, and so that every core field survives the trip.
 
-It covers the three core kinds: `host`, `execution`, `crossing`. It does not cover extension kinds. A sink skips lines with a kind it does not know, as `core.md` section 3 requires.
+It covers the three core kinds: `host`, `execution`, `crossing`. It does not cover extension *kinds*; sections 13 and 14 do cover two additive fields, `links` and the metrics a `dimensions` declaration produces. A sink skips lines with a kind it does not know, as `core.md` section 3 requires.
 
 `core.md` is the source of truth for field names, enum values, the supersede rule, timestamps and id derivation. `provenance.md` is the source of truth for provenance classes and the `attested` list. Where this document restates either, the original wins. Where `core.md` is silent, this document says so at the point of use.
 
@@ -150,10 +150,13 @@ Every attribute is present when its source field is present, and absent otherwis
 | `mocon.execution.error.message` | string | `end.error.message` |
 | `mocon.execution.error.value.value`, `.truncated`, `.redacted`, `.bytes`, `.hash` | section 8 | `end.error.value` |
 | `mocon.ext.<key>` | section 8 | `ext.<key>`, one per key, key verbatim |
+| `mocon.links` | string | `links`, the array's JSON text (section 8.2); see section 13 |
 | `gen_ai.operation.name` | string | the constant `execute_tool`, always |
 | `mocon.provenance.<field>` | string | section 10 |
 
 The `mocon.host.*` attributes come from the declaration, not from the line. When the sink has not seen the declaration for this host string, it omits them. `mocon.host` itself is on every line and is never omitted. `mocon.host.*` attributes appear on execution spans only. A crossing span carries `mocon.host` and its provenance labels, which already fold the declaration in.
+
+`dimensions` (`core.md` 5.1.1) is **not** exported as a span attribute. A sink *reads* it, to decide which values become metrics (section 14) and which provenance labels to write (section 10), and never copies it onto a span: a declaration with thirty entries repeated on every span is unacceptable, and the sentence below stays true as written.
 
 The declaration's own `ext` keys do not export. The five attributes above are the whole of what a `host` record contributes, and `mocon.ext.<key>` on a span always comes from that span's own line. A sink MUST NOT lift `host.ext` keys onto execution spans, because it would then have to choose a provenance label for them and the span's `mocon.provenance.ext.p` array names keys of the line, not of the declaration. A sink that wants to carry them exports the declaration under its own name in `ext` on each line, or leaves them out.
 
@@ -204,6 +207,7 @@ The status description is set only for `ERROR` and is the string `error`. It is 
 | `mocon.crossing.error.message` | string | `end.error.message` |
 | `mocon.crossing.error.value.value`, `.truncated`, `.redacted`, `.bytes`, `.hash` | section 8 | `end.error.value` |
 | `mocon.ext.<key>` | section 8 | `ext.<key>`, one per key |
+| `mocon.links` | string | `links`, the array's JSON text (section 8.2); see section 13 |
 | `gen_ai.operation.name` | string | the constant `execute_tool`, always |
 | `gen_ai.tool.name` | string | `target`, uncut, always |
 | `gen_ai.tool.call.id` | string | `id`, always |
@@ -303,9 +307,9 @@ For each labeled attribute present on the span whose effective class is `P` or `
 | `mocon.crossing.error.class` | P | `crossing.error` | T |
 | `mocon.crossing.error.message` | P | `crossing.error` | T |
 | `mocon.crossing.error.value.value` | P | `crossing.error` | T |
-| `mocon.ext.<key>`, all keys | P | | |
+| `mocon.ext.<key>` | P | `ext.declared`, with `observed: true` on that key's `dimensions` entry | H |
 
-`ext` is mostly an exception to the naming rule, because its keys are not fixed ahead of time: baseline `ext.<key>` attributes get no per-key label. Instead the sink writes one string-array attribute, `mocon.provenance.ext.p = [<key>, ...]`, listing every `mocon.ext.<key>` name present on the span whose class is still P — the baseline for every `ext` key `core.md` and `provenance.md` name today. A key an extension documents and the host's `attested` list names as an `ext.<extension>` entry (`provenance.md` section 4) is H and is left out of that array. `mocon.provenance.ext.p` is omitted entirely when every present `ext` key on the span is H, and is `[]` only if the sink chooses to write it for a span with no `ext` keys at all, which it need not.
+`ext` is mostly an exception to the naming rule, because its keys are not fixed ahead of time: baseline `ext.<key>` attributes get no per-key label. Instead the sink writes one string-array attribute, `mocon.provenance.ext.p = [<key>, ...]`, listing every `mocon.ext.<key>` name present on the span whose class is still P. A key is left out of that array when it is H: because both `ext.declared` gates hold for it (`provenance.md` section 4), because an extension documents it and the host's `attested` list names the matching `ext.<extension>` entry, or because it is one of the four reserved `mocon.` envelope notes (`core.md` section 3), which are H wherever they appear and are never declared. `mocon.provenance.ext.p` is omitted entirely when every present `ext` key on the span is H, and is `[]` only if the sink chooses to write it for a span with no `ext` keys at all, which it need not.
 
 Everything else is H and unlabeled: ids, times, `end.disposition`, `context.session`, `context.traceparent`, every Payload envelope field, and `mocon.host.*`. `context.traceparent` is H but caller-supplied; it MUST NOT be used for authorization or billing (`provenance.md` section 3).
 
@@ -325,7 +329,59 @@ Resource: `core.md` says nothing about it. A sink SHOULD set `service.name` on t
 
 ## 12. Not exported
 
-The `host` line has no span, so its `ext` is not exported; unknown top-level keys on any line are not exported. Every other core field is placed by sections 4 to 8, 10 and 11.
+The `host` line has no span, so its `ext` and its `dimensions` are not exported as attributes; unknown top-level keys on any line are not exported. Every other core field is placed by sections 4 to 8, 10, 11, 13 and 14.
+
+## 13. Span links from `links`
+
+`extensions/links.md` defines the `links` array on `execution` and `crossing` lines. A sink that does not know the extension ignores the key; this section is for one that does.
+
+Each entry becomes one OTel span link on the carrying record's span, plus one `mocon.links` span attribute holding the array's JSON text (section 8.2). Every id comes from the entry itself, so no state and no lookup is involved:
+
+| `kind` | linked `trace_id` | linked `span_id` |
+|---|---|---|
+| `"execution"` | trace id derived from (entry `host` or this line's `host`, entry `id`) | execution span id derived from the same pair |
+| `"crossing"` | trace id derived from (entry `host` or this line's `host`, entry `execution_id`, defaulted per `links.md` 2) | crossing span id derived from (that host, entry `id`) |
+
+Each span link carries two attributes, `mocon.rel` and `mocon.counts`. They also distinguish these links from the one `core.md` section 6 requires on the traceparent degraded path (section 4.2), which carries none. When `execution_id` is neither present nor defaulted, the sink MUST NOT emit a span link for that entry and records it in `mocon.links` only. An entry whose `rel` or `counts` the sink does not know is dropped from the span links and still appears in `mocon.links`.
+
+`links` is H unconditionally (`links.md` 8), so `mocon.links` carries no provenance label. `links.md` 9 states the limitation: a linked record whose host moved it into a caller's trace derives a trace id that does not match, and the link dangles.
+
+## 14. Metrics from declared dimensions
+
+A declared `sum` or `last` dimension (`core.md` 5.1.1) maps to an OpenTelemetry metric the same way a crossing maps to a span. This section is what makes a host that declares its credits once get a spend metric and a per-target breakdown without writing an exporter.
+
+**When.** Metrics are emitted when the sink has a metrics endpoint configured; a trace-only sink emits none, and the values still ride the span as attributes. The sink stays stateless: delta temporality needs no accumulator, and one complete line produces its points from its own content.
+
+**What qualifies.** For each complete `execution` or `crossing` line, the sink emits one data point per `ext` key that satisfies **all** of:
+
+1. the host's `dimensions` declares it with `agg` of `"sum"` or `"last"`;
+2. the value on this record is a finite JSON number (a mismatch under `core.md` 5.1.1 is not exported);
+3. its effective provenance is **H** — the `ext.declared` entry is in `attested` and the entry carries `observed: true` (`provenance.md` 4).
+
+Condition 3 is not decoration. An OTel metric point has no per-point provenance channel, so a P value exported as a metric would silently present a program claim as fact, which `provenance.md` 5 rule 2 forbids and which no label on the point could fix without making the metric un-summable. A host that has not attested a value gets a span attribute with its `P` label, exactly as in 1.0, and knows why.
+
+**The point.**
+
+| declared `agg` | OTLP shape |
+|---|---|
+| `sum` | `Sum`, `aggregationTemporality: DELTA`, `isMonotonic: false` |
+| `last` | `Gauge` |
+
+- Instrument name: `mocon.ext.<key>`, the key verbatim.
+- Instrument unit: the declared `unit`, verbatim, or `1` when absent.
+- `isMonotonic` is `false` for every `sum`. mocon has no way to know a host's amounts are never negative, and a monotonic claim a single negative value breaks costs a backend more than an absent one. There are deliberately no histograms: a histogram needs bucket bounds, bounds are the one thing two sinks cannot agree on without configuration, and this mapping exists so that two sinks produce the same bytes. A host that wants percentiles over a declared duration computes them in its backend from the sum and count.
+- Point times: `startTimeUnixNano` is the record's `start` when present, else its `end.time`; `timeUnixNano` is `end.time`, else sink receipt, matching section 7.3's fallbacks.
+
+**Point attributes, and nothing else.** This list is closed, because two sinks that key a metric differently produce two different metrics:
+
+- `mocon.host`;
+- on a crossing-sourced point, `mocon.crossing.target` and `mocon.crossing.outcome`;
+- on an execution-sourced point, `mocon.execution.disposition`;
+- every `ext` key on that same record that is declared `agg: "none"` with `card: "low"` **and** is H by condition 3 above, as `mocon.ext.<key>`.
+
+Never an execution id, a crossing id, a session, a traceparent, a `card: "high"` or `card`-absent key, or a key whose provenance is P. `target` plus the low-cardinality declared keys is exactly the per-target and per-dimension breakdown, and the exclusions are the whole cardinality rule.
+
+**The hole that remains.** Nothing stops a host declaring a per-user identifier `card: "low"` and attesting it, which would blow up a metrics backend at the consumer's expense. A `facet: false` flag and a sink-side cardinality cap were both considered and left out: they are knobs nobody sets correctly, and a sink operator's own cardinality limits are the real answer. The `card` default of `high` means a host has to opt a key in explicitly, which is as far as a format can go.
 
 ## Appendix A. Worked example
 

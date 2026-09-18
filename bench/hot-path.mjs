@@ -42,19 +42,22 @@ const BASELINE = {
   machine: "Node v24.16.0, darwin arm64, Apple M5",
   calibration: 2_647,
   // The lowest median of three runs on that machine, which is the reading the scheduler interfered with least.
+  // Re-recorded on 2026-09-19 with the capture preview (core README, Capture and redaction): a value over the
+  // preview is no longer written to the line, which is why the three large-string rows fell by about fifty
+  // times and the two 1 KiB rows rose by about a quarter for the cut the preview adds.
   rows: {
-    "crossing start + end, 24 B input, 100 B output": 4_142,
-    "crossing start + end, 24 B input, 1 KiB output": 5_791,
-    "crossing start + end, 1 KiB input, 1 KiB output": 8_177,
-    "crossing start + end, 24 B input, 1 KiB output of 23 records": 9_815,
-    "crossing start + end, 24 B input, 128 KiB string output": 194_501,
-    "crossing start + end, 24 B input, 1 MiB string output": 194_857,
-    "crossing start + end, 24 B input, 3 MiB string output": 194_182,
-    "crossing start + end, 24 B input, 5 MB string output": 2_023,
-    "crossing start + end, 24 B input, 5 MB object output": 2_867,
-    "crossing start + end, 24 B input, 10,000-key object output": 1_684_496,
-    "execution start + end, 204 B program, notice on": 3_845,
-    "crossing start + end, 24 B input, 1 KiB output, fileSink": 15_665,
+    "crossing start + end, 24 B input, 100 B output": 3_961,
+    "crossing start + end, 24 B input, 1 KiB output": 7_191,
+    "crossing start + end, 1 KiB input, 1 KiB output": 10_078,
+    "crossing start + end, 24 B input, 1 KiB output of 23 records": 11_066,
+    "crossing start + end, 24 B input, 128 KiB string output": 3_698,
+    "crossing start + end, 24 B input, 1 MiB string output": 3_616,
+    "crossing start + end, 24 B input, 3 MiB string output": 3_692,
+    "crossing start + end, 24 B input, 5 MB string output": 1_946,
+    "crossing start + end, 24 B input, 5 MB object output": 2_754,
+    "crossing start + end, 24 B input, 10,000-key object output": 1_425_480,
+    "execution start + end, 204 B program, notice on": 3_931,
+    "crossing start + end, 24 B input, 1 KiB output, fileSink": 14_341,
   },
 };
 

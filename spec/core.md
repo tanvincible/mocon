@@ -1,8 +1,10 @@
 # mocon core specification
 
-Status: draft 1.0, 2026-09-17. Not yet stable. Additive changes only once marked 1.0.
+Status: draft 1.1, 2026-09-19. Not yet stable. Additive changes only once marked 1.0.
 
-Three changes in this draft are not additive and an implementation written against an earlier draft must pick them up: section 4 rule 3 fixes the conflict tie-break as a MUST and extends it to start notices; section 3 fixes what counts as blank, what counts as malformed, and what a byte-order mark does, rather than leaving it to the reading language; and section 5.2 requires a host that captures an output channel to emit it on every complete record, empty or not.
+Three changes in the 1.0 draft are not additive and an implementation written against an earlier draft must pick them up: section 4 rule 3 fixes the conflict tie-break as a MUST and extends it to start notices; section 3 fixes what counts as blank, what counts as malformed, and what a byte-order mark does, rather than leaving it to the reading language; and section 5.2 requires a host that captures an output channel to emit it on every complete record, empty or not.
+
+1.1 is additive: `dimensions` on the `host` record (section 5.1), the reserved `mocon.` `ext` namespace (section 3), and the `ext.declared` attestation entry (`provenance.md` 4). Section 11 lists them. A 1.0 consumer reads a 1.1 stream unchanged, and every 1.0 stream stays valid.
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are to be interpreted as described in RFC 2119.
 
@@ -42,9 +44,20 @@ Every line carries these reserved top-level keys:
 | `kind` | yes | One of `host`, `execution`, `crossing`. A consumer MUST skip lines with a kind it does not know. |
 | `host` | yes | Opaque string identifying the declaring host. It scopes every id. Recommended form `vendor/product[/profile]`. |
 | `id` | yes, except `kind: host` | Opaque string, unique within `(host, kind)`. |
-| `ext` | no | Open map of namespaced keys, `vendor.key`. Core consumers ignore it; relays preserve it. |
+| `ext` | no | Open map of namespaced keys, `vendor.key`. Core consumers ignore it unless the host declared the key (5.1); relays preserve it. |
 
 `host` is on every line so that a stream can be split, rotated, concatenated, tailed from the middle, or merged with another host's stream without any stream state. There is no per-line version field; the version lives on the `host` record (section 11).
+
+**The `mocon.` `ext` namespace is reserved to this specification.** A host MUST NOT define its own key under it. Two kinds of key live there and nothing else: the four envelope notes below, which an emitter writes about its own capture, and the conventional keys `conventions.md` recommends, which are ordinary host-written keys with a shared name and no special status.
+
+| envelope note | value | means |
+|---|---|---|
+| `mocon.target` | `{"truncated": true}` | the emitter shortened `crossing.target`, which is a bare string and has no Payload flags of its own |
+| `mocon.encoding` | object mapping a slot name (`input`, `output`, `result`, `error.value`, `outputs.<channel>`) to an encoding name | the emitter encoded that slot's `value` rather than carrying it as JSON text; `"base64"` is the only name this version gives |
+| `mocon.message` | `{"truncated": true}` | the emitter shortened an `error.message`, which likewise has no flags of its own |
+| `mocon.ext` | `{"redacted": true}` | the emitter could not serialize the host's own `ext` object and dropped it |
+
+The four are host-observed wherever they appear (`provenance.md` 3): each is a fact the emitter computed about its own capture, in the same sense `truncated`, `redacted`, `bytes` and `hash` are, and no program channel reaches them. They are the reserved spelling of the encoding note section 5.4 already licenses, so that two hosts spell it the same way; a core consumer is still obliged to read none of them, and reading one never changes the Payload rules or section 12's prohibition on inferring what a `value` is. They are not declarable (5.1) and no host authors them, so the lint in `provenance.md` 7 skips them.
 
 Transport is out of scope. A stream may be a file, standard error, an HTTP request body (`application/x-ndjson`), a WebSocket, or an in-process array. A consumer MUST NOT rely on any framing beyond newlines. Lines SHOULD be under 1 MiB; consumers MUST still accept larger lines.
 
@@ -79,6 +92,7 @@ A host MUST emit its `host` record before any other record for that host in ever
 | `unmediated_egress` | boolean | unknown | C5 |
 | `crossing_edge` | `"invocation"`, `"dispatch"` | unknown | X2 |
 | `attested` | array of strings, entries from the list in `provenance.md` section 4 (grows by minor version, section 8) | `[]` | X1 |
+| `dimensions` | object mapping an `ext` key name to a declaration entry (5.1.1) | `{}` | X5 |
 
 Semantics:
 
@@ -87,6 +101,55 @@ Semantics:
 - `crossing_edge` says which edge a crossing record describes. `"invocation"`: what the program asked for at the call boundary; the record is the program's view, which is why a host MAY emit one without attesting `crossing.target` (`provenance.md` 4). `"dispatch"`: what the host sent toward the target, recorded at the host's own egress point, after any rewrite, retry decision or policy step it applies. The two edges do not agree on cardinality: a retry or a refusal can make one invocation map to zero or several dispatches, and a host that bundles invocations into one request can make several map to one. Core carries no count for the other edge; a host with one puts it in `ext`.
 - Capabilities cannot vary per execution. A host whose observability differs per executor or per configuration MUST either use a distinct host string per profile or declare the weakest value that covers all its executions. A profile MAY be selected per execution from a parameter the caller supplies, provided the host itself enforces the resulting capability (a network flag its own sandbox honours) rather than recording the caller's claim; the host string then names the enforced profile. A host that cannot determine which profile served a given execution MUST declare the weakest value covering every reachable profile, and MUST NOT attest anything under that host string: `attested` is declared once per host string and applies to every record under it (`provenance.md` 4), so there is no per-record eligibility to fall back on. A host that wants to attest the executions it can attribute uses a second host string for them.
 - There is no negotiation: mocon is push-only, the host declares and consumers adapt. A consumer that has not yet seen a declaration applies the "absent reads as" column; a consumer that holds state MUST apply a later-arriving declaration retroactively. A stateless sink (section 4, rule 7) cannot revise output it has already emitted; it applies whatever declaration it has seen so far to each line as that line is emitted.
+
+#### 5.1.1 `dimensions`: declared meaning for `ext` keys
+
+`ext` is open, and section 12 forbids a consumer to treat an `ext` key as meaningful. That leaves a host with numbers no consumer may add up and categories no consumer may group by, and leaves the host to write its own viewer. `dimensions` is the host saying, once, what its own `ext` keys mean, so that a consumer which has never heard of the host can aggregate and group them correctly. It declares **meaning**, never **identity**: it can name no field but an `ext` key, and it can change nothing about what an execution or a crossing is, nor the closed dispositions and outcomes.
+
+```json
+{"kind":"host","host":"example/mcp","spec_version":"1.1",
+ "observes_crossings":"all","unmediated_egress":false,"crossing_edge":"invocation",
+ "attested":["crossing.target","crossing.input","ext.declared"],
+ "dimensions":{
+   "example.credits_used":      {"agg":"sum", "unit":"{credit}","name":"Credits spent","observed":true},
+   "example.credits_remaining": {"agg":"last","unit":"{credit}","name":"Credits left", "observed":true},
+   "example.guard":             {"agg":"none","card":"low",     "name":"Guard"},
+   "example.sandbox_id":        {"agg":"none"}}}
+```
+
+The map's keys are `ext` key names exactly as they appear on the wire (section 3). One entry names one key: there is no path syntax and no wildcard.
+
+| field | required | type | meaning |
+|---|---|---|---|
+| `agg` | yes | closed: `"sum"`, `"last"`, `"none"` | how a consumer may combine values of this key |
+| `unit` | no | string | the unit of the value; absent reads as `"1"`. Meaningful only under `sum` and `last` |
+| `card` | no | closed: `"low"`, `"high"` | how many distinct values to expect; absent reads as `"high"`. Read only under `none` |
+| `name` | no | string | display name; absent, a consumer displays the key |
+| `observed` | no | boolean | the host determines this value at a point the program cannot write through; absent reads as `false` |
+
+**`agg`.** `sum`: the values are additive, and a consumer MAY total them across records. `last`: each value is a level, not an increment; a consumer MAY show the most recent one per execution and MUST NOT total them. `none`: the value is not a quantity; a consumer displays it, and MAY group by it when `card` is `low`.
+
+**`sum` and `last` bind the encoding.** They apply only to a JSON number. A value under `sum` or `last` that is not a finite JSON number is a **mismatch**, defined below, and a declaration never licenses a consumer to parse one into a number. A host whose quantity is a string on the wire — `"1g"`, `"3.812"` — either emits a number instead or declares the key `none` and gets display rather than arithmetic. This is section 12's prohibition on parsing, kept intact: without it one viewer reads `"12"` as twelve and another skips it, and a stream has two different totals.
+
+**`unit`** is a free string, copied verbatim by exporters, compared only by equality. A consumer MUST NOT total two values with different units even under one key name, and MUST NOT convert between units. `conventions.md` recommends UCUM where one exists (`By`, `ms`, `s`) and a curly-braced annotation otherwise (`{credit}`, `{token}`). Because the unit and `agg` travel with the value, a consumer can find every additive `{credit}` key across hosts that never agreed on a key name — which is more than a shared name buys.
+
+**`card`** exists because a cardinality mistake is paid for by the consumer, not the host. `low` says the key takes few enough distinct values to be a group-by or a metric attribute; `high` says it does not. The default is `high` because an unbounded key silently faceted is a far worse failure than a bounded key not offered as a facet. Under `agg: "sum"` or `"last"` the value is a measure and `card` is not read.
+
+**`observed`** is documentation on its own. It moves an `ext` key from program-determined to host-observed only together with the `ext.declared` entry in `attested`; `provenance.md` 4 defines both gates and why there are two.
+
+**Per host string.** `dimensions` cannot vary per execution, the same rule capabilities take: a re-declaration with a different map is a conflict resolved by the section 4 rule 3 tie-break, and to change it you change the host string. A viewer building a column layout, and a sink creating a metric instrument, must do so from one declaration with no per-execution state, and a sink is required to be stateless (section 4, rule 7). There is a second reason: in a host that builds records out of channels the program writes, a per-record declaration would itself be program-reachable, which would let a program redefine what its own numbers mean.
+
+**Undeclared keys and mismatches.** An undeclared `ext` key behaves exactly as it does in 1.0: displayed verbatim, program-determined, never aggregated, never grouped by. A declared key whose value does not match its `agg` — a non-number under `sum` or `last` — reads as **undeclared for that record**: displayed verbatim, not aggregated, not grouped by, and a consumer SHOULD count it. Never coerced, never dropped, never an error, and never a reason to skip the line. An entry whose `agg` is missing or is a value this consumer does not know reads as absent, which makes its key undeclared (section 8). A `null` value is "no value", not a wrong value: it is present for the lint, absent from every total and every group-by, not a mismatch, and it renders as "no value", never as zero. Without that sentence a legitimately nullable key — an exit signal that is null when nothing signalled — would warn on every clean run, and three viewers would pick three renderings.
+
+**A declaration MUST NOT reinterpret a core field.** This is the meaning/identity line made mechanical, and it binds the consumer: no declared value may change how a consumer reads, decodes, orders, labels or attributes any core field. An `ext` key that records an encoding, a truncation, a provenance claim or an alternative timestamp for `start`/`end.time` may be declared and displayed like any other, and acting on it is still forbidden by 5.4 and section 12. `mocon.encoding` (section 3) is the one encoding note core itself names, and reading it is likewise optional and changes no rule.
+
+**What a declaration cannot say.** An entry names a whole `ext` key. A value inside an object or an array is not declarable: a host that wants a nested field totalled or grouped by lifts it to its own `ext` key. Reaching inside a value would need a path language, and a path language is how a closed vocabulary becomes a junk drawer by another door. A host whose key *names* vary — an index or an id spliced into the key — cannot enumerate them in a declaration either; those keys read as undeclared, which is today's behaviour and costs nothing but the aggregation the host never had.
+
+**Size.** A host with many entries SHOULD emit its declaration once per stream rather than once per execution, which section 10 permits either way.
+
+**Display order is not declared.** There is no priority or salience field, and a host with forty keys gets no say in how a viewer lays them out. That is a real cost: a generic viewer at eleven declared keys on one record — a shape the conformance corpus already contains — shows a wall of rows, and two viewers may order them differently. It is left out because ordering is a viewer choice, not an interoperability property: mocon exists so that two consumers agree on *values*, and two layouts of the same correct totals are a cosmetic difference, not a second answer. A viewer that wants a deterministic order without asking the host for one sorts aggregatable keys (`sum`, `last`) before the rest and then by key name, which needs no declaration and no new field.
+
+Appendix A's stream is deliberately left as a 1.0 stream with no declaration, so that the worked example still shows what an undeclared `ext` key looks like; `conformance/streams/declared-dimensions.jsonl` is the worked declaration.
 
 ### 5.2 `execution`
 
@@ -216,7 +279,9 @@ All timestamps are RFC 3339 strings in UTC with a `Z` suffix and up to nine frac
 
 ## 8. Enum policy
 
-Closed sets, which never grow within a major version: `end.disposition`, `end.outcome`, `observes_crossings`, `crossing_edge`. A host MUST NOT emit other values in these fields. A consumer that sees an unknown value in one of these closed fields MUST treat the containing object (`end`, or the capability key) as absent and SHOULD flag it. A missing closed field, and an `end` that is not an object at all, are read the same way — in neither case is there a value to read.
+Closed sets, which never grow within a major version: `end.disposition`, `end.outcome`, `observes_crossings`, `crossing_edge`. A host MUST NOT emit other values in these fields.
+
+Two further sets are closed to hosts but grow by minor version, the same category `attested` is in: `dimensions.<key>.agg` and `dimensions.<key>.card` (5.1.1). A host MUST NOT emit a value outside the list its declared `spec_version` knows. A consumer that meets an `agg` it does not know reads **that entry** as absent, which makes its key undeclared; a `card` it does not know reads as `"high"`. Neither is a validation failure, because a checker must never reject a stream over a vocabulary a later minor version may have added. A consumer that sees an unknown value in one of these closed fields MUST treat the containing object (`end`, or the capability key) as absent and SHOULD flag it. A missing closed field, and an `end` that is not an object at all, are read the same way — in neither case is there a value to read.
 
 An execution or crossing whose `end` is read as absent this way is a start notice for every later rule: section 4 rule 5 makes it unresolved, and its prohibition on ever showing such a record with a disposition applies. This is the one case where a line that carries `end` on the wire is not a complete record (section 2), and the record's own `end` is the object the consumer drops — not the line.
 
@@ -249,6 +314,8 @@ The first and fifth bullets are the only obligations here that no consumer can v
 
 `spec_version` on the `host` record is `"MAJOR.MINOR"`. Within a major version, changes are additive only: new optional fields, new record kinds, new recommended values for open sets, new entries usable in `attested`. Never new required fields, new values in closed sets, or a change to the supersede rule. Because consumers ignore unknown fields and kinds, a 1.0 consumer reads any 1.x stream. A consumer seeing a different major SHOULD warn and MAY refuse. A stream with no `host` record is read as the consumer's own major.
 
+**1.1** adds three things and changes nothing: `dimensions` on the `host` record (5.1.1), the reserved `mocon.` `ext` namespace and its four envelope notes (section 3), and the `ext.declared` entry in `provenance.md` 4's `attested` list. A host that uses none of them declares `"1.0"` and is unaffected. The version moves because `ext.declared` is an `attested` entry and `provenance.md` 4 makes such an entry usable only once a core minor version carries it; the two other additions would each have been legal in an extension, and are in core because they only work alongside it.
+
 Extensions live under `spec/extensions/` and are additive kinds or fields. Core consumers ignore them. The first extension is the `event` kind, `extensions/events.md`.
 
 ## 12. What a consumer may rely on, and must not
@@ -263,6 +330,7 @@ A consumer MAY rely on:
 - `truncated` and `redacted` are authoritative. Absent or false means `value` is the host's full capture of the value it holds, which may itself be a reference to content the host did not inline (5.4).
 - Under `observes_crossings: "all"`, no invocation through the host-provided surface went unrecorded for that host's executions, short of lost lines.
 - Attested fields are host-observed relative to the declaring host.
+- A declared `ext` key (5.1.1) means what its entry says, for every record under that host string: a `sum` key is additive, a `last` key is a level, a `low`-cardinality `none` key is safe to group by. That is the host's claim about its own values, and `provenance.md` says how much it is worth.
 
 A consumer MUST NOT:
 
@@ -273,19 +341,25 @@ A consumer MUST NOT:
 - Assume one crossing record is one dispatch to the target, or one invocation by the program. The declared edge says which side the record describes; core carries no count for the other (5.1).
 - Parse or interpret `value` beyond displaying it.
 - Conclude "no external calls happened" from the absence of crossings unless the host declared `observes_crossings: "all"` and `unmediated_egress: false`.
-- Treat `ext` keys as meaningful, assume a declaration exists, assume ids have a shape, or assume the declaring host is trustworthy. Host-observed means observed by that host, relative to its own isolation.
+- Treat an **undeclared** `ext` key as meaningful, assume a declaration exists, assume ids have a shape, or assume the declaring host is trustworthy. Host-observed means observed by that host, relative to its own isolation.
+- Infer a dimension from a key's name, however conventional the name looks; total or group by a value that does not match its declared `agg`; group by a key whose `card` is `high` or absent; or use any declared value to change how it reads a core field (5.1.1).
 
 ## 13. Emitting without a library
 
-The protocol is small enough that a host can conform with no dependency. An emitter for a host with an `execute({code})` tool and a `callTool(name, args)` bridge, in plain JavaScript. The host supplies two things this snippet does not define: `runInSandbox`, which runs the program, and `rawCallTool`, the unwrapped bridge.
+The protocol is small enough that a host can conform with no dependency. An emitter for a host with an `execute({code})` tool and a `callTool(name, args)` bridge, in plain JavaScript. The host supplies three things this snippet does not define: `runInSandbox`, which runs the program, `rawCallTool`, the unwrapped bridge, and `meter`, the host's own reading of what a dispatch cost.
 
 ```js
 import { randomBytes, createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 
 const HOST = "example/mcp";
-const DECL = { kind: "host", spec_version: "1.0", observes_crossings: "all", unmediated_egress: false,
-               crossing_edge: "invocation", attested: ["crossing.target", "crossing.input"] };
+const DECL = { kind: "host", spec_version: "1.1", observes_crossings: "all", unmediated_egress: false,
+               crossing_edge: "invocation",
+               attested: ["crossing.target", "crossing.input", "ext.declared"],
+               // 5.1.1: what this host's own ext keys mean, so a consumer that has never met it can
+               // total them. `observed` is honest here only because `meter` is the host's own
+               // reading; a number copied out of a target's reply is not observed and is left false.
+               dimensions: { "example.credits_used": { agg: "sum", unit: "{credit}", observed: true } } };
 const hex = (n) => randomBytes(n).toString("hex");
 const now = () => new Date().toISOString();
 // Never throws: an emitter fault must not change a recorded outcome or reach the caller.
@@ -309,11 +383,11 @@ export async function execute(code, rawCallTool, classify = () => ["failed", "ru
   const id = hex(16), start = now(), open = new Map(), program = payload(code, true);
   let seq = 0;
   emit({ kind: "execution", id, program, language: "javascript", start });
-  const settle = (cid, end) => {
+  const settle = (cid, end, ext) => {
     const c = open.get(cid);
     if (c === undefined) return;             // already abandoned (5.3): its key is closed, and this
     open.delete(cid);                        // core-only emitter does not record the late settlement
-    emit({ kind: "crossing", id: cid, execution_id: id, ...c, end });
+    emit({ kind: "crossing", id: cid, execution_id: id, ...c, ...(ext && { ext }), end });
   };
   const callTool = async (target, args) => {
     const cid = hex(8);
@@ -321,8 +395,10 @@ export async function execute(code, rawCallTool, classify = () => ["failed", "ru
     try {
       const out = await rawCallTool(target, args);
       const output = payload(out);           // captured before the outcome is chosen, so a Payload
-      settle(cid, { time: now(), outcome: "output", output });   // fault cannot relabel it (5.3)
-      return out;
+      let credits; try { credits = meter(target); } catch {}    // fault cannot relabel it (5.3);
+      settle(cid, { time: now(), outcome: "output", output },   // and a meter fault must not either
+             credits === undefined ? undefined : { "example.credits_used": credits });
+      return out;                            // the declared key, written where the host computes it
     } catch (e) {
       settle(cid, { time: now(), outcome: "error",
                     error: { class: "capability_error", message: String(e?.message ?? e) } });
@@ -347,7 +423,9 @@ export async function execute(code, rawCallTool, classify = () => ["failed", "ru
 }
 ```
 
-The emitter holds state only inside one call to `execute`, emits every record whole, abandons every still-open crossing before emitting the execution's complete record on both paths, observes but does not record a settlement that arrives for a crossing already abandoned (5.3's SHOULD is for a host willing to take on the `events.md` extension; this core-only emitter is not), and never writes anything a consumer would have to merge. It is total: no input makes it throw its own error into the caller or skip a record, because `payload` cannot fail, `emit` cannot fail, and `settle` removes a crossing from `open` before writing it, so a second sweep cannot write it twice. Two places are deliberately the host's to fill in: `classify` maps a thrown value onto a disposition, and is how a host with its own limits reaches `terminated`; `abandoned` is reached by a reconciliation pass this snippet does not have (5.2). The start notice for the execution is the only optional line; a host that does not want live views omits it.
+The emitter holds state only inside one call to `execute`, emits every record whole, abandons every still-open crossing before emitting the execution's complete record on both paths, observes but does not record a settlement that arrives for a crossing already abandoned (5.3's SHOULD is for a host willing to take on the `events.md` extension; this core-only emitter is not), and never writes anything a consumer would have to merge. It is total: no input makes it throw its own error into the caller or skip a record, because `payload` cannot fail, `emit` cannot fail, `meter` is called inside a `try` so that a metering fault can neither relabel an outcome nor reach the caller, and `settle` removes a crossing from `open` before writing it, so a second sweep cannot write it twice. Two places are deliberately the host's to fill in: `classify` maps a thrown value onto a disposition, and is how a host with its own limits reaches `terminated`; `abandoned` is reached by a reconciliation pass this snippet does not have (5.2).
+
+The declaration in `DECL` is the whole of what 1.1 asks of an emitter, and the `ext` write beside `settle` is the only new line on the hot path. Note what `observed: true` is claiming: `meter` is the host's own accounting, which a program cannot write through. A host whose cost number came out of the target's reply, or out of the program's return value, leaves `observed` false or off, and the key reads as a program claim — which is what it is. The start notice for the execution is the only optional line; a host that does not want live views omits it.
 
 ## Appendix A. A complete stream
 
@@ -386,3 +464,4 @@ These are the claims the core is built on, not claims about any one implementati
 - **X2. Two edges.** A crossing record describes either the program-facing invocation or the host's dispatch toward the target. The host declares which.
 - **X3. Environment is not fixed.** The callable surface can change during an execution. Core does not record it.
 - **X4. No universal output channel.** Non-crossing outputs such as standard output are optional, per channel.
+- **X5. Meaning is declared, identity is fixed.** A host declares what its own `ext` keys mean, so a consumer that has never heard of it can aggregate and group them. No declaration reaches identity: not what an execution or a crossing is, not the closed dispositions and outcomes, not the reading of any core field. Core fixes the spine; everything above it is declared.

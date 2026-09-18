@@ -145,6 +145,9 @@
         "start": {
           "$ref": "#/$defs/timestamp"
         },
+        "links": {
+          "$ref": "links.json"
+        },
         "ext": {
           "type": "object"
         },
@@ -203,6 +206,9 @@
         },
         "end": {
           "$ref": "#/$defs/end"
+        },
+        "links": {
+          "$ref": "links.json"
         },
         "ext": {
           "type": "object"
