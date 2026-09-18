@@ -6,7 +6,7 @@ the normative source for everything in this directory. Where this file and
 
 ## 1. What this is
 
-`../streams/` holds 23 golden mocon streams. `../expected/` holds, for each
+`../streams/` holds 26 golden mocon streams. `../expected/` holds, for each
 one, the canonical view a stateful mocon consumer builds from it (core.md
 section 4's supersede rule applied once per key). Neither of those is an
 OTLP export. `../README.md` section 6 says so directly: "OpenTelemetry
@@ -15,7 +15,7 @@ export ... is a separate concern with its own normative document."
 This directory is that separate concern. Each file here is the literal
 OTLP `ExportTraceServiceRequest` JSON a conforming stateless sink emits for
 one golden stream, built attribute by attribute from `otel-mapping.md`. It
-currently covers 3 of the 23 streams:
+currently covers 3 of the 26 streams:
 
 | file | stream | what it exercises |
 |---|---|---|

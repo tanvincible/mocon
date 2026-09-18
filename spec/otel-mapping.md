@@ -155,6 +155,8 @@ Every attribute is present when its source field is present, and absent otherwis
 
 The `mocon.host.*` attributes come from the declaration, not from the line. When the sink has not seen the declaration for this host string, it omits them. `mocon.host` itself is on every line and is never omitted. `mocon.host.*` attributes appear on execution spans only. A crossing span carries `mocon.host` and its provenance labels, which already fold the declaration in.
 
+The declaration's own `ext` keys do not export. The five attributes above are the whole of what a `host` record contributes, and `mocon.ext.<key>` on a span always comes from that span's own line. A sink MUST NOT lift `host.ext` keys onto execution spans, because it would then have to choose a provenance label for them and the span's `mocon.provenance.ext.p` array names keys of the line, not of the declaration. A sink that wants to carry them exports the declaration under its own name in `ext` on each line, or leaves them out.
+
 `core.md` has no field for the tool's name or the caller's tool-use id, so an execution span carries no `gen_ai.tool.name` or `gen_ai.tool.call.id`; a sink MUST NOT invent them.
 
 ## 7. Crossing span

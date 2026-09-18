@@ -1,0 +1,1 @@
+core.md 5.1: unmediated_egress is a boolean. The string "false" is truthy in most readers and is not the declaration.

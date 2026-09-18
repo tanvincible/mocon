@@ -1,0 +1,1 @@
+core.md 3: a mocon line is one JSON object. NaN and Infinity are not JSON; a parser that accepts them as an extension counts this line as a record instead of skipping it, and two consumers then disagree about `skipped`.

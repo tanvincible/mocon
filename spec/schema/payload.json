@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "value": {
-      "description": "Any JSON value. Binary values are base64-encoded strings; a reference the host holds instead of content (a URL, a file id) is carried as that reference. core.md says both cases carry a note in the record's own top-level ext, not on the Payload itself, which has none. Opaque: a consumer MUST NOT interpret it beyond displaying it."
+      "description": "Any JSON value. Binary values are base64-encoded strings; a reference the host holds instead of content (a URL, a file id) is carried as that reference. Core carries no marker distinguishing the three cases and a consumer MUST NOT infer which one a value is (core.md 5.4); a host MAY note its own encoding under the record's top-level ext, which core consumers ignore. Opaque: a consumer MUST NOT interpret it beyond displaying it."
     },
     "truncated": {
       "type": "boolean",

@@ -13,28 +13,30 @@ truth: `core.md` and `provenance.md` are the actual spec.
 
 ```
 conformance/
-  streams/    23 golden *.jsonl streams, each a legal mocon stream
-  expected/   the canonical view (see below) each stream must produce
-  invalid/    one *.jsonl line per file that MUST fail validation, plus a
-              sibling *.reason.txt naming the rule it breaks
-  check.py    the runner: validate | view | permute [N] | invalid | lint | all
-  README.md   this file
+  streams/         26 golden *.jsonl streams, each a legal mocon stream
+  expected/        the canonical view (see below) each stream must produce
+  invalid/         one *.jsonl line per file that MUST fail validation, plus a
+                   sibling *.reason.txt naming the rule it breaks
+  check.py         the runner: validate | view | order | permute [N] | invalid | lint | all
+  requirements.txt what check.py needs for its full run
+  README.md        this file
 ```
 
-## 2. The 23 golden streams
+## 2. The 26 golden streams
 
 The first 16 rows below are shaped after real code-mode implementations
 (noted below as "X-shaped"), so the fixtures exercise real, not
-hypothetical, combinations of the host declaration's fields. The last 7
+hypothetical, combinations of the host declaration's fields. The next 7
 rows extend that set to implementation classes the first 16 did not cover
 (durable jobs, notebook kernels, multi-block executors, WASM hosts); each
 is a golden stream that validates, permutes and self-concatenates cleanly,
 and each earns its place by exercising some shape the original 16 lacked.
-Every stream opens with its `host` line, because none of these 23 cases is
-*about* that line's absence (core.md 5.1's requirement that a host
-declaration precede every other record for that host is instead exercised
-structurally: `check.py view` would have nothing to resolve `hosts`
-against if it were skipped, and no fixture here omits it).
+The last 3 rows are not shaped after a named product: each exists to pin a
+rule that two conforming implementations could otherwise read differently,
+and each is named in core.md at the rule it pins.
+Every stream opens with the `host` line for each host string it carries,
+which `check.py order` now checks directly against file order (section 4);
+no fixture here is *about* that line's absence.
 
 | stream | exercises |
 |---|---|
@@ -60,7 +62,16 @@ against if it were skipped, and no fixture here omits it).
 | `language-absent` | AutoGen-shaped multi-block executor. The only golden stream with no `language` field at all (a python+bash+python submission has no honest single label), `failed` with `end.result` carrying the executor's aggregate envelope and no `end.outputs`, a trailing block recorded `executed: false` in `ext`. |
 | `egress-unknown` | OpenAI code-interpreter-shaped notebook kernel. The only golden stream whose `host` line omits both `unmediated_egress` (reads as unknown, treated like `true`) and `crossing_edge`; also the by-reference output shape core.md 5.4's reference-value rule covers, a URL as the `image` channel's value instead of inlined bytes. |
 | `crossing-error` | Extism-shaped WASM host. The only golden stream with a crossing settling `end.outcome: "error"`, carrying `end.error` with an open class (`conflict`) and an `error.value` Payload, under a fully attested host; the execution still `completed` because the program caught the error. `all`/`unmediated_egress: true`/`invocation`, `ext` memory offsets. |
-| `base64-input-null-value` | Wasmtime-shaped WASM host (component model). Exercises core.md 5.4's base64 pattern on a crossing input (`ext.wasmtime.input_encoding: "base64"`, `bytes` the pre-encoding length), an output whose `value` key is present holding JSON `null` (a consumer must not read that as absent), WIT-style targets containing `@`, `#` and `[]`, `language: "rust"`. |
+| `base64-input-null-value` | Wasmtime-shaped WASM host (component model). Exercises core.md 5.4's base64 pattern on a crossing input (`bytes` the pre-encoding length), an output whose `value` key is present holding JSON `null` (a consumer must not read that as absent), WIT-style targets containing `@`, `#` and `[]`, `language: "rust"`. The stream's `ext.wasmtime.input_encoding: "base64"` is a vendor key and nothing more: core carries no encoding marker and a core consumer MUST NOT read one (core.md 5.4, 12), so to this suite that input is a 44-character string whose `bytes` and `hash` describe the 32 bytes it encodes. |
+| `two-hosts` | Two hosts' streams merged into one file, which core.md 3 explicitly allows. The only golden stream with more than one `host` string: it exercises `check.py permute` and `check.py order` across host strings, and it is what "Id scope" below is about — its execution and crossing ids are distinct across the two hosts, because this suite's view is keyed by bare `id`. |
+| `notice-drift` | Two differing start notices for one execution key, no complete record ever: the host emits a provisional notice and re-emits it once it learns `context.session`, which core.md 4.2 contemplates. core.md 4.3 settles it — the same content-only tie-break as for two completes, and not a conflict. Before that sentence existed, two suite-passing, permutation-stable consumers attributed this execution to different sessions. |
+| `oom-terminated` | A container-based host whose own 512 MiB memory limit was enforced by the kernel's OOM killer rather than by the host itself. core.md 5.2 now fixes this as `terminated` with `error.class: "resource_limit"` — the limit was the host's, whoever performed the stop — where the earlier text supported `failed` just as well. `observes_crossings: "none"`, `unmediated_egress: true`, an empty-but-captured `stderr`, exit code and cgroup detail in `ext`. |
+
+`batch-at-end` doubles as the fixture for one more settled rule: its
+`end.outputs.stdout` is an empty-but-present channel next to a non-empty
+`stderr`. core.md 5.2 makes that a MUST — a host that captures a channel
+emits it on every complete record, empty or not — so in this suite an
+absent channel means "this host does not capture it" and nothing else.
 
 ## 3. The canonical view
 
@@ -90,8 +101,18 @@ Rules:
   read together: the view always shows the best record available, and
   `unresolved` separately flags which entries are notice-only so a viewer
   can render them as running/unknown rather than as a finished record.
-  The stored value is the record's fields exactly as written on the wire
+  The stored value is the record's fields as a consumer reads them
   (including its own `kind`, `host` and `id`), not a re-shaped summary.
+  "As a consumer reads them" is core.md 8: an object carrying an unknown
+  value in a closed field is absent, so a record whose `end` fails that
+  rule is stored without its `end` and counts as a notice, and a `host`
+  record with an unknown `observes_crossings` or `crossing_edge` is stored
+  without that key. core.md 8 also asks a consumer to *flag* such a line;
+  `flagged` is a counter of the consumer's own (`@mocon/core`'s `fold`
+  exposes one) and is deliberately not a field of this suite's view, since
+  no golden stream can contain the case — a line that triggers it is one
+  `check.py validate` rejects, and lives under `invalid/`. `check.py
+  invalid` asserts the view behaviour on those fixtures instead.
 - **`unresolved`.** One `{"kind","host","id"}` entry for every execution or
   crossing key that has a notice and no complete record, sorted by
   `(kind, host, id)` for a deterministic diff. `hosts` has no notice/complete
@@ -102,76 +123,102 @@ Rules:
   deduplicated first and never produce a conflict entry. Sorted the same way.
   A host redeclared with different capabilities is a conflict too (core.md
   5.1); such an entry carries `"id": null` since host records have no id.
-  None of the 23 golden streams exercises this — `check.py` supports it so a
+  None of the 26 golden streams exercises this — `check.py` supports it so a
   future fixture or a real stream containing one does not crash the runner.
-- **`skipped`.** The count of lines with an unknown `kind` or that failed to
-  parse as JSON at all (core.md 3). A line with a known kind that fails
-  *schema* validation is not one of these two things and is out of scope for
-  this counter; the golden streams never contain such a line (that is what
-  `invalid/` is for).
+- **`skipped`.** The count of lines that failed to parse as JSON at all, that
+  carry an unknown `kind`, or that have no string `host` — or no string `id`
+  on a kind that needs one, since a record a consumer cannot key is one it
+  cannot hold (core.md 3). A line with a known kind that fails *schema*
+  validation is not one of those things and is out of scope for this counter;
+  the golden streams never contain such a line (that is what `invalid/` is
+  for). What counts as blank, and what `NaN`, `Infinity` or a byte-order mark
+  do, are fixed by core.md 3 rather than by the reading language's own trim
+  function, so that two implementations produce the same number; `invalid/`
+  carries the `NaN` case.
 
 ### Id scope
 
 `executions` and `crossings` are keyed by bare `id`, because core.md 6 scopes
-ids to `(host, kind)`, not globally, and every stream in this suite is
-single-host. A consumer merging multiple hosts into one view MUST key on
-`(host, id)` instead, or two different hosts that independently chose the
-same id would collide. This suite does not need that because it never mixes
-hosts within one file.
+ids to `(host, kind)`, not globally, and no stream in this suite gives two
+hosts the same id. A consumer merging multiple hosts into one view MUST key
+on `(host, id)` instead, or two different hosts that independently chose the
+same id would collide — `@mocon/core`'s `fold` keys on `host + "\0" + id` for
+exactly that reason, and a comparison against `expected/` strips the prefix.
+
+This is a property of the *suite's view shape*, not a licence for `check.py`
+to be wrong about it. `check.py`'s view builder resolves by `(host, id)` and
+raises a named `SuiteScopeError` if two of those keys would project onto one
+bare `id`, rather than silently producing an order-dependent answer in which
+one of the two records disappears. `two-hosts` is the golden stream that
+keeps `check.py permute` honest about more than one host string.
 
 ### Conflicts and order
 
-core.md 4.3 requires keeping exactly one of two conflicting complete
-records, chosen by a function of their content alone; the tie-break this
-suite uses (its recommended one) is canonical-JSON (keys sorted, no
-whitespace) sort order. core.md
-4.4 separately requires that a consumer produce the same view for any
-permutation of a stream. Because the tie-break is a pure function of content,
-not of where a record falls in the file, both hold together: `check.py`'s
-view builder (`pick()`) sorts each key's distinct complete records by
-canonical JSON and keeps the first, which is why `check.py permute` passes on
-`conflicting-resend` even though that stream's two records arrive in a fixed
-order on disk. A producer's own consumer-side tooling MAY choose a different
-content-deterministic function; what it MUST do, per core.md 4.3, is keep
-exactly one by such a function, and count and surface the conflict.
+core.md 4.3 requires keeping, of two conflicting complete records, the one
+whose canonical JSON (keys sorted, no whitespace) sorts first. That is one
+named function, not one choice among content-deterministic functions: a
+consumer picking last-sorting instead is content-only and permutation-stable
+and still shows a different disposition for the same execution, which is the
+interoperability the format exists to provide. core.md 4.4 separately
+requires the same view for any permutation of a stream. Because the tie-break
+is a pure function of content, not of where a record falls in the file, both
+hold together: `check.py`'s view builder (`pick()`) sorts each key's distinct
+complete records by canonical JSON and keeps the first, which is why
+`check.py permute` passes on `conflicting-resend` even though that stream's
+two records arrive in a fixed order on disk. `expected/conflicting-resend.json`
+is therefore the one view a conforming consumer produces, not one of several.
 
-A second, smaller gap in the same neighborhood: core.md defines the
-supersede rule for *complete* records, and separately says a start notice is
-"optional" and carries "the fields known when the record began." It does not
-say what happens when two *notices* for the same key disagree (for example,
-a host that re-emits a running execution's notice with an updated
-`context.session`). No fixture in this suite has two differing notices for
-one key, so `check.py` is never exercised on that path; for symmetry its
-`resolve()` helper applies the same dedupe-then-lexicographic-pick logic to
-notices as to completes, but that is an implementation convenience, not a
-claim about what core.md requires.
+Two differing *notices* for one key take the same tie-break and are not a
+conflict — core.md 4.3 says so, where it used to say nothing. `check.py`'s
+`resolve()` has always applied the same dedupe-then-pick logic to notices as
+to completes; that is now what core.md requires rather than an implementation
+convenience, and `notice-drift` is the fixture that holds it.
 
 ## 4. Running
 
 ```sh
 cd spec/conformance
+pip install -r requirements.txt   # jsonschema + referencing; see below
+
 python3 check.py all        # everything below; exit 0 iff all of it passes
+                             # (lint prints, but does not decide the exit code)
 python3 check.py validate   # streams/*.jsonl validate against schema/line.json
                              # (jsonschema, if importable) plus the built-in
                              # structural checks (always)
 python3 check.py view       # rebuild each stream's canonical view, diff vs expected/
+python3 check.py order      # read each stream in file order and check core.md 10's
+                             # two ordering MUSTs, which no view can express
 python3 check.py permute 5  # shuffle each stream 5x and re-check the view;
                              # also concatenate each stream with itself
-python3 check.py invalid    # every invalid/*.jsonl line must fail validation
+python3 check.py invalid    # every invalid/*.jsonl line must fail validation, and
+                             # a bad `end` must leave the record unresolved in a view
 python3 check.py lint       # provenance.md 7's lint rules, plus end.time >= start,
-                             # over streams/*.jsonl (warnings; a clean golden
-                             # suite should print none)
+                             # over streams/*.jsonl (warnings about legal streams;
+                             # a clean golden suite should print none)
 ```
 
-`check.py` is stdlib-only. It uses the third-party `jsonschema` package (and
-the `referencing` package it depends on, for resolving `$ref`s across the
-schema files without the deprecated `RefResolver`) when importable, and
-prints a one-line notice and falls back to the built-in structural checks
-alone when it is not. The structural checks independently cover every rule
-schema validation would (required keys per kind, the closed enums,
-end-completeness, the Payload rule, the timestamp `Z` suffix, and the
-`hash` pattern; core.md 3, 4, 5, 7, 8), so `invalid/` fails the same way
-whichever path runs.
+`check.py` imports nothing outside the standard library at module scope, but
+`requirements.txt` is a real requirement, not an optimisation: it names the
+third-party `jsonschema` package and the `referencing` package it depends on
+(for resolving `$ref`s across the schema files without the deprecated
+`RefResolver`). Without them `check.py` prints a two-line notice saying the
+run was degraded and falls back to the built-in structural checks alone.
+
+The structural checks are written to be independently sufficient: required
+keys per kind, the type of every core field, the closed enums,
+end-completeness, the Payload rule, the timestamp `Z` suffix, the `hash` and
+`spec_version` patterns, and `seq`/`bytes` ranges (core.md 3, 4, 5, 7, 8).
+They are not a summary of the schema — they are a second implementation of
+the same rules, and `invalid/` is rejected identically on both paths, which
+is what the per-fixture output lets you check. Two fixtures are rejected by
+the structural path *only*: `hash-with-trailing-newline` and
+`timestamp-with-trailing-newline`. That is not a gap in the schema files —
+JSON Schema specifies ECMA-262 regular expressions, where `$` matches at the
+end of the string — but in python-`jsonschema`, which evaluates `pattern`
+with Python `re`, where `$` also matches just before a trailing newline. Every
+`$`-anchored pattern in `../schema/` is therefore under-enforced by the Python
+schema path; `check.py`'s own patterns anchor with `\Z` instead, and those two
+fixtures pin it.
 
 ## 5. Producer conformance
 
@@ -181,9 +228,14 @@ all four points for each one independently), when: (1) `python3 check.py
 validate` reports no failures on its emitted stream; (2) `check.py`'s view
 builder (or `check.py permute`) reports zero conflicts, where a conflict
 means a reused id or a second, differing complete record for a key it
-already closed (core.md 6, 10); (3) its `host` declaration is the first
-line that host string appears on in every stream it opens, re-declared
-identically or not at all thereafter (core.md 5.1); and (4) every
+already closed (core.md 6, 10); (3) `check.py order`, run over its emitted
+stream, reports no problems: its `host` declaration is the first line that
+host string appears on in every stream it opens, re-declared identically or
+not at all thereafter, and every crossing it abandons is written before its
+execution's complete record (core.md 5.1, 5.3, 10). These are the two
+obligations no canonical view can express, because core.md 4.4 requires the
+same view for any permutation, which is why they have a command of their own
+and are checked against the stream as written; and (4) every
 `attested` entry it emits is one its declared `spec_version` knows and is
 true of every record it emits under that host string (provenance.md 4; a
 host with both an observed and a parsed path for one field uses two host
@@ -201,6 +253,13 @@ new obligation.
   lines.
 - **Malformed-JSON lines as a golden-stream fixture.** `skipped` covers them
   by rule (section 3 above) and `check.py`'s line parser handles them, but
-  no `streams/*.jsonl` file contains one, since none of the 23 named cases
+  no `streams/*.jsonl` file contains one, since none of the 26 named cases
   calls for it. `check.py view`'s permutation and
   self-concatenation checks would catch a regression here if one were added.
+  `invalid/nan-and-infinity` covers the one shape where two parsers plausibly
+  disagree about whether a line is a record at all.
+- **The emitter in core.md section 13.** It is a worked example inside a
+  normative document, not a fixture here, so nothing in this suite runs it.
+  It is written to be total — every input produces valid records and none
+  makes it throw its own error into the caller — but that is a property of
+  the snippet, checked by reading and by running it, not by `check.py`.

@@ -1,0 +1,1 @@
+core.md 5.2: end is an object carrying time and disposition. A string carries neither, and a validator must say so rather than raise.

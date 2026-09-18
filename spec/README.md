@@ -22,7 +22,8 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY in every file under `sp
 - `conformance/expected/` — the parsed view each stream in `streams/` must produce, for consumer conformance.
 - `conformance/invalid/` — lines a producer MUST NOT emit; `check.py invalid` proves the schema and structural checks reject them. A consumer that receives one anyway applies `core.md` section 8 (treat the offending object as absent) or section 3 (skip a line that is not a JSON object or carries a `kind` it does not know).
 - `conformance/otlp/` — expected OpenTelemetry export for sink conformance against the id derivation in `core.md` section 6.
-- `conformance/check.py` — the conformance test runner.
+- `conformance/check.py` — the conformance test runner: `validate | view | order | permute [N] | invalid | lint | all`.
+- `conformance/requirements.txt` — what `check.py` needs for its full run. Without it the schema pass is skipped and the run says so.
 
 ## Conformance levels
 
@@ -34,4 +35,4 @@ mocon defines three conformance levels. An implementation can claim any subset o
 
 ## Reading this if you are writing an adaptor
 
-Read `core.md` sections 3 to 5 first: the wire format, the whole-record and start-notice rule, and the three record kinds. Then read section 13, which is a complete emitter with no library dependency, in plain JavaScript, for a host with an `execute({code})` tool and a `callTool` bridge. Section 13's emitter and the semantics in `core.md` sections 3 to 5 are enough on their own to write a conforming producer.
+Read `core.md` sections 3 to 5 first: the wire format, the whole-record and start-notice rule, and the three record kinds. Then read section 13, an emitter with no library dependency, in plain JavaScript, for a host with an `execute({code})` tool and a `callTool` bridge. It is the shape of a conforming producer, and it is written so that no input makes it emit an invalid line or throw its own error into the caller; what it leaves to the host is marked in the snippet. It is not a conformance fixture, and nothing in `conformance/` runs it — the thing to check your own adaptor against is `conformance/README.md` section 5, which names the four commands.

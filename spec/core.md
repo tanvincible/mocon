@@ -2,6 +2,8 @@
 
 Status: draft 1.0, 2026-09-17. Not yet stable. Additive changes only once marked 1.0.
 
+Three changes in this draft are not additive and an implementation written against an earlier draft must pick them up: section 4 rule 3 fixes the conflict tie-break as a MUST and extends it to start notices; section 3 fixes what counts as blank, what counts as malformed, and what a byte-order mark does, rather than leaving it to the reading language; and section 5.2 requires a host that captures an output channel to emit it on every complete record, empty or not.
+
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are to be interpreted as described in RFC 2119.
 
 ## 1. Purpose
@@ -16,9 +18,9 @@ The invariants behind each field are listed in Appendix B. Field tables cite the
 
 ## 2. Terms
 
-- **Host.** The party that emits records and whose clock, ids and isolation the records are relative to. Usually the process that runs the program. May be a client-side observer that only sees the execution from outside.
+- **Host.** The party that emits records and whose clock, ids and isolation the records are relative to: the process that runs the program, or a party in its path that holds the same program text and can attribute each crossing it records to one of its own executions. A party that never holds the program text, or that cannot attribute a crossing to an execution, has nothing true to write in `program` or `execution_id`; it is out of scope for core 1.0 rather than a host that may leave those fields empty.
 - **Execution.** One dispatch of one program by a host. Never the session or conversation that contains it.
-- **Program.** The text the agent submitted for that execution. A submission MAY be an ordered sequence of segments (fenced code blocks, notebook cells) the host runs in order and may stop before the last one runs; `program` names the whole submission, not only the part that ran.
+- **Program.** The text the host dispatched for that execution. Usually what the agent submitted; a host that dispatches on its own — a reactive runtime re-running a dependent cell, a scheduler resuming a checkpoint — records the text it dispatched, which for that execution no agent submitted. A dispatch MAY be an ordered sequence of segments (fenced code blocks, notebook cells) the host runs in order and may stop before the last one runs; `program` names the whole of what was dispatched, not only the part that ran.
 - **Crossing.** One invocation, initiated by the program, that crosses from the program to the host-provided surface: a tool call, a binding method, a proxied fetch, a file read served by the host. What the host records about it depends on where the host sits, which the host declares.
 - **Target.** The host-defined identifier of what a crossing invoked.
 - **Consumer.** Anything that reads records: a viewer, an analyzer, a sink.
@@ -29,7 +31,9 @@ The invariants behind each field are listed in Appendix B. Field tables cite the
 
 ## 3. Wire
 
-A mocon stream is JSON Lines: one UTF-8 JSON object per line, terminated by `\n`, with no raw newlines inside a line (JSON escapes them). Empty lines are skipped. Malformed lines are skipped and counted.
+A mocon stream is JSON Lines: one UTF-8 JSON object per line, terminated by `\n`, with no raw newlines inside a line (JSON escapes them).
+
+A line is **blank** when it holds only spaces, tabs, carriage returns and line feeds. No other character counts as whitespace here, whatever the reading language's own trim or strip function does with it, so that two consumers agree on the count. Blank lines are skipped and not counted. Every other line that is not one JSON object is **malformed**: skipped and counted. `NaN`, `Infinity` and `-Infinity` are not JSON, so a line carrying one is malformed even though some parsers accept them as an extension. A single U+FEFF opening the stream is a byte-order mark, not part of the first line, and is dropped before parsing; a U+FEFF anywhere else is content, and a line that will not parse with it in place is malformed like any other.
 
 Every line carries these reserved top-level keys:
 
@@ -52,7 +56,7 @@ mocon is stateless. No party keeps state across executions, and no consumer has 
 
 1. A line with `end` is a **complete record**. It carries every field the record has, including `program`, `target` and `input`. A host emits it exactly once.
 2. A line without `end` is a **start notice**: the same `(host, kind, id)`, carrying the fields known at start. It is optional and exists so a live viewer can show running work. A notice MAY omit a field the tables mark required on the complete record when its value is not yet known to the host — a program still streaming into the tool call — since omission says the host does not hold the value, whereas `truncated` and `redacted` describe a value it holds (5.4).
-3. **Supersede rule.** A complete record replaces any start notice with the same key. Two complete records with the same key are a conflict: a consumer MUST keep exactly one of them, chosen by a function of the records' content alone — the recommended choice is the record whose canonical JSON (keys sorted, no whitespace) sorts first — and SHOULD count and surface the conflict. Identical re-sends are no-ops.
+3. **Supersede rule.** A complete record replaces any start notice with the same key. Two complete records with the same key are a conflict: a consumer MUST keep the one whose canonical JSON (keys sorted, no whitespace) sorts first, and SHOULD count and surface the conflict. One named function, not a choice among content-deterministic functions: two consumers that picked differently would show different dispositions for one execution, which is the interoperability the format exists to provide. Two differing start notices for one key are resolved the same way and are *not* a conflict. A host MAY re-emit a notice as it learns more (rule 2), but the tie-break, not arrival, decides which one a consumer holds, so a host MUST NOT depend on the later notice winning; anything that must survive belongs on the complete record. Identical re-sends are no-ops.
 4. **Order is irrelevant.** A complete record before its start notice, a start notice with no complete record ever, a crossing before its execution, a `host` record after records it governs: all legal. A consumer MUST produce the same view for any permutation of a stream.
 5. A record that only ever has a start notice is **unresolved**. A consumer MUST show it as running or unknown, never with any disposition.
 6. Two observers of one execution MUST use distinct `host` strings and therefore never share a key. Core defines no cross-host join. Section 6 explains how an OpenTelemetry sink joins them when the execution id was propagated.
@@ -80,8 +84,8 @@ Semantics:
 
 - `observes_crossings: "all"` claims that every invocation routed through the host-provided surface is recorded. `"some"` claims the host mediates but records a subset by policy or mechanism. `"none"` says the host does not mediate calls at a call boundary. The value says nothing about whether other paths out of the program exist; that is `unmediated_egress`.
 - `unmediated_egress: true` says the program has a way to reach the outside that the host does not see: raw network access, subprocess execution, an isolation layer that can be escaped. Consumers use it to refuse the inference "N crossings recorded, therefore N external calls". Absent means unknown, which consumers treat like `true`.
-- `crossing_edge` says which edge a crossing record describes. `"invocation"`: what the program asked for at the call boundary. `"dispatch"`: what the host sent toward the target. A network-layer observer is `"dispatch"`; a retry or refusal can make one invocation map to zero or several dispatches, and under `"invocation"` the record is the program's view.
-- Capabilities cannot vary per execution. A host whose observability differs per executor or per configuration MUST either use a distinct host string per profile or declare the weakest value that covers all its executions. A profile MAY be selected per execution from a parameter the caller supplies, provided the host itself enforces the resulting capability (a network flag its own sandbox honours) rather than recording the caller's claim; the host string then names the enforced profile. A host that cannot determine which profile served a given execution MUST declare the weakest value covering every reachable profile; it MAY still emit `crossing` records and Payload fields at the fidelity it actually observed for an execution, and those records are not eligible for `attested`.
+- `crossing_edge` says which edge a crossing record describes. `"invocation"`: what the program asked for at the call boundary; the record is the program's view, which is why a host MAY emit one without attesting `crossing.target` (`provenance.md` 4). `"dispatch"`: what the host sent toward the target, recorded at the host's own egress point, after any rewrite, retry decision or policy step it applies. The two edges do not agree on cardinality: a retry or a refusal can make one invocation map to zero or several dispatches, and a host that bundles invocations into one request can make several map to one. Core carries no count for the other edge; a host with one puts it in `ext`.
+- Capabilities cannot vary per execution. A host whose observability differs per executor or per configuration MUST either use a distinct host string per profile or declare the weakest value that covers all its executions. A profile MAY be selected per execution from a parameter the caller supplies, provided the host itself enforces the resulting capability (a network flag its own sandbox honours) rather than recording the caller's claim; the host string then names the enforced profile. A host that cannot determine which profile served a given execution MUST declare the weakest value covering every reachable profile, and MUST NOT attest anything under that host string: `attested` is declared once per host string and applies to every record under it (`provenance.md` 4), so there is no per-record eligibility to fall back on. A host that wants to attest the executions it can attribute uses a second host string for them.
 - There is no negotiation: mocon is push-only, the host declares and consumers adapt. A consumer that has not yet seen a declaration applies the "absent reads as" column; a consumer that holds state MUST apply a later-arriving declaration retroactively. A stateless sink (section 4, rule 7) cannot revise output it has already emitted; it applies whatever declaration it has seen so far to each line as that line is emitted.
 
 ### 5.2 `execution`
@@ -105,14 +109,14 @@ Key `(host, "execution", id)`.
 Semantics:
 
 - One execution is one dispatch of one submission (C1). It is never the session, conversation or container that contains it. A submission MAY comprise ordered segments the host runs in sequence and may stop partway through; the host still records one `program` and one `end.disposition`, which describes the dispatch, not the fate of each segment (per-segment detail is the `segments` extension). A program the host runs again — from a log, a retry, or a checkpoint restored as a fresh or additional branch, including a re-run its own substrate performs without the caller asking — is a new execution with its own id. A paused-and-resumed execution (same host string) continues the same execution: the record stays unresolved across the gap (`extensions/events.md`'s `suspended`/`resumed`) and its open crossings stay open.
-- `start` is the host-clock time at which the declaring host first observed the execution. For a host that runs the program, that is acceptance of the submission, including submissions it then rejects. For a client-side observer, it is first observation.
-- `program.value` is the text the host received. It is not guaranteed to be everything that ran (dynamic imports, persisted state) or byte-identical to what the runtime parsed (wrapping, transforms). `program.hash` and `program.bytes` SHOULD always be present so that two executions of the same text can be matched even when `value` is truncated or withheld. Nor is everything in it guaranteed to have run: a multi-segment submission can carry trailing segments the host never reached, and a consumer MUST NOT infer from `end.disposition` that any particular part of `program.value` executed.
-- Dispositions. `completed`: the host confirms normal completion. `failed`: the host confirms a non-normal outcome that the program or its admission produced, including rejection before the program ran. `terminated`: the host itself acted at this moment on its own limit or an external cancel — it stopped waiting, signalled the program or its runtime, or killed it — and closes the record knowing computation may continue after it; a host that gives up waiting at its own deadline without being able to interrupt the program still reports `terminated`. `abandoned`: the host closes the record without having observed an end and without itself acting at that moment, usually during a later reconciliation or after a restart; the later timing is typical, not the criterion. The host draws the `completed`/`failed` line from the program's native execution-level outcome as it can observe it — an exit status the host did not itself force, an interpreter or kernel reply with an error status, an uncaught exception surfaced as data — not merely from whether the host's own dispatch call returned without raising. A separate judgment about whether the produced value was correct (a checker verdict, an expected-output comparison) MUST NOT influence `disposition`; it belongs in `end.result`, `end.outputs` or `ext`. When the host cannot tell whether its own enforcement or the program caused a non-normal end, it reports `failed`, never `terminated`, and SHOULD use `error.class` `unknown`.
+- `start` is the host-clock time at which the declaring host first observed the execution. For a host that runs the program, that is acceptance of the submission, including submissions it then rejects. For a host in the path that does not itself run it (section 2), it is first observation.
+- `program.value` is the text the host dispatched. It is not guaranteed to be everything that ran (dynamic imports, persisted state) or byte-identical to what the runtime parsed (wrapping, transforms). A host that accepts a program incrementally and starts running it before the last of it arrives records what it had received when it closed the record; `bytes` and `hash` describe that same text, and the record says nothing about text the host never received. `program.hash` and `program.bytes` SHOULD always be present so that two executions of the same text can be matched even when `value` is truncated or withheld. Nor is everything in it guaranteed to have run: a multi-segment submission can carry trailing segments the host never reached, and a consumer MUST NOT infer from `end.disposition` that any particular part of `program.value` executed.
+- Dispositions. `completed`: the host confirms normal completion. `failed`: the host confirms a non-normal outcome that the program or its admission produced, including rejection before the program ran. `terminated`: the host itself acted at this moment on its own limit or an external cancel — it stopped waiting, signalled the program or its runtime, or killed it — and closes the record knowing computation may continue after it; a host that gives up waiting at its own deadline without being able to interrupt the program still reports `terminated`. `abandoned`: the host closes the record without having observed an end and without itself acting at that moment, usually during a later reconciliation or after a restart; the later timing is typical, not the criterion. The host draws the `completed`/`failed` line from the program's native execution-level outcome as it can observe it — an exit status the host did not itself force, an interpreter or kernel reply with an error status, an uncaught exception surfaced as data — not merely from whether the host's own dispatch call returned without raising. A separate judgment about whether the produced value was correct (a checker verdict, an expected-output comparison) MUST NOT influence `disposition`; it belongs in `end.result`, `end.outputs` or `ext`. An end caused by a limit the host itself configured is `terminated` even when another component performed the stop — a kernel OOM killer, a cgroup, a supervisor, the sandbox substrate — because the limit was the host's and the host can name it; `failed` is reserved for outcomes the program or its admission produced. When the host cannot tell whether its own enforcement or the program caused a non-normal end, it reports `failed`, never `terminated`, and SHOULD use `error.class` `unknown`.
 - A pre-execution rejection is a complete record with `failed` and `error.class` `validation`.
 - An execution MAY stay unresolved forever. A sink MUST NOT invent a disposition for it. A host that itself enforces a maximum runtime and stops the execution when that limit is reached closes it `terminated` at that moment. A host that later finds an execution past its known maximum runtime with no recorded end, because it restarted or because nothing was watching when the limit passed, SHOULD close it `abandoned` at that later point, because the host is the record-keeper and a sink is not.
 - `context.session` groups executions the host considers related: an MCP session id, a container id, an agent run id. It is whatever the host has; mocon derives nothing. Finer identities go in `ext`.
 - `context.traceparent` is copied from the caller's request, for MCP from `_meta`, unmodified. It is a correlation hint supplied by the caller, not a verified fact. A host that still holds the value it captured at start carries that same value on the complete record, so the supersede rule does not move the record into a different trace; when both a start notice and a complete record carry the field they MUST agree. A host that no longer holds the value it captured at start omits `context.traceparent` from the complete record rather than substituting a later, unrelated caller's value.
-- `end.outputs` carries non-crossing output channels. Recommended channel names: `stdout`, `stderr`, `logs`, `files`. Presence of a channel is the only declaration that the host captures it.
+- `end.outputs` carries non-crossing output channels. Recommended channel names: `stdout`, `stderr`, `logs`, `files`. Presence of a channel is the only declaration that the host captures it, so a host that captures a channel MUST emit that channel on every complete record it writes under that host string, empty or not. An empty capture is an ordinary Payload over an empty value; an absent channel says the host does not capture it. Without that rule an absent `stderr` would mean either "not captured" or "captured and empty", and a consumer building a capability inventory from observed channels would get a different answer per run of the same host.
 
 ### 5.3 `crossing`
 
@@ -134,7 +138,7 @@ Key `(host, "crossing", id)`.
 
 Semantics:
 
-- A crossing is understood alone. `execution_id` is on every crossing line, so a consumer that never sees the execution can still attribute it.
+- A crossing is understood alone. `execution_id` is on every crossing line, so a consumer that never sees the execution can still attribute it. A host that cannot attribute an invocation to one of its own executions MUST NOT emit a crossing record for it: `execution_id` is required and no value truthfully says "unattributed". (`extensions/README.md` 3 reserves `execution_host` for a crossing-only observer that wants to name an execution it watches without claiming to own it; nothing specifies it today.) Core performs no referential check, and a consumer MUST NOT treat one as having happened — a stream may be split, tailed from the middle or merged (section 3), so a crossing whose `execution_id` names no execution in the same file is ordinary. `execution_id` is host-observed in exactly the sense `provenance.md` 2 gives H: faithfully recorded by that host, worth what that host is worth.
 - A host that put `context.traceparent` on an execution SHOULD copy the same value onto every crossing of that execution. A stateless sink cannot look it up from the execution, and without it the crossing cannot be placed in the caller's trace (section 6).
 - `target` is whatever the host uses to name what was invoked: a tool name, `namespace.method`, a server and tool pair, a URL, a path. Core does not interpret it.
 - `input` is fixed at initiation. What the host recorded of it is subject to the Payload rules.
@@ -152,7 +156,7 @@ Atomic: always emitted whole within one line. No required fields. A Payload with
 
 | field | type | prov | license |
 |---|---|---|---|
-| `value` | any JSON value; binary as a base64 string, and a reference the host holds instead of content (a URL, a file id) as that reference, each with a note in the record's `ext` | P or T | C9 |
+| `value` | any JSON value; binary as a base64 string, and a reference the host holds instead of content (a URL, a file id) as that reference | P or T | C9 |
 | `truncated` | boolean, out of band | H | C9 |
 | `redacted` | boolean: the host removed or replaced content by policy | H | C9 |
 | `bytes` | integer: size in bytes of the host's serialization of the original | H | C9 |
@@ -161,9 +165,11 @@ Atomic: always emitted whole within one line. No required fields. A Payload with
 Rules:
 
 - `value` is opaque. A consumer MAY display it and MUST NOT interpret it beyond that. In particular a consumer MUST NOT scan it for markers.
+- Core carries no marker distinguishing inline text, base64-encoded binary and a reference the host holds instead of content. A consumer MUST NOT infer which one a `value` is, and section 12 forbids parsing it to find out, so a base64 string is simply a string to core. A host MAY record its own encoding note under `ext` for consumers that know its namespace, and an extension MAY define a core-level field for it; neither obliges a core consumer to read anything, and section 12's rule against treating `ext` keys as meaningful stands.
+- The `prov` column of a Payload- or Error-typed field in 5.1 to 5.3 describes that field's `value`. The envelope fields in the table above (`truncated`, `redacted`, `bytes`, `hash`) are always H, and no entry in `attested` moves them (`provenance.md` 3).
 - When `truncated` is `true`, `value` is a string holding a prefix of the host's serialization of the original. It need not parse as JSON. `bytes` and `hash`, when present, describe the original, not the prefix.
 - A host that also inserts an in-band marker into a value, such as a truncation note, MUST still set `truncated`. The out-of-band flag is authoritative; the marker is content.
-- `redacted` covers removal, replacement and outright dropping by policy. `{"redacted": true}` with no `value` is legal.
+- `redacted` covers removal, replacement and outright dropping by policy. `{"redacted": true}` with no `value` is legal. A host that drops a value because it could not serialize it — a cycle, a `BigInt`, a `toJSON` that threw — dropped it by its own policy and sets `redacted`. `truncated` is only ever a prefix of a serialization the host did produce.
 - `hash` is comparable only within one host, because serialization is host-defined. For `program`, the serialization SHOULD be the UTF-8 bytes of the text itself. For binary content carried as a base64 string, `bytes` and `hash` SHOULD describe the pre-encoding bytes, not the base64 text. A host that can capture a value at more than one altitude captures at one altitude and serializes one way per field under a given host string.
 - A reference the host holds instead of content is the value: `bytes` and `hash` describe the reference as captured, `truncated` and `redacted` keep their meanings.
 - A program that is withheld for privacy is `{"redacted": true, "hash": "sha256:…", "bytes": N}`.
@@ -175,7 +181,7 @@ Atomic. `class` is required. `message` and `value` are optional.
 | field | type | prov | license |
 |---|---|---|---|
 | `class` | open string; recommended values in `vocabulary.md` | P, attestable to H on executions and to T on crossings | C4 |
-| `message` | string | P | C4 |
+| `message` | string | P, attestable to T on crossings | C4 |
 | `value` | Payload: the raw error object as the host or target produced it | P or T | C4, C9 |
 
 `class` derived from anything the program can write, such as a thrown error or a substring of standard error, is program-determined unless the host attests it. `value` preserves structured target errors, such as an MCP `isError` result or a `{ok: false, status}` object, that would otherwise be lost in export.
@@ -205,12 +211,14 @@ All timestamps are RFC 3339 strings in UTC with a `Z` suffix and up to nine frac
 
 - `execution.start` and `execution.end.time` are on the declaring host's clock (C7): a reading the host's own process took at the moment it observed the event.
 - `crossing.start` and `crossing.end.time`, when present, are on the same clock. Presence is the declaration; there is no separate capability for crossing timing. A timestamp authored by any other process MUST NOT be put in these fields and MAY go in `ext`: a time the sandbox or kernel produced, a backend row's own `created_at`/`finished_at` when the host merely fronts that backend. A field's name or its presence inside an otherwise host-authored object is not evidence of its clock; the host stamps its own observation instead.
-- Within one record, `start` and `end.time` are both the declaring host's own readings, under the same host string; ordinarily that means the same process, but a host whose execution can be paused and resumed under one host string (5.2) may have `start` read by one process and `end.time` by another. A host whose executions can span more than one process or machine this way synchronizes their clocks as far as it can and treats the result as one clock; it MUST still ensure `end.time >= start` on it, to that precision. Consumers tolerate violations. Across records — not within one — timestamps from different processes carry order only to the same synchronization precision.
+- Within one record, `start` and `end.time` are both the declaring host's own readings, under the same host string; ordinarily that means the same process, but a host whose one execution spans more than one process or machine may have `start` read by one and `end.time` by another. That covers pause-and-resume (5.2), and equally a driver process whose workers run elsewhere, a queue whose consumer is not its producer, and any other arrangement a host runs under one host string. Such a host synchronizes those clocks as far as it can and treats the result as one **clock domain** rather than one clock; it MUST still ensure `end.time >= start` on it, to whatever precision that synchronization achieves, and SHOULD state that precision out of band. Consumers tolerate violations. Across records — not within one — timestamps from different processes carry order only to the same precision.
 - Consumers MUST NOT infer order from line order or from ids. Only `seq` and these timestamps carry order. For a multi-process host, `seq` is the only exact order signal within an execution; timestamps from different processes MAY disagree with it under skew.
 
 ## 8. Enum policy
 
-Closed sets, which never grow within a major version: `end.disposition`, `end.outcome`, `observes_crossings`, `crossing_edge`. A host MUST NOT emit other values in these fields. A consumer that sees an unknown value in one of these closed fields MUST treat the containing object (`end`, or the capability key) as absent and SHOULD flag it.
+Closed sets, which never grow within a major version: `end.disposition`, `end.outcome`, `observes_crossings`, `crossing_edge`. A host MUST NOT emit other values in these fields. A consumer that sees an unknown value in one of these closed fields MUST treat the containing object (`end`, or the capability key) as absent and SHOULD flag it. A missing closed field, and an `end` that is not an object at all, are read the same way — in neither case is there a value to read.
+
+An execution or crossing whose `end` is read as absent this way is a start notice for every later rule: section 4 rule 5 makes it unresolved, and its prohibition on ever showing such a record with a disposition applies. This is the one case where a line that carries `end` on the wire is not a complete record (section 2), and the record's own `end` is the object the consumer drops — not the line.
 
 `attested` is an array whose entries come from the list in `provenance.md` section 4. That list grows by minor version. A host MUST NOT emit an entry outside the list its declared `spec_version` knows, and a consumer MUST ignore an entry it does not know. `ext.<extension>` entries are defined by extensions (`provenance.md` section 4) under the same minor-version rule.
 
@@ -224,16 +232,18 @@ Every field has a provenance class fixed by this specification: host-observed, p
 
 A conforming emitter:
 
-- MUST emit the `host` record before any other record for that host in each stream.
+- MUST emit the `host` record before any other record for that host in each stream. A stream is whatever sink the emitter is writing to now, so a host whose sink rotates, reconnects or is reopened writes its declaration again into the new one; identical re-sends are no-ops (section 4 rule 3), so a host may simply re-emit it per execution.
 - MUST emit each complete record exactly once, with every field the record has. MAY emit start notices.
 - MUST NOT reuse an id and MUST NOT emit a second complete record for a key.
 - MUST emit an `execution` record (at least a start notice) for every dispatch of a program that reaches the host-provided surface, including retries, forks and speculative branches its substrate performs without the caller's request, and MUST attach the crossings of such a dispatch to that dispatch's own execution id, never to a sibling's.
 - MUST, when an execution ends, first emit a complete `abandoned` record for every crossing of that execution still open that it can still account for, then the execution's complete record.
-- MUST capture program text in full at the host; what travels MAY be truncated or withheld with the Payload flags set.
+- MUST capture in full, at the host, the program text it dispatched; what travels MAY be truncated or withheld with the Payload flags set. A host that receives a program incrementally captures what it had when it closed the record (section 5.2).
 - MUST put only host-clock times in `start` and `end.time`.
 - SHOULD emit `seq` on crossings when it declares `observes_crossings: "all"` and has an order.
 - SHOULD close a past-deadline execution `abandoned` on later discovery, or `terminated` at the moment its own limit fires (section 5.2).
 - SHOULD NOT block the host's request path on any sink. This is guidance, not a wire rule.
+
+The first and fifth bullets are the only obligations here that no consumer can verify. Section 4 rule 4 requires the same view for any permutation of a stream, so a canonical view cannot see file order at all; these two are checked against a stream *as written* rather than against a view, which is what `conformance/check.py order` does. They remain MUSTs because a live viewer reading the stream forward depends on them, not because a checker can catch every violation after the fact.
 
 ## 11. Versioning and extensions
 
@@ -249,7 +259,7 @@ A consumer MAY rely on:
 - A complete record has every required field for its kind.
 - Supersede is order-independent and conflicts are detectable.
 - `end`, when present, is complete: an execution has `time` and `disposition`; a crossing has `outcome`, with `output` only under `"output"` and `error` only under `"error"`.
-- Timestamps are the declaring host's clock, and crossing times are on the same clock as execution times.
+- Timestamps are the declaring host's own readings, and crossing times are in the same clock domain as execution times, to whatever synchronization precision that host achieves (section 7).
 - `truncated` and `redacted` are authoritative. Absent or false means `value` is the host's full capture of the value it holds, which may itself be a reference to content the host did not inline (5.4).
 - Under `observes_crossings: "all"`, no invocation through the host-provided surface went unrecorded for that host's executions, short of lost lines.
 - Attested fields are host-observed relative to the declaring host.
@@ -258,81 +268,86 @@ A consumer MUST NOT:
 
 - Infer order from line order or from ids, or assume crossings are sequential.
 - Assume a complete record will arrive, that `terminated` means computation stopped, or that `abandoned` means failure.
+- Assume the number of `execution` records is the number of programs an agent submitted. A host emits one per dispatch, including dispatches it made on its own (5.2, C1): a reactive re-run, a retry, a speculative branch, a shard of a data-parallel job.
 - Treat an unresolved crossing as evidence the call is still in progress, or an `abandoned` crossing as evidence the target never responded; both say only that the host stopped observing (5.3).
-- Assume one crossing record is one dispatch to the target.
+- Assume one crossing record is one dispatch to the target, or one invocation by the program. The declared edge says which side the record describes; core carries no count for the other (5.1).
 - Parse or interpret `value` beyond displaying it.
 - Conclude "no external calls happened" from the absence of crossings unless the host declared `observes_crossings: "all"` and `unmediated_egress: false`.
 - Treat `ext` keys as meaningful, assume a declaration exists, assume ids have a shape, or assume the declaring host is trustworthy. Host-observed means observed by that host, relative to its own isolation.
 
 ## 13. Emitting without a library
 
-The protocol is small enough that a host can conform with no dependency. A complete emitter for a host with an `execute({code})` tool and a `callTool(name, args)` bridge, in plain JavaScript:
+The protocol is small enough that a host can conform with no dependency. An emitter for a host with an `execute({code})` tool and a `callTool(name, args)` bridge, in plain JavaScript. The host supplies two things this snippet does not define: `runInSandbox`, which runs the program, and `rawCallTool`, the unwrapped bridge.
 
 ```js
 import { randomBytes, createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 
 const HOST = "example/mcp";
+const DECL = { kind: "host", spec_version: "1.0", observes_crossings: "all", unmediated_egress: false,
+               crossing_edge: "invocation", attested: ["crossing.target", "crossing.input"] };
 const hex = (n) => randomBytes(n).toString("hex");
 const now = () => new Date().toISOString();
-const emit = (o) => appendFileSync("mocon.jsonl", JSON.stringify({ host: HOST, ...o }) + "\n");
-const payload = (v, cap = 16384) => {
-  const s = typeof v === "string" ? v : JSON.stringify(v);
-  const p = { bytes: Buffer.byteLength(s), hash: "sha256:" + createHash("sha256").update(s).digest("hex") };
-  return p.bytes > cap ? { ...p, value: s.slice(0, cap), truncated: true } : { ...p, value: v };
+// Never throws: an emitter fault must not change a recorded outcome or reach the caller.
+// Synchronous for brevity; section 10's last bullet asks a real host to move this off
+// the request path.
+const emit = (o) => { try { appendFileSync("mocon.jsonl", JSON.stringify({ host: HOST, ...o }) + "\n"); } catch {} };
+// One altitude per field (5.4): JSON for every captured value, raw text for `program`.
+const payload = (v, raw = false, cap = 16384) => {
+  if (!raw && v === undefined) v = null;          // JSON has no undefined; the host holds "nothing"
+  let s;
+  try { s = raw ? v : JSON.stringify(v); } catch { s = undefined; }
+  if (typeof s !== "string") return { redacted: true };   // a cycle, a BigInt, a throwing toJSON:
+  const p = { bytes: Buffer.byteLength(s),                // dropped by policy, flagged as such (5.4)
+              hash: "sha256:" + createHash("sha256").update(s).digest("hex") };
+  return p.bytes > cap ? { ...p, value: s.slice(0, cap), truncated: true } : { ...p, value: raw ? s : v };
 };
 
-emit({ kind: "host", spec_version: "1.0", observes_crossings: "all", unmediated_egress: false,
-       crossing_edge: "invocation", attested: ["crossing.target", "crossing.input"] });
-
-export async function execute(code, rawCallTool) {
-  const id = hex(16), start = now(), open = new Map(), program = payload(code);
+export async function execute(code, rawCallTool, classify = () => ["failed", "runtime"]) {
+  emit(DECL);                                // identical re-sends are no-ops (4.3), and this is
+                                             // the declaration a rotated sink would otherwise miss
+  const id = hex(16), start = now(), open = new Map(), program = payload(code, true);
   let seq = 0;
   emit({ kind: "execution", id, program, language: "javascript", start });
+  const settle = (cid, end) => {
+    const c = open.get(cid);
+    if (c === undefined) return;             // already abandoned (5.3): its key is closed, and this
+    open.delete(cid);                        // core-only emitter does not record the late settlement
+    emit({ kind: "crossing", id: cid, execution_id: id, ...c, end });
+  };
   const callTool = async (target, args) => {
-    const cid = hex(8), cstart = now(), input = payload(args);
-    open.set(cid, { target, input, seq: ++seq, start: cstart });
+    const cid = hex(8);
+    open.set(cid, { target: String(target), input: payload(args), seq: ++seq, start: now() });
     try {
       const out = await rawCallTool(target, args);
-      if (open.has(cid)) {
-        emit({ kind: "crossing", id: cid, execution_id: id, target, input, seq: open.get(cid).seq, start: cstart,
-               end: { time: now(), outcome: "output", output: payload(out) } });
-        open.delete(cid);
-      }
-      // else: cid was already emitted abandoned (5.3). This core-only emitter observes the
-      // late settlement but does not record it; a host that wants the extensions/events.md
-      // late_settlement event emits one here instead of falling through.
+      const output = payload(out);           // captured before the outcome is chosen, so a Payload
+      settle(cid, { time: now(), outcome: "output", output });   // fault cannot relabel it (5.3)
       return out;
     } catch (e) {
-      if (open.has(cid)) {
-        emit({ kind: "crossing", id: cid, execution_id: id, target, input, seq: open.get(cid).seq, start: cstart,
-               end: { time: now(), outcome: "error", error: { class: "capability_error", message: String(e?.message ?? e) } } });
-        open.delete(cid);
-      }
-      // else: same late-settlement case, on the error path.
+      settle(cid, { time: now(), outcome: "error",
+                    error: { class: "capability_error", message: String(e?.message ?? e) } });
       throw e;
     }
   };
-  const abandonOpen = () => {
-    for (const [cid, c] of open) emit({ kind: "crossing", id: cid, execution_id: id, ...c, end: { outcome: "abandoned" } });
-    open.clear();
+  const close = (end) => {                   // 5.3: every crossing still open is abandoned first,
+    for (const cid of [...open.keys()]) settle(cid, { outcome: "abandoned" });  // then the execution
+    emit({ kind: "execution", id, program, language: "javascript", start, end });
   };
   try {
     const result = await runInSandbox(code, { callTool });
-    abandonOpen();
-    emit({ kind: "execution", id, program, language: "javascript", start,
-           end: { time: now(), disposition: "completed", result: payload(result) } });
+    close({ time: now(), disposition: "completed", result: payload(result) });
     return result;
   } catch (e) {
-    abandonOpen();
-    emit({ kind: "execution", id, program, language: "javascript", start,
-           end: { time: now(), disposition: "failed", error: { class: "runtime", message: String(e?.message ?? e) } } });
+    // classify returns ["terminated", "timeout"] when the host's own limit fired; the
+    // default is right for a host that enforces none of its own (5.2).
+    const [disposition, cls] = classify(e);
+    close({ time: now(), disposition, error: { class: cls, message: String(e?.message ?? e) } });
     throw e;
   }
 }
 ```
 
-The emitter holds state only inside one call to `execute`, emits every record whole, abandons every still-open crossing before emitting the execution's complete record on both the success and failure paths, observes but does not record a settlement that arrives for a crossing already abandoned (5.3's SHOULD is for a host willing to take on the `events.md` extension; this core-only emitter is not), and never writes anything a consumer would have to merge. The start notice for the execution is the only optional line; a host that does not want live views omits it.
+The emitter holds state only inside one call to `execute`, emits every record whole, abandons every still-open crossing before emitting the execution's complete record on both paths, observes but does not record a settlement that arrives for a crossing already abandoned (5.3's SHOULD is for a host willing to take on the `events.md` extension; this core-only emitter is not), and never writes anything a consumer would have to merge. It is total: no input makes it throw its own error into the caller or skip a record, because `payload` cannot fail, `emit` cannot fail, and `settle` removes a crossing from `open` before writing it, so a second sweep cannot write it twice. Two places are deliberately the host's to fill in: `classify` maps a thrown value onto a disposition, and is how a host with its own limits reaches `terminated`; `abandoned` is reached by a reconciliation pass this snippet does not have (5.2). The start notice for the execution is the only optional line; a host that does not want live views omits it.
 
 ## Appendix A. A complete stream
 
@@ -350,14 +365,14 @@ Line 2 is a start notice; line 5 supersedes it. The second crossing started befo
 
 ## Appendix B. Invariants
 
-These are the claims about every code-mode host that the core is built on, not claims about any one implementation. Field tables above cite them by number.
+These are the claims the core is built on, not claims about any one implementation. They hold for a host as section 2 scopes one: a party that holds the program text it dispatched and can attribute the crossings it records to its own executions. Field tables above cite them by number.
 
-- **C1. One submission per execution.** One execution is one dispatch of one submission, never the session that contains it. The host receives the submission in full. It is not guaranteed that the text is everything that ran or that it matches what the runtime parsed.
+- **C1. One program per execution.** One execution is one dispatch of one program, never the session that contains it. The host holds that program text in full at dispatch. It is not guaranteed to be what an agent submitted for that dispatch — a reactive runtime re-runs a dependent cell, a scheduler resumes a checkpoint, and the text is then the host's own — nor everything that ran, nor what the runtime parsed.
 - **C2. Language is a hint.** A host may not know the language it runs. The label exists for display and routing only.
 - **C3. Identity and disposition.** Every execution has an id unique within its host and a host-observed start. If it ends, it ends with exactly one of `completed`, `failed`, `terminated`, `abandoned`. It may never end.
 - **C4. Completed or not.** When an end exists, the host can tell `completed` from every other disposition. Error detail is optional.
 - **C5. Mediation is declared, not assumed.** Whether the host observes crossings, and whether the program has a path out that the host does not see, differ by implementation and are declared.
-- **C6. Crossing shape.** Every recorded crossing has a target and an input fixed at initiation, and if it settles it settles as exactly one of `output`, `error`, `abandoned`.
+- **C6. Crossing shape.** Every recorded crossing has a target and an input fixed at initiation, and if it settles it settles as exactly one of `output`, `error`, `abandoned`. How many invocations or dispatches one record stands for follows from the declared edge (X2) and is not itself a core field.
 - **C7. Host clock.** Execution start and end are on the declaring host's clock. Crossing times exist only where the host observed the crossing.
 - **C8. Delivery varies.** How an outcome reaches the caller, and whether the caller sees crossings, differ by implementation and are outside the contract.
 - **C9. Opaque payloads.** Inputs, outputs and results have no standard shape. Truncation and redaction are annotated out of band; consumers never parse values.

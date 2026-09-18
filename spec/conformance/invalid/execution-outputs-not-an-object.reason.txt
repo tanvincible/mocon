@@ -1,0 +1,1 @@
+core.md 5.2: end.outputs maps a channel name to a Payload. An array has no channel names.

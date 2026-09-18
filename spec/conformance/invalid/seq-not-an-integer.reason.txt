@@ -1,0 +1,1 @@
+core.md 5.3: seq is an integer, the host's initiation order. A decimal string is not one.
