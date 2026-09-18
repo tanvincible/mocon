@@ -1,0 +1,32 @@
+{
+  "name": "@mocon/core",
+  "version": "0.1.0",
+  "description": "Emitter for mocon, the observability record format for code-mode MCP hosts. Zero dependencies.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./fold": {
+      "types": "./dist/fold.d.ts",
+      "default": "./dist/fold.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc -p test/tsconfig.json"
+  },
+  "devDependencies": {
+    "fast-check": "^3.23.2"
+  }
+}

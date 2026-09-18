@@ -1,0 +1,41 @@
+# @mocon/cli
+
+Command line tools for mocon streams. Installs one binary, `mocon`. Depends on `@mocon/core` for the wire types, the closed sets, the timestamp validator, the folded view and the deep JSON writer the page is served from, and on `@mocon/otel` for the `otlp` command.
+
+## Commands
+
+- `mocon validate <file>` checks every line against the structural rules in `spec/core.md` (required keys per kind, the closed enums, end completeness, the Payload rule, the timestamp `Z` suffix, the hash pattern) and the type rules in `spec/schema/` (strings, booleans, objects, non-negative integers, `MAJOR.MINOR`, a string array for `attested`, and a `date-time` that names an instant that exists, which check.py's pattern alone does not ask). Each failure names the line, the field and the rule; a failing line lists at most 20 errors and counts the rest, and its id is cut to 64 characters, so the report grows with the number of failing lines and not with how large or deeply nested a line is. It applies the lint rules in `spec/provenance.md` section 7 as warnings; a host declared twice with different values is linted on the declaration `mocon view` shows, the one whose canonical JSON sorts first. Malformed lines and unknown kinds are counted, not failed, as core.md section 3 requires. Exit 0 when no line fails and 1 when one does; warnings never change the exit code.
+- `mocon view <file>` prints the stream as a tree: the host declaration, then each execution with its crossings ordered by `seq`, then `start`, then id. Every program-determined or target-relayed field carries a `P` or `T` marker computed from the declaration's `attested` list. Unresolved records show as running. A record whose `end` holds a value outside its closed set is shown as running too, and a capability key holding an unknown or mistyped value reads as absent (core.md section 8); the closing line counts those lines as `flagged`, next to conflicts and skipped lines. The tree is the same for any order of the lines.
+- `mocon ui <file> [--port N] [--out <path>]` serves one HTML page from a local server bound to 127.0.0.1, on port 7311 unless `--port` says otherwise (`--port 0` picks a free one). The page has inline CSS and JS, loads nothing from the network, and fetches the folded view as JSON from the same server, so a reload shows lines appended since. It shows the program with its hash and redaction state, the crossing tree with timing bars when host-clock times exist and a plain list when they do not, every error with its class and value, and provenance badges on each field. A crossing's input and output are built when its row is opened. `--out <path>` writes the same page with the view inlined and serves nothing. The page carries the whole stream, so the path is opened without following a symbolic link, refused unless it is a regular file, and made readable by its owner only before the file is emptied, whether the open created it or found it: a path the command cannot make private keeps what it held.
+- `mocon otlp <file> [--url <endpoint>] [--header name=value]...` hands every line to one `otlpSink` write from `@mocon/otel`, so the command and the sink produce the same spans and hold the same host declaration. Without `--url` it prints the `ExportTraceServiceRequest` JSON; with it, it posts the request with each `--header` and exits 1 when the collector refuses it or cannot be reached. Lines that produce no span are counted by reason on stderr (notice, malformed, unknown kind, bad enum, bad timestamp), with host conflicts and declarations of another major version. Lines are mapped in file order, as a sink receives them. Use it to compare a stream against `spec/conformance/otlp/`.
+
+Every other failure (an unreadable file, a port in use, a bad option) prints one line and exits 2.
+
+## Usage
+
+```sh
+npx mocon validate mocon.jsonl
+npx mocon view mocon.jsonl
+npx mocon ui mocon.jsonl
+npx mocon otlp mocon.jsonl > spans.json
+npx mocon otlp mocon.jsonl --url https://otlp.example.internal/v1/traces --header "authorization=Bearer $OTLP_TOKEN"
+```
+
+Multi-host files are keyed on `(host, id)`.
+
+## What reaches the screen
+
+A stream holds program text, payloads and ids a program chose, nested as deep as its writer liked. `view`, `ui` and `validate` render a value nested past the native stack without stopping: `view` shows what the width holds of such a value, or its type where that would be brackets alone, `ui` serves the view whole, and the page shows its type where it cannot print it. `view` and `validate` write every character that moves the cursor, starts an escape sequence, breaks a line or reorders text as a visible escape (`\x1b`, `‮`): C0 and C1 controls, DEL, the line and paragraph separators and the bidirectional formatting marks. The page does the same for everything it shows, keeping tabs and line breaks in program text. Nothing from the stream is parsed as HTML.
+
+`view` shows at most 100 characters of a value and reads no more of it than that, whatever its shape: a string is cut to the width before it is escaped, and an object, an array or an `ext` is written by a walk that stops there. So a 5 MB payload costs what a 100-character one costs, but for the key list of a wide object, which the engine materializes whole before its first key can be read.
+
+The page reads a payload only when its row is opened. Neither asks `Date.parse` for a time from text longer than any timestamp is.
+
+`mocon ui` answers only under a random token in the path, printed with the URL at startup, so another user on the same machine who finds the port gets nothing. It also refuses, with 421 and no body, any request whose `Host` header is not `127.0.0.1` or `localhost` with the port it listens on, so a web page that rebinds its own name to 127.0.0.1 cannot read the view. `--header` values are sent, never printed.
+
+## Invariants
+
+Each is checked where it holds and throws an `InvariantError` from `@mocon/core` when it does not; a failure is a bug in this package, never a bad stream.
+
+- An execution or crossing shows as running exactly when its record has no `end`, and the number of running records equals the fold's unresolved count.
+- Every crossing sits under exactly one execution.
