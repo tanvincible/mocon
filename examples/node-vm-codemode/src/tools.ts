@@ -9,22 +9,9 @@
 
 import { setTimeout as sleep } from "node:timers/promises";
 
-export interface Company {
-  domain: string;
-  name: string;
-  industry: string;
-  headcount: number;
-}
+const COMPANY = Object.freeze({ domain: "acme.example", name: "Acme Example Co", industry: "Widgets", headcount: 42 });
 
-export interface Person {
-  name: string;
-  title: string;
-  domain: string;
-}
-
-const COMPANY: Readonly<Company> = Object.freeze({ domain: "acme.example", name: "Acme Example Co", industry: "Widgets", headcount: 42 });
-
-const PEOPLE: readonly Readonly<Person>[] = Object.freeze(
+const PEOPLE = Object.freeze(
   [
     { name: "Avery Sample", title: "Founder", domain: "acme.example" },
     { name: "Riley Fixture", title: "Head of Widgets", domain: "acme.example" },
@@ -35,9 +22,7 @@ const PEOPLE: readonly Readonly<Person>[] = Object.freeze(
 );
 
 /** A tool call as the host dispatches it: a tool name and its arguments, a value or a rejection back. */
-export type ToolBridge = (name: string, args: unknown) => Promise<unknown>;
-
-export const callTool: ToolBridge = async (name, args) => {
+export const callTool = async (name: string, args: unknown): Promise<unknown> => {
   const input: Record<string, unknown> = args !== null && typeof args === "object" ? (args as Record<string, unknown>) : {};
   switch (name) {
     case "company_lookup": {

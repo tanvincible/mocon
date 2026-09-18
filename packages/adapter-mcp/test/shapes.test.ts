@@ -14,33 +14,16 @@ import { promisify } from "node:util";
 import { runInNewContext } from "node:vm";
 import { mocon, memorySink, type Capabilities } from "@mocon/core";
 import { fold } from "@mocon/core/fold";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { instrumentMcpClient, moconTool } from "../src/index.js";
-import { assertValidStream, complete, extraOf, harness, type Rec } from "./helpers.js";
+import { assertValidStream, completeExecution, extraOf, harness, pair, type Rec } from "./helpers.js";
 
 const TP = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 const execFileP = promisify(execFile);
 
 function parsed(lines: readonly string[]): Rec[] {
   return lines.map((l) => JSON.parse(l) as Rec);
-}
-
-async function pair(server: McpServer, name: string, sessionId?: string): Promise<{ client: Client; close(): Promise<void> }> {
-  const [ct, st] = InMemoryTransport.createLinkedPair();
-  if (sessionId !== undefined) st.sessionId = sessionId;
-  await server.connect(st);
-  const client = new Client({ name, version: "0.0.0" });
-  await client.connect(ct);
-  return {
-    client,
-    close: async () => {
-      await client.close();
-      await server.close();
-    },
-  };
 }
 
 function program(code: string, bindings: Record<string, unknown>): Promise<unknown> {
@@ -78,7 +61,7 @@ test("shape A: Node callTool bridge, the program's calls reach an upstream MCP s
     assert.equal((result as { content: { text: string }[] }).content[0]?.text, '["3","7"]');
 
     assertValidStream(h.sink.lines);
-    const done = complete(h.ofKind("execution"));
+    const done = h.done();
     assert.deepEqual(done["context"], { session: "session-A", traceparent: TP });
     const crossings = h.ofKind("crossing");
     assert.deepEqual(
@@ -336,7 +319,7 @@ test("shape E: an unmediated host records the execution and no crossings", async
     records.map((r) => r["kind"]),
     ["host", "execution", "execution"],
   );
-  const done = complete(records.filter((r) => r["kind"] === "execution"));
+  const done = completeExecution(records);
   assert.equal(done["end"]["disposition"], "completed");
   assert.equal(done["end"]["result"]["value"]["content"][0]["text"], "42");
   const view = fold(sink.lines);

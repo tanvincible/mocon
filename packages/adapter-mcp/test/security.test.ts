@@ -11,7 +11,7 @@ import { test } from "node:test";
 import { fold } from "@mocon/core/fold";
 import { contextFromMcp, instrumentMcpClient, moconTool, type McpClientCalls } from "../src/index.js";
 import { withMcpServer } from "./codemode.js";
-import { assertValidStream, complete, extraOf, harness, waitFor, type Rec } from "./helpers.js";
+import { assertValidStream, extraOf, harness, waitFor, type Rec } from "./helpers.js";
 
 test("a traceparent or session the client inflates is not copied onto the execution or any crossing line", async () => {
   const h = harness();
@@ -144,7 +144,7 @@ test("a client cancel reason of 2 MB reaches no line, not even through the body 
     controller.abort("r".repeat(2 << 20));
     await assert.rejects(pending);
     await waitFor(() => h.ofKind("execution").some((r) => r["end"] !== undefined));
-    const error = complete(h.ofKind("execution"))["end"]["error"];
+    const error = h.done()["end"]["error"];
     assert.deepEqual(error, { class: "cancelled" }, "nothing of the client's reason is written");
     assert.ok(
       !h.sink.lines.some((l) => l.includes("rrrr")),
@@ -178,7 +178,7 @@ test("a cancel reason of 256 characters or fewer is the message, and a longer on
       },
     });
     await assert.rejects(handler({}, extraOf({ abort: { reason } })));
-    const error = complete(h.ofKind("execution"))["end"]["error"];
+    const error = h.done()["end"]["error"];
     const where = `reason of ${reason.length}, ${own ? "the body's own error" : "the reason itself"}`;
     assert.equal(error["class"], "cancelled", where);
     assert.equal(error["message"], message, where);
@@ -202,7 +202,7 @@ test("a body that wraps the cancel reason writes it as an ordinary cause, bounde
       },
     });
     await assert.rejects(handler({}, extraOf({ abort: { reason } })));
-    const error = complete(h.ofKind("execution"))["end"]["error"] as Rec;
+    const error = h.done()["end"]["error"] as Rec;
     assert.equal(error["class"], "cancelled", `reason of ${size}`);
     const written = typeof error["message"] === "string" ? Buffer.byteLength(error["message"]) : 0;
     assert.ok(written <= (1 << 14) + 64, `reason of ${size} wrote ${written} bytes of message, past the error slot's cap`);

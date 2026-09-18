@@ -1,7 +1,8 @@
 /**
- * Test support: the spec's JSON schema through ajv, the server over an
- * in-memory transport into a memory sink, the rules every stream of this
- * host keeps, and the paths of the built entry points.
+ * Test support: the server over an in-memory transport into a memory sink,
+ * the rules every stream of this host keeps, and the paths of the built
+ * entry points. The schema, the transport pairing and the small async
+ * helpers are shared with the packages in `packages/testkit`.
  */
 
 import assert from "node:assert/strict";
@@ -9,15 +10,15 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import Ajv2020Module from "ajv/dist/2020.js";
 import { memorySink, mocon, type MemorySink } from "@mocon/core";
 import { fold } from "@mocon/core/fold";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { CAPABILITIES, createServer, HOST, type ServerOptions } from "../src/codemode.js";
+import { pair, type Rec } from "../../../packages/testkit/mcp.js";
+import { lineSchema } from "../../../packages/testkit/schema.js";
+import { CAPABILITIES, createServer, HOST } from "../src/codemode.js";
 
-export type Rec = Record<string, any>;
+export { completeExecution, text, waitFor, type Rec } from "../../../packages/testkit/mcp.js";
 
 export const packageDir = fileURLToPath(new URL("../", import.meta.url));
 export const serverEntry = join(packageDir, "dist", "server.js");
@@ -42,18 +43,6 @@ try {
 return { company: company.name, people: people.map((p) => p.name), failure };
 `.trim();
 
-const schemaDir = fileURLToPath(new URL("../../../spec/schema/", import.meta.url));
-const LINE_ID = "https://github.com/tanvincible/mocon/spec/1.0/schema/line.json";
-// ajv is CommonJS: the default import is `module.exports`, which is the class and also carries itself as `default`.
-const Ajv2020 = Ajv2020Module.default ?? (Ajv2020Module as unknown as typeof Ajv2020Module.default);
-const ajv = new Ajv2020({ strict: false, allErrors: true });
-ajv.addFormat("date-time", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/);
-for (const file of ["line.json", "host.json", "execution.json", "crossing.json", "payload.json", "error.json"]) {
-  ajv.addSchema(JSON.parse(readFileSync(schemaDir + file, "utf8")) as object);
-}
-const lineSchema = ajv.getSchema(LINE_ID);
-if (lineSchema === undefined) throw new Error("line.json did not load");
-
 /**
  * Checks the rules every stream of this host keeps and returns the parsed
  * lines. Every core line validates against the schema and every event has
@@ -74,7 +63,7 @@ export function assertHostRules(lines: readonly string[]): Rec[] {
     if (r["kind"] === "event") {
       for (const key of ["host", "id", "execution_id", "name"]) assert.equal(typeof r[key], "string", `line ${i}: event without ${key}`);
     } else {
-      assert.ok(lineSchema!(r), `line ${i}: ${JSON.stringify(lineSchema!.errors)}`);
+      assert.ok(lineSchema(r), `line ${i}: ${JSON.stringify(lineSchema.errors)}`);
     }
   });
   assert.equal(records[0]?.["kind"], "host", "the declaration is the first line");
@@ -117,48 +106,21 @@ export interface Connected {
 }
 
 /** The server from `codemode.ts` over a linked in-memory pair, recording into a memory sink. */
-export async function connect(options?: ServerOptions): Promise<Connected> {
+export async function connect(timeLimitMs?: number): Promise<Connected> {
   const sink = memorySink();
-  const server = createServer(mocon({ host: HOST, capabilities: CAPABILITIES, sinks: [sink] }), options);
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  const client = new Client({ name: "test", version: "0.0.0" });
-  await client.connect(clientTransport);
+  const server = createServer(mocon({ host: HOST, capabilities: CAPABILITIES, sinks: [sink] }), timeLimitMs);
+  const { client, close } = await pair(server);
   return {
     client,
     sink,
+    close,
     records: () => sink.lines.map((l) => JSON.parse(l) as Rec),
     execute: async (code, o) => (await client.callTool({ name: "execute", arguments: { code } }, undefined, o)) as CallToolResult,
-    close: async () => {
-      await client.close();
-      await server.close();
-    },
   };
-}
-
-/** The one complete execution record among `records`. */
-export function completeExecution(records: Rec[]): Rec {
-  const done = records.filter((r) => r["kind"] === "execution" && r["end"] !== undefined);
-  assert.equal(done.length, 1, "exactly one complete execution record");
-  return done[0]!;
 }
 
 export function crossingsOf(records: Rec[]): Rec[] {
   return records.filter((r) => r["kind"] === "crossing");
-}
-
-export function text(result: CallToolResult): string {
-  const first = result.content[0];
-  return first?.type === "text" ? first.text : "";
-}
-
-/** Polls until `predicate` holds. Throws after `ms`. */
-export async function waitFor(predicate: () => boolean, ms = 3000): Promise<void> {
-  const deadline = Date.now() + ms;
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error("waitFor: timed out");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
 }
 
 /** Resolves once no line has been written for `quietMs`: every call a program left running has settled or been refused. */

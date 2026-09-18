@@ -21,7 +21,7 @@ npm test
 
 `npx mocon view mocon.jsonl` prints the stream as a tree with provenance markers. `npx mocon ui mocon.jsonl` serves a viewer at `http://127.0.0.1:7311/` with timing bars for the overlapping calls. `npx mocon validate mocon.jsonl` checks every line against the spec.
 
-The stream file is set by the `MOCON_FILE` environment variable, for the driver and the server alike; the default is `mocon.jsonl` in this directory for the driver and in the working directory for the server. `MOCON_TIME_LIMIT_MS` sets the server's time limit, an integer of 1 or more, and the server refuses a value it cannot use before it starts. The server creates it readable by its owner only, because it holds program text and payloads. In a stdio server, stdout is the JSON-RPC channel, so nothing else is ever written there: a program's `console` goes nowhere, and the server's own reports go to stderr.
+The stream file is set by the `MOCON_FILE` environment variable, for the driver and the server alike; the default is `mocon.jsonl` in this directory for the driver and in the working directory for the server. `MOCON_TIME_LIMIT_MS` sets the server's time limit, an integer from 1 to 2147483647, and the server refuses a value it cannot use before it starts. The server creates it readable by its owner only, because it holds program text and payloads. In a stdio server, stdout is the JSON-RPC channel, so nothing else is ever written there: a program's `console` goes nowhere, and the server's own reports go to stderr.
 
 ## What the stream shows
 
@@ -53,7 +53,7 @@ Once the host stops waiting, whether the program returned, threw, ran out of tim
 ## Layout
 
 - `src/tools.ts` holds the two fake tools.
-- `src/codemode.ts` builds the MCP server: `execute` registered with `moconTool`, the program compiled and run in `node:vm`, the time limit, and the bridge wrapped with `execution.instrument`. It exports `createServer(m, { timeLimitMs })`, `HOST` and `CAPABILITIES`.
+- `src/codemode.ts` builds the MCP server: `execute` registered with `moconTool`, the program compiled and run in `node:vm`, the time limit, and the bridge wrapped with `execution.instrument`. It exports `createServer(m, timeLimitMs)`, `HOST` and `CAPABILITIES`.
 - `src/server.ts` is the stdio entry point: the file sink, stderr reports, the transport, the time limit from `MOCON_TIME_LIMIT_MS`, and the close on stdin's end that turns a disconnect into a record.
 - `src/drive.ts` is the client side.
 

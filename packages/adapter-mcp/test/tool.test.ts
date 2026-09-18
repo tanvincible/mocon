@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { moconTool, type MoconToolOptions } from "../src/index.js";
-import { assertValidStream, complete, extraOf, harness, type Harness, type Rec } from "./helpers.js";
+import { assertValidStream, extraOf, harness, type Harness, type Rec } from "./helpers.js";
 
 type Args = { code: string };
 
@@ -307,7 +307,7 @@ test("a body that settles the handle itself wins", async () => {
   })({ code: "nope" }, extraOf());
   assert.equal(result, DENIED);
   assertValidStream(h.sink.lines);
-  assert.deepEqual(complete(h.ofKind("execution"))["end"]["error"], { class: "validation", message: "rejected before it ran" });
+  assert.deepEqual(h.done()["end"]["error"], { class: "validation", message: "rejected before it ran" });
 });
 
 test("every crossing the body leaves open is written abandoned before the one complete record", async () => {

@@ -16,10 +16,10 @@ export type ProvenanceMap = Record<string, Marker>;
 
 const hasValue = (p: unknown): boolean => isRec(p) && p["value"] !== undefined;
 
-/** The declaration's `attested` entries; `[]` when there is no declaration (core.md 5.1). */
-export function attestedOf(declaration: HostLine | undefined): Set<string> {
+/** The declaration's `attested` entries that are strings, in order; `[]` when there is no declaration (core.md 5.1). */
+export function attestedOf(declaration: HostLine | undefined): string[] {
   const list = declaration?.attested;
-  return new Set(Array.isArray(list) ? list.filter((a): a is string => typeof a === "string") : []);
+  return Array.isArray(list) ? list.filter((a): a is string => typeof a === "string") : [];
 }
 
 export function executionProvenance(r: ExecutionLine, attested: Set<string>): ProvenanceMap {

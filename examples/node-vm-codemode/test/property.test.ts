@@ -38,7 +38,7 @@ test("every generated program leaves a stream that keeps the host's rules", asyn
   await fc.assert(
     fc.asyncProperty(program, async ({ busy, steps, ending }) => {
       const code = [busy ? "while (true) {}" : "", ...steps, ending].filter((l) => l !== "").join("\n");
-      const host = await connect({ timeLimitMs: LIMIT_MS });
+      const host = await connect(LIMIT_MS);
       try {
         const result = await host.execute(code);
         await settled(host.sink);

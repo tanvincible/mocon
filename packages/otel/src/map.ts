@@ -1,23 +1,79 @@
 /**
- * One mocon line to one OTLP span, otel-mapping.md sections 3 and 5 to 11.
- * Everything here is a pure function of the line's text, the host
- * declaration the caller holds for that host string, and two options: the
- * receipt clock for a crossing with no times, and the string cap.
+ * One mocon line to one OTLP span, otel-mapping.md sections 3 and 5 to 11,
+ * over the wire shape declared at the top of this file. Everything here is
+ * a pure function of the line's text, the host declaration the caller holds
+ * for that host string, the receipt clock for a crossing with no times, and
+ * the string cap.
  */
 
 import type { HostLine } from "@mocon/core";
 import { CLOSED, unixNanos } from "@mocon/core/fold";
 import { crossingSpanIdOf, executionSpanIdOf, parseTraceparent, traceIdOf } from "./ids.js";
 import { keysOf, parse, stringify, type KeyOrder } from "./json.js";
-import type { AnyValue, ExportTraceServiceRequest, KeyValue, ResourceSpans, Span, Status } from "./otlp.js";
+
+/* ------------------------------------------------------------------ */
+/* The OTLP/JSON trace shape                                           */
+/*                                                                     */
+/* The part of it this package writes, in the protobuf JSON mapping:   */
+/* ids as hex strings, times and int64 values as decimal strings,      */
+/* enums as integers. Declared here so the package needs no            */
+/* OpenTelemetry dependency.                                           */
+/* ------------------------------------------------------------------ */
+
+export type AnyValue =
+  | { stringValue: string }
+  | { boolValue: boolean }
+  | { intValue: string }
+  /** A number outside the finite range is the proto3 JSON string, `"Infinity"` or `"-Infinity"`. */
+  | { doubleValue: number | "Infinity" | "-Infinity" }
+  | { arrayValue: { values: AnyValue[] } };
+
+export interface KeyValue {
+  key: string;
+  value: AnyValue;
+}
+
+/** `code` is 0 (UNSET), 1 (OK) or 2 (ERROR). */
+export interface Status {
+  code: 0 | 1 | 2;
+  message?: string;
+}
+
+export interface SpanLink {
+  traceId: string;
+  spanId: string;
+}
+
+/** `kind` is 1 (INTERNAL) for an execution and 3 (CLIENT) for a crossing. */
+export interface Span {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  name: string;
+  kind: 1 | 3;
+  startTimeUnixNano: string;
+  endTimeUnixNano: string;
+  attributes: KeyValue[];
+  status: Status;
+  links?: SpanLink[];
+}
+
+export interface ScopeSpans {
+  scope: { name: string };
+  spans: Span[];
+}
+
+export interface ResourceSpans {
+  resource: { attributes: KeyValue[] };
+  scopeSpans: ScopeSpans[];
+}
+
+export interface ExportTraceServiceRequest {
+  resourceSpans: ResourceSpans[];
+}
 
 /** Why a line produced no span. A host line produces none and has no reason. */
 export type SkipReason = "notice" | "malformed" | "unknown_kind" | "bad_enum" | "bad_timestamp";
-
-export interface MapOptions {
-  /** Cap in UTF-8 bytes on every string attribute written from a record value (otel-mapping.md 9). Default: none. */
-  cap?: number;
-}
 
 export type Mapped =
   | { kind: "span"; host: string; span: Span }
@@ -49,18 +105,11 @@ const skip = (reason: SkipReason): Mapped => ({ kind: "skip", reason });
  * int64 as a decimal string, so nothing here goes through a double.
  */
 function receiptNanos(): string {
-  const ms = Math.trunc(Date.now());
-  return ms === 0 ? "0" : String(ms) + "000000";
+  return (BigInt(Date.now()) * 1000000n).toString();
 }
 
-/** Throws for a cap that is not a non-negative integer. */
-export function checkOptions(options: MapOptions): void {
-  const { cap } = options;
-  if (cap !== undefined && !(Number.isSafeInteger(cap) && cap >= 0)) throw new RangeError("mocon otel: cap must be a non-negative integer");
-}
-
-/** Maps one line of text. */
-export function mapLine(text: string, declarations: Declarations, options: MapOptions): Mapped {
+/** Maps one line of text. `cap` is the UTF-8 byte cap on string attributes (otel-mapping.md 9); `undefined` is no cap. */
+export function mapLine(text: string, declarations: Declarations, cap: number | undefined): Mapped {
   const parsed = parse(text);
   if (parsed === undefined || !isRec(parsed.value)) return skip("malformed");
   const line = parsed.value;
@@ -74,7 +123,7 @@ export function mapLine(text: string, declarations: Declarations, options: MapOp
   const end = line["end"];
   if (end === undefined) return skip("notice");
   if (!isRec(end)) return skip("malformed");
-  return (kind === "execution" ? executionSpan : crossingSpan)(line, host, end, declarations(host), parsed.order, options);
+  return (kind === "execution" ? executionSpan : crossingSpan)(line, host, end, declarations(host), parsed.order, cap);
 }
 
 /** Groups spans by host string: one `ResourceSpans` per host, `service.name` and the scope name from it (otel-mapping.md 11). */
@@ -95,7 +144,7 @@ export function buildRequest(mapped: ReadonlyArray<Extract<Mapped, { kind: "span
   return { resourceSpans };
 }
 
-function executionSpan(line: Rec, host: string, end: Rec, declaration: HostLine | undefined, order: KeyOrder | undefined, o: MapOptions): Mapped {
+function executionSpan(line: Rec, host: string, end: Rec, declaration: HostLine | undefined, order: KeyOrder | undefined, cap: number | undefined): Mapped {
   // core.md 8: an unknown closed-set value reads as no `end`; a missing one is a missing required field (otel-mapping.md 3).
   const disposition = end["disposition"];
   if (disposition === undefined) return skip("malformed");
@@ -119,7 +168,7 @@ function executionSpan(line: Rec, host: string, end: Rec, declaration: HostLine 
   if (error !== undefined && !classed(error)) return skip("malformed");
   const attested = attestedSet(declaration);
 
-  const a = new Attributes(o.cap, order);
+  const a = new Attributes(cap, order);
   a.put("mocon.host", str(host));
   if (declaration !== undefined) hostAttributes(a, declaration);
   a.put("mocon.execution.id", str(id));
@@ -170,7 +219,7 @@ function executionStatus(disposition: string, error: unknown): Status {
   }
 }
 
-function crossingSpan(line: Rec, host: string, end: Rec, declaration: HostLine | undefined, order: KeyOrder | undefined, o: MapOptions): Mapped {
+function crossingSpan(line: Rec, host: string, end: Rec, declaration: HostLine | undefined, order: KeyOrder | undefined, cap: number | undefined): Mapped {
   const outcome = end["outcome"];
   if (outcome === undefined) return skip("malformed");
   if (!CLOSED.outcome.has(outcome)) return skip("bad_enum");
@@ -207,7 +256,7 @@ function crossingSpan(line: Rec, host: string, end: Rec, declaration: HostLine |
   const attested = attestedSet(declaration);
   const targetLabel: Label = attested.has("crossing.target") ? undefined : "P";
 
-  const a = new Attributes(o.cap, order);
+  const a = new Attributes(cap, order);
   a.put("mocon.host", str(host));
   a.put("mocon.execution.id", str(executionId));
   a.put("mocon.crossing.id", str(id));
@@ -247,13 +296,15 @@ function crossingSpan(line: Rec, host: string, end: Rec, declaration: HostLine |
   return { kind: "span", host, span };
 }
 
-/** `target` cut to its first 128 code points; `mocon.crossing` for an empty target (otel-mapping.md 7). */
+/**
+ * `target` cut to its first 128 code points; `mocon.crossing` for an empty
+ * target (otel-mapping.md 7). The UTF-16 slice never splits a pair inside
+ * those 128: a code point is at most two units, so 2 x 128 units always
+ * reach at least that far.
+ */
 function spanName(target: string): string {
   if (target === "") return "mocon.crossing";
-  if (target.length <= NAME_CODE_POINTS) return target;
-  let i = 0;
-  for (let n = 0; n < NAME_CODE_POINTS && i < target.length; n++) i += (target.codePointAt(i) as number) > 0xffff ? 2 : 1;
-  return target.slice(0, i);
+  return [...target.slice(0, NAME_CODE_POINTS * 2)].slice(0, NAME_CODE_POINTS).join("");
 }
 
 /** Whether an `end.error` is an object with the `class` core.md 5.5 requires. */

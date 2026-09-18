@@ -15,8 +15,8 @@
  * was doing. Each bound is at least five times the steady-state ratio, and
  * far below the ratio the regression it guards would produce. No test here
  * asserts a figure in microseconds: absolute figures belong in
- * `bench/hot-path.mjs`, which gates them against the 10 microsecond target
- * on a known machine.
+ * `bench/hot-path.mjs`, which gates each row at twice its own recorded
+ * baseline, scaled by a calibration measured in the same run.
  */
 
 import assert from "node:assert/strict";

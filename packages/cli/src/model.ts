@@ -67,15 +67,13 @@ export function buildModel(stream: string): Model {
   const conflictExecutions = keysOf(view.conflicts, "execution");
   const conflictCrossings = keysOf(view.conflicts, "crossing");
   const nodes: ExecutionNode[] = [];
-  // By the text of host and id, so a crossing finds its execution whatever JSON type the id has. Where two
-  // executions share that text, the one whose fold key sorts first holds it, so line order cannot decide.
-  const parents = new Map<string, [foldKey: string, node: ExecutionNode]>();
-  const attestedSets = new Map<string, Set<string>>();
-  const attested = (host: string): Set<string> => {
-    let set = attestedSets.get(host);
-    if (set === undefined) attestedSets.set(host, (set = attestedOf(view.hosts[host])));
-    return set;
-  };
+  // By the text of host and id, so a crossing finds its execution whatever JSON type the id has. An
+  // execution's own host and id are always strings, so this is its fold key and no two executions share it.
+  const parents = new Map<string, ExecutionNode>();
+  const hosts = Object.values(view.hosts).map(declared);
+  // Each declaration's attested list, read once here for the markers below and for the hosts the model returns.
+  const attested = new Map(hosts.map((h) => [h.host, new Set(h.attested)]));
+  const NONE = new Set<string>();
   let running = 0;
 
   for (const [key, record] of Object.entries(view.executions)) {
@@ -86,32 +84,30 @@ export function buildModel(stream: string): Model {
       running: unresolvedExecutions.has(key),
       conflict: conflictExecutions.has(key),
       durationMs: duration(record.start, record.end?.time),
-      provenance: executionProvenance(record, attested(record.host)),
+      provenance: executionProvenance(record, attested.get(record.host) ?? NONE),
       crossings: [],
     };
     invariant(node.running !== Object.hasOwn(record, "end"), "an execution is running exactly when its record has no end");
     if (node.running) running++;
     nodes.push(node);
-    const parentKey = text(record.host) + "\0" + text(record.id);
-    const held = parents.get(parentKey);
-    if (held === undefined || key < held[0]) parents.set(parentKey, [key, node]);
+    parents.set(text(record.host) + "\0" + text(record.id), node);
   }
 
   let placed = 0;
   for (const [key, record] of Object.entries(view.crossings)) {
     const parentKey = text(record.host) + "\0" + text(record.execution_id);
-    let node = parents.get(parentKey)?.[1];
+    let node = parents.get(parentKey);
     if (node === undefined) {
       node = { host: record.host, id: record.execution_id, record: null, running: false, conflict: false, durationMs: null, provenance: {}, crossings: [] };
       nodes.push(node);
-      parents.set(parentKey, ["", node]);
+      parents.set(parentKey, node);
     }
     const crossing: CrossingNode = {
       record,
       running: unresolvedCrossings.has(key),
       conflict: conflictCrossings.has(key),
       durationMs: duration(record.start, record.end?.time),
-      provenance: crossingProvenance(record, attested(record.host)),
+      provenance: crossingProvenance(record, attested.get(record.host) ?? NONE),
     };
     invariant(crossing.running !== Object.hasOwn(record, "end"), "a crossing is running exactly when its record has no end");
     if (crossing.running) running++;
@@ -135,9 +131,7 @@ export function buildModel(stream: string): Model {
   invariant(placed === list.reduce((n, s) => n + s.executions.reduce((m, e) => m + e.crossings.length, 0), 0), "every crossing sits under exactly one execution");
 
   return {
-    hosts: Object.values(view.hosts)
-      .map(declared)
-      .sort((a, b) => compare(text(a.host), text(b.host))),
+    hosts: hosts.sort((a, b) => compare(text(a.host), text(b.host))),
     sessions: list,
     executions: Object.keys(view.executions).length,
     crossings: placed,
@@ -153,7 +147,7 @@ function declared(h: HostLine): HostLine {
   const out: Rec = { ...h };
   if (typeof h.spec_version !== "string") delete out["spec_version"];
   if (typeof h.unmediated_egress !== "boolean") delete out["unmediated_egress"];
-  if (Array.isArray(h.attested)) out["attested"] = h.attested.filter((a) => typeof a === "string");
+  if (Array.isArray(h.attested)) out["attested"] = attestedOf(h);
   else delete out["attested"];
   return out as unknown as HostLine;
 }

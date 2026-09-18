@@ -227,26 +227,38 @@ These hold at every state boundary in the handle and capture code. Where a state
 
 ## Performance
 
-The target is under 10 microseconds for a crossing start plus end with 1 KiB of output on Node 22, into a sink that discards the line. `npm run bench` at the repository root builds, runs `bench/hot-path.mjs`, prints the table below and exits non-zero when a gated row is above the target: 1 KiB out as one string, 1 KiB in and out, and 1 KiB out as a list of small records, the shape of the `person_search` rows in core.md Appendix A, which costs the walker the most per byte. The last row writes through `fileSink` to a temporary file, to show what a synchronous append adds; that part is the operating system's cost, not the emitter's.
+No absolute time is a target here, and nothing is gated on one. A figure such as "under 10 microseconds" is one machine's reading on one day: it passes a fast machine that has regressed and fails a slow one that has not, and it rots in a README, where nothing re-measures it.
 
-The absolute figures live there and only there. A timing assertion in `npm test` compares two measurements taken in the same process and asserts a shape the machine cannot change: one 1 KiB crossing against the serializing and hashing inside it, a 5 MB payload against a 5 KB one under the same cap, a forged 400 M element binary value against a 40 M element one, a stalled descriptor against a sink that keeps the line. Each side is the shortest of several rounds after a warmup, because the shortest run is the one the scheduler left alone, and each bound is several times the steady-state ratio and far below the ratio the regression it guards would produce. A suite that fails on a busy machine is worse than no suite, and a suite that asserts microseconds is one.
+What `npm run bench` enforces from the repository root is that this code has not got slower than itself. `bench/hot-path.mjs` records a baseline for every row it measures, and beside them a `calibration`: what a fixed JSON parse-and-write round trip of a 1 KiB object, with no mocon in it, read on the machine those baselines came from. Each run measures that same calibration again in the same process and scales every baseline by this run's calibration over the recorded one. A machine half the speed of the recording machine measures calibration twice as slow, so every row's bar moves with it and the gate asks whether this code got slower rather than whether this machine is. A row fails above **2x its scaled baseline**, and a row with no baseline recorded fails too; either exits the run non-zero and is named on stderr.
 
-Measured on Node v24.16.0, darwin arm64, Apple M5. Null sink unless noted. Median of 15 rounds.
+To check it: run `npm run bench`. It builds, then prints one row per case with its median, its slowest round, and a `baseline` column holding that row's ratio to its scaled baseline. Every row is gated, not a chosen few, so anything above `2.00x` in that column is what failed. The gated figure is the median of 15 rounds after a warmup. The slowest round is printed and not gated: on a machine running anything else it reads the scheduler rather than this code, and the same row has measured 6,508 ns and 23,000 ns as its slowest round in two runs minutes apart with an unchanged median.
+
+The baselines in `BASELINE` are the lowest median of three runs on an idle machine, the reading the scheduler interfered with least, and that machine is named beside them. Re-record them when the code's cost legitimately changes, deliberately and in one commit, never to make a failing run pass.
+
+`npm test` asserts no absolute time either. Its timing assertions compare two measurements taken in the same process and assert a shape the machine cannot change: one 1 KiB crossing against the serializing and hashing inside it, a 5 MB payload against a 5 KB one under the same cap, a forged 400 M element binary value against a 40 M element one, a stalled descriptor against a sink that keeps the line. Each side is the shortest of several rounds after a warmup, because the shortest run is the one the scheduler left alone, and each bound is several times the steady-state ratio and far below the ratio the regression it guards would produce. A suite that fails on a busy machine is worse than no suite, and a suite that asserts microseconds is one.
+
+One snapshot follows, so the orders of magnitude are on this page. It is a measurement and not a target; run the bench for the verdict. The last row writes through `fileSink` to a temporary file, to show what a synchronous append adds; that part is the operating system's cost, not the emitter's. The row of 23 small records is the shape of the `person_search` rows in core.md Appendix A, which costs the walker the most per byte.
+
+Measured on Node v24.16.0, darwin arm64, Apple M5, otherwise idle, on 2026-09-18. Null sink unless noted. Lowest median of three runs of 15 rounds.
 
 | case | ns per operation |
 |---|---|
-| crossing start + end, 24 B input, 100 B output | 3,626 |
-| crossing start + end, 24 B input, 1 KiB output | 5,554 |
-| crossing start + end, 1 KiB input, 1 KiB output | 7,787 |
-| crossing start + end, 24 B input, 1 KiB output of 23 records | 9,836 |
-| crossing start + end, 24 B input, 5 MB string output | 2,157 |
-| crossing start + end, 24 B input, 5 MB object output | 3,156 |
-| execution start + end, 204 B program, notice on | 3,795 |
-| crossing start + end, 24 B input, 1 KiB output, fileSink | 16,122 |
+| crossing start + end, 24 B input, 100 B output | 3,915 |
+| crossing start + end, 24 B input, 1 KiB output | 5,799 |
+| crossing start + end, 1 KiB input, 1 KiB output | 7,565 |
+| crossing start + end, 24 B input, 1 KiB output of 23 records | 9,490 |
+| crossing start + end, 24 B input, 128 KiB string output | 190,900 |
+| crossing start + end, 24 B input, 1 MiB string output | 187,814 |
+| crossing start + end, 24 B input, 3 MiB string output | 192,172 |
+| crossing start + end, 24 B input, 5 MB string output | 1,627 |
+| crossing start + end, 24 B input, 5 MB object output | 2,382 |
+| crossing start + end, 24 B input, 10,000-key object output | 1,588,406 |
+| execution start + end, 204 B program, notice on | 3,690 |
+| crossing start + end, 24 B input, 1 KiB output, fileSink | 15,599 |
 
-The 5 MB rows cost less than the 1 KiB ones because a string more than 64 times the 64 KiB output cap is not read at all; a 3 MB string output is read only as far as the cap. No `bytes` or `hash` is computed over an original the encoder did not read in full. About a third of a 1 KiB crossing is native work that any emitter pays: two SHA-256 digests and a UTF-8 decode of each payload.
+The 5 MB rows cost less than the 1 KiB ones because a string more than 64 times the 64 KiB output cap is not read at all; a 3 MB string output is read only as far as the cap. No `bytes` or `hash` is computed over an original the encoder did not read in full. About a third of a 1 KiB crossing is native work that any emitter pays: two SHA-256 digests and a UTF-8 decode of each payload. The 10,000-key row is the own-key cost the paragraphs below measure, and it is the one cost no cap reduces.
 
-How the emitter stays inside that budget:
+Where the time goes:
 
 - Each payload is serialized once, as UTF-8 written straight into a scratch buffer. Those bytes give `bytes` and are what `hash` is taken over, and one decode gives the text spliced into the line, so a line is a fixed envelope concatenated around payload text that already exists, not a second `JSON.stringify` of the whole record. The part of a line fixed at start, the host, ids, target, input and start time, is written once per handle; a settlement appends `end` and `ext`.
 - A short string that needs no escaping is copied byte by byte; any other is escaped natively. A plain object's members are read in a `for...in` loop, which V8 compiles to direct field loads for objects of one shape.
@@ -256,7 +268,7 @@ How the emitter stays inside that budget:
 
 The encoder is bounded in the bytes it writes and the members it reads, so a 5 MB result costs O(cap) in both, not O(size), with one exception: the own key list of each object it opens, which the paragraph after this one measures. A string is sliced to the remaining budget first and escaped after, so the characters past the cap are never read, and one far past the cap is not read at all. Any other value goes through a walker that mirrors `JSON.stringify` byte for byte, with the departures described under Capture: key order, `toJSON` on objects and functions, unboxing of wrappers from any realm by internal slot, `JSON.rawJSON`, an array's `length` read once, `undefined` in arrays versus objects, lone surrogates, number formatting. It checks each object for a cycle and each level for the depth bound, and stops when the budget is spent. Every node it visits adds at least one byte of output, except an object member that serializes to nothing, `undefined`, a function, a symbol or a `toJSON` that returns one of those, and those are counted against the budget too, so the number of members read is bounded by the cap and not by the size of the original: a program cannot make the walker run 100,000 getters under a 1 KiB cap. The test suite checks the walker against `JSON.stringify` on a corpus and on generated values for byte equality, which is what makes a truncated `value` a true prefix of the host's serialization.
 
-Two costs stay proportional to size, and the width of an object is the one a program chooses. An object's own key list is read whole before its first member: V8 materializes the keys of a large object, and a Proxy's `ownKeys` result, before the first iteration whether the walker uses `Object.keys` or `for...in`. So the honest bound on a capture is O(cap) in bytes written and members read, plus O(own keys) once per object opened, and no cap reduces that second term. On the machine the table above was measured on, a crossing whose input is a plain object costs 0.06 ms at 10 keys, 0.24 ms at 1,000, 17 ms at 100,000 and 247 ms at 1,000,000, and the same 100,000-key object costs 16 ms under a 16-byte cap and 21 ms under a 256 KiB one — a cap sixteen thousand times smaller buys nothing. A host that captures values from a program it does not trust should reject one whose own key count passes a bound of its own before it hands the value over, or set a `drop` rule on the slot, which records the same object in 0.007 ms. The other cost is `program`, hashed in full in one native SHA-256 pass because core.md 5.2 wants `program.bytes` and `program.hash` on every record; that text is the host's, not the program's.
+Two costs stay proportional to size, and the width of an object is the one a program chooses. An object's own key list is read whole before its first member: V8 materializes the keys of a large object, and a Proxy's `ownKeys` result, before the first iteration whether the walker uses `Object.keys` or `for...in`. So the honest bound on a capture is O(cap) in bytes written and members read, plus O(own keys) once per object opened, and no cap reduces that second term. On the machine and date of the snapshot above, a crossing whose input is a plain object cost about 0.005 ms at 10 keys, 0.15 ms at 1,000, 19 ms at 100,000 and 262 ms at 1,000,000, and the same 100,000-key object cost 19 ms under a 16-byte cap and 22 ms under a 256 KiB one — a cap sixteen thousand times smaller bought nothing. Read those for the curve, which is the part that holds: linear in the key count, and flat in the cap. A host that captures values from a program it does not trust should reject one whose own key count passes a bound of its own before it hands the value over, or set a `drop` rule on the slot, which recorded the same object in 0.003 ms. The other cost is `program`, hashed in full in one native SHA-256 pass because core.md 5.2 wants `program.bytes` and `program.hash` on every record; that text is the host's, not the program's.
 
 ## Runtimes
 

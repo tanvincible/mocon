@@ -34,9 +34,19 @@ const USAGE = `usage: mocon <command> <file> [options]
 `;
 
 async function main(argv: string[]): Promise<number> {
-  let parsed: ReturnType<typeof parse>;
+  let parsed;
   try {
-    parsed = parse(argv);
+    parsed = parseArgs({
+      args: argv,
+      allowPositionals: true,
+      options: {
+        port: { type: "string" },
+        out: { type: "string" },
+        url: { type: "string" },
+        header: { type: "string", multiple: true },
+        help: { type: "boolean", short: "h" },
+      },
+    });
   } catch (e) {
     return usage(errorMessage(e));
   }
@@ -103,20 +113,6 @@ async function main(argv: string[]): Promise<number> {
     default:
       return usage(`unknown command ${command}`);
   }
-}
-
-function parse(args: string[]) {
-  return parseArgs({
-    args,
-    allowPositionals: true,
-    options: {
-      port: { type: "string" },
-      out: { type: "string" },
-      url: { type: "string" },
-      header: { type: "string", multiple: true },
-      help: { type: "boolean", short: "h" },
-    },
-  });
 }
 
 /** A usage problem is about the command line the user typed, so it is printed as is. */

@@ -1,33 +1,19 @@
 /**
- * Shared test support: the spec's JSON schema through ajv, a port of the
+ * Shared test support: the spec's JSON schema from packages/testkit, a port of the
  * structural checks in spec/conformance/check.py, fixture loading, and a
  * harness that drives an instance into a memory sink.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import Ajv2020Module from "ajv/dist/2020.js";
+import { lineSchema, specDir } from "../../testkit/schema.js";
 import { mocon, memorySink, type Capabilities, type CapturePolicy, type Mocon, type MemorySink, type MoconOptions } from "../src/index.js";
 
-export const specDir = fileURLToPath(new URL("../../../spec/", import.meta.url));
-const schemaDir = specDir + "schema/";
-const LINE_ID = "https://github.com/tanvincible/mocon/spec/1.0/schema/line.json";
-
-// ajv is CommonJS: the default import is `module.exports`, which is the class and also carries itself as `default`.
-const Ajv2020 = Ajv2020Module.default ?? (Ajv2020Module as unknown as typeof Ajv2020Module.default);
-const ajv = new Ajv2020({ strict: false, allErrors: true });
-ajv.addFormat("date-time", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/);
-for (const file of ["line.json", "host.json", "execution.json", "crossing.json", "payload.json", "error.json"]) {
-  ajv.addSchema(JSON.parse(readFileSync(schemaDir + file, "utf8")) as object);
-}
-const loaded = ajv.getSchema(LINE_ID);
-if (loaded === undefined) throw new Error("line.json did not load");
-const schema = loaded;
+export { specDir };
 
 /** Schema errors plus structural errors for one parsed line. Empty when the line is valid. */
 export function lineErrors(line: unknown): string[] {
   const errors = structuralErrors(line);
-  if (!schema(line)) for (const e of schema.errors ?? []) errors.push("schema: " + (e.instancePath || "/") + " " + (e.message ?? ""));
+  if (!lineSchema(line)) for (const e of lineSchema.errors ?? []) errors.push("schema: " + (e.instancePath || "/") + " " + (e.message ?? ""));
   return errors;
 }
 
@@ -236,7 +222,8 @@ export function sleep(ms: number): Promise<void> {
  * scheduler left alone, while a median or a mean carries whatever else
  * the machine was doing. A test then compares two of these figures as a
  * ratio, never against a number of microseconds: absolute figures belong
- * in `bench/hot-path.mjs`, which gates them on a known machine.
+ * in `bench/hot-path.mjs`, which gates each row at twice its own recorded
+ * baseline, scaled by a calibration measured in the same run.
  */
 
 /** The shortest microseconds per call of `a` and of `b`, measured alternately so load lands on both, after a warmup of each. */

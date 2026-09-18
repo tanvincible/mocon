@@ -192,7 +192,7 @@ test("the url is checked up front, and a message about it never repeats it", () 
   assert.throws(() => otlpSink({ url: "/v1/traces?key=SECRET" }), (e: Error) => e instanceof TypeError && /absolute URL/.test(e.message) && !e.message.includes("SECRET"));
   assert.throws(() => otlpSink({ url: "https://user:SECRET@collector.example/v1/traces" }), (e: Error) => e instanceof TypeError && /credentials/.test(e.message) && !e.message.includes("SECRET"));
   assert.throws(() => otlpSink({ url: "https://SECRET@collector.example/v1/traces" }), (e: Error) => /credentials/.test(e.message) && !e.message.includes("SECRET"));
-  assert.throws(() => otlpSink({ url: URL_, cap: -1 }), RangeError);
+  for (const cap of [-1, 1.5, NaN, Infinity, "10"]) assert.throws(() => otlpSink({ url: URL_, cap: cap as number }), RangeError, `cap ${String(cap)}`);
   assert.doesNotThrow(() => otlpSink({ url: "memory:", fetch: fakeFetch().fetch }), "any absolute URL a stand-in fetch accepts");
 });
 

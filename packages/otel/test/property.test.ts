@@ -13,7 +13,7 @@ import fc from "fast-check";
 import type { HostLine } from "@mocon/core";
 import { crossingSpanIdOf, executionSpanIdOf, traceIdOf } from "../src/ids.js";
 import { otlpSink } from "../src/index.js";
-import type { AnyValue } from "../src/otlp.js";
+import type { AnyValue } from "../src/map.js";
 import { crossing, declared, execution, fakeFetch, int64Of, mapped, readStreamLines, render, spanOf, spansOf, streamNames, tree, type Rec } from "./helpers.js";
 
 const RUNS = { numRuns: 300 };

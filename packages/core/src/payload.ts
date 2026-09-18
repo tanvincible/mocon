@@ -555,11 +555,9 @@ export class Encoder {
     return { text: body.slice(0, escapeBoundary(body, this.fit(body, cap - 1))) + '"', cut: true };
   }
 
-  /** Byte length and hash of a text's UTF-8, from one write into the scratch. */
+  /** Byte length and hash of a text's UTF-8. */
   digest(text: string): { bytes: number; hash: string } {
-    if (this.walking || text.length * 3 > this.scratch.length) return { bytes: Buffer.byteLength(text), hash: sha256(text) };
-    const bytes = this.scratch.write(text, 0);
-    return { bytes, hash: sha256(this.scratch.subarray(0, bytes)) };
+    return { bytes: Buffer.byteLength(text), hash: sha256(text) };
   }
 
   /** A string far longer than the cap is not read: its literal is `""`, cut. */

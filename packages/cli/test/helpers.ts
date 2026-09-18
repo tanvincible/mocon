@@ -1,6 +1,6 @@
 /**
  * Test support: the conformance suite's golden streams, expected views,
- * invalid lines and OTLP documents; the spec schema through ajv; scratch
+ * invalid lines and OTLP documents; the spec schema from packages/testkit; scratch
  * directories; a runner for the built `mocon` binary; and a local HTTP
  * server that records what it receives.
  */
@@ -14,11 +14,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { unixNanos } from "@mocon/core/fold";
-import Ajv2020Module from "ajv/dist/2020.js";
+import { lineSchema, specDir } from "../../testkit/schema.js";
 
+export { specDir };
 export const packageDir = fileURLToPath(new URL("../", import.meta.url));
-export const specDir = fileURLToPath(new URL("../../../spec/", import.meta.url));
 export const conformanceDir = specDir + "conformance/";
 
 export interface Fixture {
@@ -63,23 +62,9 @@ export const UNSAFE = new RegExp("[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\
 /** Lines as JSONL text. */
 export const jsonl = (lines: readonly unknown[]): string => lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
 
-/* ------------------------------------------------------------------ */
-/* Schema                                                              */
-/* ------------------------------------------------------------------ */
-
-// ajv is CommonJS: the default import is `module.exports`, which is the class and also carries itself as `default`.
-const Ajv2020 = Ajv2020Module.default ?? (Ajv2020Module as unknown as typeof Ajv2020Module.default);
-const ajv = new Ajv2020({ strict: false, allErrors: true });
-ajv.addFormat("date-time", { validate: (s: string) => unixNanos(s) !== undefined });
-for (const file of ["line.json", "host.json", "execution.json", "crossing.json", "payload.json", "error.json"]) {
-  ajv.addSchema(JSON.parse(readFileSync(specDir + "schema/" + file, "utf8")) as object);
-}
-const lineSchema = ajv.getSchema("https://github.com/tanvincible/mocon/spec/1.0/schema/line.json");
-if (lineSchema === undefined) throw new Error("line.json did not load");
-
 /** Whether spec/schema/line.json accepts the parsed line. */
 export function schemaAccepts(line: unknown): boolean {
-  return lineSchema!(line) === true;
+  return lineSchema(line) === true;
 }
 
 /* ------------------------------------------------------------------ */

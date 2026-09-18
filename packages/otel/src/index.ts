@@ -7,5 +7,4 @@
  */
 
 export { otlpSink, type FetchLike, type OtlpSink, type OtlpSinkOptions } from "./sink.js";
-export type { SkipReason } from "./map.js";
-export type { ExportTraceServiceRequest } from "./otlp.js";
+export type { ExportTraceServiceRequest, SkipReason } from "./map.js";

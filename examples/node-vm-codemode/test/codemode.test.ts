@@ -73,7 +73,7 @@ test("a program that throws is failed with class runtime, and its stack names th
 });
 
 test("a busy loop is stopped at the time limit and recorded terminated with class timeout", async () => {
-  const host = await connect({ timeLimitMs: 50 });
+  const host = await connect(50);
   try {
     const result = await host.execute("while (true) {}");
     assert.equal(result.isError, true);
@@ -87,7 +87,7 @@ test("a busy loop is stopped at the time limit and recorded terminated with clas
 });
 
 test("a program that imitates the limit's error is failed, not terminated: the host's clock decides", async () => {
-  const host = await connect({ timeLimitMs: 5000 });
+  const host = await connect(5000);
   try {
     const forged = "Object.assign(new Error('Script execution timed out after 5000ms'), { code: 'ERR_SCRIPT_EXECUTION_TIMEOUT' })";
     const result = await host.execute(`}\n)();\nthrow ${forged};\n(async () => {`);
@@ -101,7 +101,7 @@ test("a program that imitates the limit's error is failed, not terminated: the h
 });
 
 test("a program still awaiting at the time limit is terminated, and its open call is abandoned first", async () => {
-  const host = await connect({ timeLimitMs: 30 });
+  const host = await connect(30);
   try {
     const result = await host.execute("callTool('person_search', { domain: 'acme.example' });\nawait new Promise(() => {});");
     assert.equal(text(result), "the program did not finish within 30 ms");
@@ -122,7 +122,7 @@ test("a program still awaiting at the time limit is terminated, and its open cal
 });
 
 test("after the host stops waiting, a call is refused and recorded, and never reaches a tool", async () => {
-  const host = await connect({ timeLimitMs: 30 });
+  const host = await connect(30);
   try {
     const program = `
       await callTool("company_lookup", { domain: "acme.example" });
@@ -172,7 +172,7 @@ test("a call left running when the program returns is abandoned, and a call chai
 });
 
 test("a request the client cancels is terminated with class cancelled", async () => {
-  const host = await connect({ timeLimitMs: 10_000 });
+  const host = await connect(10_000);
   try {
     const controller = new AbortController();
     const call = host.execute("callTool('company_lookup', { domain: 'acme.example' });\nawait new Promise(() => {});", { signal: controller.signal });
@@ -191,7 +191,7 @@ test("a request the client cancels is terminated with class cancelled", async ()
 });
 
 test("a cancel reason too long to relay reaches no line, though the host stops waiting by rejecting with it", async () => {
-  const host = await connect({ timeLimitMs: 10_000 });
+  const host = await connect(10_000);
   try {
     const controller = new AbortController();
     const call = host.execute("callTool('company_lookup', { domain: 'acme.example' });\nawait new Promise(() => {});", { signal: controller.signal });
@@ -329,7 +329,7 @@ test("a value the host cannot send back fails the execution", async () => {
 test("a time limit that node:vm or a timer would not honour is rejected when the server is built", () => {
   const m = mocon({ host: HOST, capabilities: CAPABILITIES, sinks: [] });
   for (const timeLimitMs of [0, -1, 1.5, Number.NaN, 2 ** 31]) {
-    assert.throws(() => createServer(m, { timeLimitMs }), RangeError, String(timeLimitMs));
+    assert.throws(() => createServer(m, timeLimitMs), RangeError, String(timeLimitMs));
   }
-  assert.doesNotThrow(() => createServer(m, { timeLimitMs: 1 }));
+  assert.doesNotThrow(() => createServer(m, 1));
 });

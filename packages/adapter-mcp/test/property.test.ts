@@ -15,7 +15,7 @@ import fc from "fast-check";
 import { fold } from "@mocon/core/fold";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { contextFromMcp, moconTool, type McpExtra, type MoconToolOptions } from "../src/index.js";
-import { assertValidStream, complete, extraOf, harness, type Rec } from "./helpers.js";
+import { assertValidStream, extraOf, harness, type Rec } from "./helpers.js";
 
 const RUNS = { numRuns: 300 };
 
@@ -83,7 +83,7 @@ const scenario = fc.record({
 function referenceError(of: unknown): Rec {
   const ref = harness();
   ref.m.execution.start({ program: "x", notice: false }).fail(of);
-  return complete(ref.ofKind("execution"))["end"]["error"];
+  return ref.done()["end"]["error"];
 }
 
 test("a handled call ends its execution exactly once, with the table's disposition and class, after every crossing it left open", async () => {
@@ -129,7 +129,7 @@ test("a handled call ends its execution exactly once, with the table's dispositi
       assertValidStream(h.sink.lines);
       const records = h.records();
       const completeAt = records.findIndex((r) => r["kind"] === "execution" && r["end"] !== undefined);
-      const done = complete(h.ofKind("execution"));
+      const done = h.done();
       const crossings = h.ofKind("crossing");
       assert.equal(crossings.length, s.crossings.length, "every crossing is written once");
       assert.deepEqual(

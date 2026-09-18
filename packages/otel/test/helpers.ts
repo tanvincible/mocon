@@ -13,8 +13,7 @@ import type { HostLine } from "@mocon/core";
 import { sameMajor } from "@mocon/core/fold";
 import fc from "fast-check";
 import type { ExportTraceServiceRequest, FetchLike } from "../src/index.js";
-import { buildRequest, checkOptions, mapLine, type MapOptions, type SkipReason } from "../src/map.js";
-import type { Span } from "../src/otlp.js";
+import { buildRequest, mapLine, type SkipReason, type Span } from "../src/map.js";
 
 export type Rec = Record<string, unknown>;
 export const isRec = (v: unknown): v is Rec => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -268,8 +267,10 @@ export interface MappedLine {
   skipped?: SkipReason;
 }
 
-/** `MapOptions` plus the receipt clock reading a test pins, which the mapping reads from `Date.now`. */
-export interface MapOptionsAt extends MapOptions {
+/** The mapping's `cap`, plus the receipt clock reading a test pins, which the mapping reads from `Date.now`. */
+export interface MapOptionsAt {
+  /** Cap in UTF-8 bytes on every string attribute written from a record value (otel-mapping.md 9). Default: none. */
+  cap?: number;
   now?: () => number;
 }
 
@@ -279,14 +280,13 @@ export function mapped(line: string | object, declaration?: HostLine, options?: 
 }
 
 function mapOne(line: string, declaration: HostLine | undefined, options: MapOptionsAt = {}): MappedLine {
-  const { now, ...mapOptions } = options;
-  checkOptions(mapOptions);
+  const { now, cap } = options;
   if (now !== undefined && typeof now !== "function") throw new TypeError("now must be a function");
   const held = declaration !== undefined && sameMajor(declaration.spec_version) ? declaration : undefined;
   const real = Date.now;
   if (now !== undefined) Date.now = now;
   try {
-    const m = mapLine(line, (host) => (held?.host === host ? held : undefined), mapOptions);
+    const m = mapLine(line, (host) => (held?.host === host ? held : undefined), cap);
     if (m.kind === "span") return { request: buildRequest([m]) };
     return m.kind === "skip" ? { request: { resourceSpans: [] }, skipped: m.reason } : { request: { resourceSpans: [] } };
   } finally {

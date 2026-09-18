@@ -27,17 +27,11 @@ export interface Instance {
 
 export type Runtime = Pick<Mocon, "declare" | "flush" | "close"> & { readonly inst: Instance };
 
-/** A sink has not accepted the declaration. */
-const NONE = 0;
-/** A write that carried the declaration has not settled. */
-const PENDING = 1;
-/** A write that carried the declaration went through. */
-const HELD = 2;
-
 export function createRuntime(host: string, declarationText: string, sinks: readonly Sink[], capture: Capturer, onError: MoconOptions["onError"]): Runtime {
   let closed = false;
   let closing: Promise<void> | undefined;
-  const declared: number[] = sinks.map(() => NONE);
+  /** Whether a write carrying the declaration went through, per sink. A write still in flight counts as not. */
+  const held: boolean[] = sinks.map(() => false);
 
   const report = (error: unknown, sink: Sink, lines: number, phase: SinkPhase): void => {
     if (onError === undefined) return;
@@ -51,31 +45,31 @@ export function createRuntime(host: string, declarationText: string, sinks: read
   /** One batch to one sink, the declaration first while the sink lacks it. */
   const deliver = (index: number, lines: readonly string[], declaration: boolean): void => {
     const sink = sinks[index] as Sink;
-    const carries = declaration || declared[index] !== HELD;
+    const carries = declaration || !held[index];
     const batch = carries && !declaration ? Object.freeze([declarationText, ...lines]) : lines;
     let result: unknown;
     try {
       result = sink.write(batch);
     } catch (e) {
-      if (carries) declared[index] = NONE;
+      if (carries) held[index] = false;
       report(e, sink, batch.length, "write");
       return;
     }
     // A synchronous sink returns nothing, and pays for no handler.
     if (result === undefined) {
-      if (carries) declared[index] = HELD;
+      if (carries) held[index] = true;
       return;
     }
     const failed = (e: unknown): void => {
-      if (carries) declared[index] = NONE;
+      if (carries) held[index] = false;
       report(e, sink, batch.length, "write");
     };
     if (!carries) {
       watch(result, failed);
       return;
     }
-    declared[index] = PENDING;
-    if (!watch(result, failed, () => void (declared[index] = HELD))) declared[index] = HELD;
+    held[index] = false;
+    if (!watch(result, failed, () => void (held[index] = true))) held[index] = true;
   };
 
   const write = (lines: readonly string[], declaration: boolean): void => {

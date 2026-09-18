@@ -5,9 +5,10 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { callTool, type Company, type Person } from "../src/tools.js";
+import { callTool } from "../src/tools.js";
 
-const ACME: Company = { domain: "acme.example", name: "Acme Example Co", industry: "Widgets", headcount: 42 };
+const ACME = { domain: "acme.example", name: "Acme Example Co", industry: "Widgets", headcount: 42 };
+type Person = { name: string; title: string; domain: string };
 
 test("company_lookup answers acme.example", async () => {
   assert.deepEqual(await callTool("company_lookup", { domain: "acme.example" }), ACME);
@@ -40,7 +41,7 @@ test("person_search rejects a limit that is not a non-negative integer", async (
 });
 
 test("an answer a caller changes does not reach a later call", async () => {
-  const company = (await callTool("company_lookup", { domain: "acme.example" })) as Company;
+  const company = (await callTool("company_lookup", { domain: "acme.example" })) as typeof ACME;
   company.name = "Changed";
   const people = (await callTool("person_search", { domain: "acme.example" })) as Person[];
   people[0]!.name = "Changed";

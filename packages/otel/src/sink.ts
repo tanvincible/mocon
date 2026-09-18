@@ -13,7 +13,7 @@
 
 import type { HostLine, Sink } from "@mocon/core";
 import { canonical, sameMajor } from "@mocon/core/fold";
-import { buildRequest, checkOptions, mapLine, type Mapped, type SkipReason } from "./map.js";
+import { buildRequest, mapLine, type Mapped, type SkipReason } from "./map.js";
 
 /** The part of `fetch` the sink uses, so a test can hand in a stand-in. */
 export type FetchLike = (
@@ -49,12 +49,7 @@ export interface OtlpSink extends Sink {
   readonly declarationsDropped: number;
   /** Resolves when every POST in flight has settled, whether it succeeded or not. */
   flush(): Promise<void>;
-  /**
-   * The same wait as `flush`, so `Mocon.close` awaits the POSTs in flight
-   * rather than returning while they are open. The sink owns no socket,
-   * no timer and no dispatcher of its own to release: what it holds is the
-   * set of POSTs, and this is what waits for them.
-   */
+  /** The same wait as `flush`: the sink owns no socket, timer or dispatcher of its own to release, only the POSTs. */
   close(): Promise<void>;
 }
 
@@ -83,7 +78,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 export function otlpSink(options: OtlpSinkOptions): OtlpSink {
   const { url, cap, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
   const endpoint = printable(url);
-  checkOptions({ cap });
+  if (cap !== undefined && !(Number.isSafeInteger(cap) && cap >= 0)) throw new RangeError("mocon otel: cap must be a non-negative integer");
   if (!(Number.isFinite(timeoutMs) && timeoutMs > 0)) throw new RangeError("mocon otel: timeoutMs must be a positive number of milliseconds");
   const doFetch: FetchLike = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
   if (typeof doFetch !== "function") throw new TypeError("mocon otel: no fetch available; pass one in options");
@@ -94,7 +89,6 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
     // Not the platform's message: it repeats the offending value, which is usually a credential.
     throw new TypeError("mocon otel: headers must be valid HTTP header names and values");
   }
-  const mapOptions = cap === undefined ? {} : { cap };
 
   const hosts = new Map<string, { declaration: HostLine; canon: string }>();
   const skipped: Record<SkipReason, number> = { notice: 0, malformed: 0, unknown_kind: 0, bad_enum: 0, bad_timestamp: 0 };
@@ -128,6 +122,11 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
     if (held.canon === canon) return;
     conflicts++;
     if (canon < held.canon) hosts.set(declaration.host, { declaration, canon });
+  };
+
+  /** Resolves when every POST in flight has settled: both `flush` and `close` are this wait and nothing else. */
+  const settle = async (): Promise<void> => {
+    await Promise.allSettled([...inFlight]);
   };
 
   const post = async (body: string): Promise<void> => {
@@ -167,7 +166,7 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
           skipped.malformed++;
           continue;
         }
-        const m = mapLine(line, lookup, mapOptions);
+        const m = mapLine(line, lookup, cap);
         if (m.kind === "span") spans.push(m);
         else if (m.kind === "skip") skipped[m.reason]++;
         else remember(m.declaration, line);
@@ -182,12 +181,8 @@ export function otlpSink(options: OtlpSinkOptions): OtlpSink {
       inFlight.add(tracked);
       return tracked;
     },
-    async flush() {
-      await Promise.allSettled([...inFlight]);
-    },
-    async close() {
-      await Promise.allSettled([...inFlight]);
-    },
+    flush: settle,
+    close: settle,
   };
 }
 
@@ -214,30 +209,13 @@ function ignore(): void {}
 /**
  * `request`, or a rejection with the signal's reason once it aborts,
  * whichever settles first. `fetch` gives up on the signal by itself; a
- * stand-in need not, so the deadline is kept here too. The listener goes
- * as soon as either settles, and `AbortSignal.timeout` does not hold the
- * event loop open.
+ * stand-in need not, so the deadline is kept here too. A listener on an
+ * already-aborted signal never fires, which is what the first line is for.
+ * `AbortSignal.timeout` does not hold the event loop open.
  */
 function deadline<T>(request: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const expire = (): void => reject(signal.reason as Error);
-    if (signal.aborted) {
-      expire();
-      return;
-    }
-    signal.addEventListener("abort", expire, { once: true });
-    const settled = (): void => signal.removeEventListener("abort", expire);
-    request.then(
-      (value) => {
-        settled();
-        resolve(value);
-      },
-      (e: unknown) => {
-        settled();
-        reject(e);
-      },
-    );
-  });
+  signal.throwIfAborted();
+  return Promise.race([request, new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason as Error), { once: true }))]);
 }
 
 /**

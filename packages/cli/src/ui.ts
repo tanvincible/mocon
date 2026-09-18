@@ -13,7 +13,7 @@
  */
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { closeSync, constants, fchmodSync, fstatSync, ftruncateSync, openSync, readFileSync, writeSync } from "node:fs";
+import { closeSync, constants, fchmodSync, fstatSync, ftruncateSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { basename } from "node:path";
@@ -104,8 +104,7 @@ export function writeUi(file: string, out: string): void {
     if (!fstatSync(fd).isFile()) throw new Error(`${out} is not a regular file`);
     fchmodSync(fd, OWNER_ONLY);
     ftruncateSync(fd, 0);
-    const buffer = Buffer.from(html, "utf8");
-    for (let at = 0; at < buffer.length; ) at += writeSync(fd, buffer, at, buffer.length - at);
+    writeFileSync(fd, html);
   } finally {
     closeSync(fd);
   }
@@ -113,12 +112,10 @@ export function writeUi(file: string, out: string): void {
 
 const OWNER_ONLY = 0o600;
 
-/** Whether the request names the address this connection reached: `127.0.0.1` or `localhost`, with the port unless it is 80. */
+/** Whether the request names the address this connection reached: `127.0.0.1` or `localhost`, with the port it listens on. */
 function loopbackHost(req: IncomingMessage): boolean {
   const host = req.headers.host?.toLowerCase();
-  const port = req.socket.localPort;
-  if (host === `127.0.0.1:${port}` || host === `localhost:${port}`) return true;
-  return port === 80 && (host === "127.0.0.1" || host === "localhost");
+  return host === `127.0.0.1:${req.socket.localPort}` || host === `localhost:${req.socket.localPort}`;
 }
 
 function send(res: ServerResponse, status: number, type: string, body: string, headers: OutgoingHttpHeaders = {}): void {

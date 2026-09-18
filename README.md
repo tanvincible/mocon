@@ -13,6 +13,7 @@ The full specification, its conformance levels, and a file-by-file index live at
 - `packages/otel` is `@mocon/otel`, the OTLP sink.
 - `packages/adapter-mcp` is `@mocon/adapter-mcp`, wrappers for the MCP TypeScript SDK.
 - `packages/cli` is `@mocon/cli`, the `mocon validate|view|ui|otlp` command.
+- `packages/testkit` is test support every package shares: the spec schema through ajv, and an in-memory MCP transport pair. Not published.
 - `examples/node-vm-codemode` is a runnable code-mode host that writes a stream.
 
 Commands at the repository root: `npm test` builds every package and runs its tests, `npm run bench` runs the hot-path benchmark, `npm run conformance` runs the spec's reference checker.

@@ -11,7 +11,7 @@ import { test } from "node:test";
 import type { HostLine } from "@mocon/core";
 import { otlpSink } from "../src/index.js";
 import { truncateUtf8 } from "../src/map.js";
-import type { AnyValue } from "../src/otlp.js";
+import type { AnyValue } from "../src/map.js";
 import { attrs, crossing, declared, EMPTY, execution, EXECUTION_ID, fakeFetch, HOST, mapped, spanOf, type Rec } from "./helpers.js";
 
 /** Every attribute of a one-line result's span, with its typed value. */
@@ -439,12 +439,10 @@ test("a declaration of another major version is not applied: no mocon.host.* and
 /* Options and the cap                                                 */
 /* ------------------------------------------------------------------ */
 
-test("options are checked: a cap that is not a non-negative integer, a clock that is not a function", () => {
-  for (const cap of [-1, 1.5, NaN, Infinity, "10"]) {
-    assert.throws(() => mapped(crossing(), undefined, { cap: cap as number }), RangeError, String(cap));
-  }
-  assert.throws(() => mapped(crossing(), undefined, { now: 5 as unknown as () => number }), TypeError);
+// A cap that is not a non-negative integer is refused by `otlpSink`, where the option enters the package; sink.test.ts holds that.
+test("a cap of zero keeps nothing, and a clock that is not a function is refused", () => {
   assert.equal(attrs(spanOf(mapped(crossing(), undefined, { cap: 0 }).request))["mocon.crossing.target"], "", "a cap of zero keeps nothing");
+  assert.throws(() => mapped(crossing(), undefined, { now: 5 as unknown as () => number }), TypeError);
 });
 
 test("truncateUtf8 cuts on a code point boundary: never half a surrogate pair, and a lone surrogate counts three bytes", () => {

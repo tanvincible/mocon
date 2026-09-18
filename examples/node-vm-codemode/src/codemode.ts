@@ -51,13 +51,8 @@ export const CAPABILITIES: Capabilities = {
 /** How long a program may run, its synchronous part and its awaits together. */
 const TIME_LIMIT_MS = 1000;
 
-export interface ServerOptions {
-  /** Milliseconds, an integer from 1 to 2^31 - 1, the range both node:vm and timers accept. Default: one second. */
-  timeLimitMs?: number;
-}
-
-export function createServer(m: Mocon, options?: ServerOptions): McpServer {
-  const timeLimitMs = options?.timeLimitMs ?? TIME_LIMIT_MS;
+/** `timeLimitMs` is an integer from 1 to 2^31 - 1, the range both node:vm and timers accept. Default: one second. */
+export function createServer(m: Mocon, timeLimitMs: number = TIME_LIMIT_MS): McpServer {
   if (!Number.isInteger(timeLimitMs) || timeLimitMs < 1 || timeLimitMs > 2 ** 31 - 1) throw new RangeError("createServer: timeLimitMs must be an integer from 1 to 2147483647");
   const server = new McpServer({ name: "node-vm-codemode", version: "0.1.0" });
   server.registerTool(

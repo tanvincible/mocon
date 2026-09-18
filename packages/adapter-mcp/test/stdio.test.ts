@@ -18,7 +18,7 @@ import { fold } from "@mocon/core/fold";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
-import { assertValidStream, complete, waitFor, type Rec } from "./helpers.js";
+import { assertValidStream, completeExecution, waitFor, type Rec } from "./helpers.js";
 
 const packageDir = fileURLToPath(new URL("../", import.meta.url));
 const server = fileURLToPath(new URL("./fixtures/stdio-server.ts", import.meta.url));
@@ -156,7 +156,7 @@ test("over stdio with the stderr sink, a cancel sent across the pipe terminates 
 
     const lines = stderr.filter((l) => l.startsWith('{"kind":'));
     assertValidStream(lines);
-    const cancelled = complete(executions().filter((r) => r["end"]?.["disposition"] !== "completed"));
+    const cancelled = completeExecution(executions().filter((r) => r["end"]?.["disposition"] !== "completed"));
     assert.equal(cancelled["end"]["disposition"], "terminated");
     assert.deepEqual(cancelled["end"]["error"], { class: "cancelled", message: "user cancelled" });
     const all = records();

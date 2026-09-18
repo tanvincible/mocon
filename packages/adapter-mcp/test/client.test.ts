@@ -7,20 +7,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fold } from "@mocon/core/fold";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { instrumentMcpClient, type McpClientCalls } from "../src/index.js";
-import { assertValidStream, harness, type Rec } from "./helpers.js";
-
-function text(result: unknown): string {
-  const content = (result as { content: { type: string; text?: string }[] }).content;
-  return content[0]?.text ?? "";
-}
+import { assertValidStream, harness, pair, text, type Paired, type Rec } from "./helpers.js";
 
 /** An upstream server with one tool that answers, one that reports an error, a resource and a prompt. */
-async function upstream(): Promise<{ client: Client; close: () => Promise<void> }> {
+async function upstream(): Promise<Paired> {
   const server = new McpServer({ name: "upstream", version: "0.0.0" });
   server.registerTool("add", { inputSchema: { a: z.number(), b: z.number() } }, ({ a, b }) => ({
     content: [{ type: "text", text: String(a + b) }],
@@ -30,17 +23,7 @@ async function upstream(): Promise<{ client: Client; close: () => Promise<void> 
   server.registerPrompt("hello", { argsSchema: { name: z.string() } }, ({ name }) => ({
     messages: [{ role: "user", content: { type: "text", text: `Hello ${name}` } }],
   }));
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  const client = new Client({ name: "proxy", version: "0.0.0" });
-  await client.connect(clientTransport);
-  return {
-    client,
-    close: async () => {
-      await client.close();
-      await server.close();
-    },
-  };
+  return pair(server, "proxy");
 }
 
 test("instrumentMcpClient records callTool, readResource and getPrompt as crossings", async () => {

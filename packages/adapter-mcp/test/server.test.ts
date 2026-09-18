@@ -8,14 +8,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fold } from "@mocon/core/fold";
 import { withLowLevelServer, withMcpServer } from "./codemode.js";
-import { assertValidStream, complete, harness, waitFor, type Rec } from "./helpers.js";
+import { assertValidStream, harness, text, waitFor, type Rec } from "./helpers.js";
 
 const TP = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
-
-function text(result: unknown): string {
-  const content = (result as { content: { type: string; text?: string }[] }).content;
-  return content[0]?.text ?? "";
-}
 
 test("a program's crossings and result are recorded, and the stream validates and folds to one execution", async () => {
   const h = harness();
@@ -34,7 +29,7 @@ test("a program's crossings and result are recorded, and the stream validates an
     assert.equal(executions.length, 2, "a start notice and a complete record");
     const notice = executions[0]!;
     assert.equal(notice["end"], undefined);
-    const done = complete(executions);
+    const done = h.done();
     assert.equal(done["id"], notice["id"]);
     assert.equal(done["program"]["value"], code);
     assert.equal(done["language"], "javascript");
@@ -78,7 +73,7 @@ test("a bridge that throws settles its crossing as error; the execution still co
     assert.equal(text(result), '"caught upstream failed"');
 
     assertValidStream(h.sink.lines);
-    const done = complete(h.ofKind("execution"));
+    const done = h.done();
     assert.equal(done["end"]["disposition"], "completed");
     assert.equal(done["context"], undefined);
     const [fail] = h.ofKind("crossing");
@@ -101,7 +96,7 @@ test("a program that throws yields failed with class runtime", async () => {
     assert.equal((result as { isError?: boolean }).isError, true);
 
     assertValidStream(h.sink.lines);
-    const done = complete(h.ofKind("execution"));
+    const done = h.done();
     assert.equal(done["end"]["disposition"], "failed");
     assert.equal(done["end"]["error"]["class"], "runtime");
     assert.equal(done["end"]["error"]["message"], "bad program");
@@ -121,7 +116,7 @@ test("a thrown handler yields failed with the error as message and value", async
     assert.equal(text(result), "handler exploded");
 
     assertValidStream(h.sink.lines);
-    const done = complete(h.ofKind("execution"));
+    const done = h.done();
     assert.equal(done["program"]["value"], "x");
     assert.equal(done["end"]["disposition"], "failed");
     assert.equal(done["end"]["error"]["class"], "runtime");
@@ -142,7 +137,7 @@ test("a result with isError is failed, with the whole result as the error value 
     assert.equal(text(result), "denied");
 
     assertValidStream(h.sink.lines);
-    const done = complete(h.ofKind("execution"));
+    const done = h.done();
     assert.equal(done["end"]["disposition"], "failed");
     assert.equal(done["end"]["error"]["class"], "runtime");
     assert.equal(done["end"]["error"]["message"], undefined);
@@ -169,7 +164,7 @@ test("an aborted request yields terminated with class cancelled, after abandonin
     await waitFor(() => h.ofKind("execution").some((r) => r["end"] !== undefined));
 
     assertValidStream(h.sink.lines);
-    const done = complete(h.ofKind("execution"));
+    const done = h.done();
     assert.equal(done["end"]["disposition"], "terminated");
     assert.deepEqual(done["end"]["error"], { class: "cancelled", message: "user cancelled" });
     assert.equal(done["end"]["result"], undefined);
@@ -195,7 +190,7 @@ test("the same handler serves the low-level Server, where a throw reaches the cl
   try {
     const result = await cm.client.callTool({ name: "execute", arguments: { code: "return await callTool('add', { a: 1, b: 1 })" } });
     assert.equal(text(result), "2");
-    let done = complete(h.ofKind("execution"));
+    let done = h.done();
     assert.equal(done["end"]["disposition"], "completed");
     assert.deepEqual(done["context"], { session: "session-2" });
 

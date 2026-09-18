@@ -86,7 +86,7 @@ test("the CLI and @mocon/otel apply one table: every complete record of every go
   for (const s of streams) {
     const lines = s.text.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as Record<string, unknown>);
     const declaration = lines.find((l) => l["kind"] === "host") as HostLine | undefined;
-    const attested = attestedOf(declaration);
+    const attested = new Set(attestedOf(declaration));
     for (const line of lines) {
       if ((line["kind"] !== "execution" && line["kind"] !== "crossing") || line["end"] === undefined) continue;
       const kind = line["kind"];
