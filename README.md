@@ -13,15 +13,21 @@ format here for anyone to learn and no destination of ours to wire.
 
 ## Install
 
+**Not published to npm yet.** Today you install from this repository, with a git or `file:` path:
+
 ```sh
-npm install @mocon/trace @opentelemetry/api
+npm install github:tanvincible/mocon
+npm install @opentelemetry/api
 ```
 
-`@opentelemetry/api` is a peer dependency. You also need an OpenTelemetry SDK and an exporter
-configured in your application, as you would for any OpenTelemetry instrumentation. **Without a
-registered tracer provider the API is a no-op and nothing is emitted, silently.** That is
-OpenTelemetry's behaviour rather than ours, and it is the single most common way an integration
-produces nothing.
+`@opentelemetry/api` is a peer dependency you install yourself. You also need an OpenTelemetry SDK
+and an exporter configured in your application, as for any OpenTelemetry instrumentation. **Without
+a registered tracer provider the API is a no-op and nothing is emitted, silently, with exit code
+zero.** That is OpenTelemetry's behaviour rather than ours, and it is the single most common way an
+integration produces nothing at all.
+
+The code change is the small half. `packages/trace/README.md` ends with the order to do things in,
+which four trials paid for: destination first, code last.
 
 ## Use
 

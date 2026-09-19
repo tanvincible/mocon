@@ -11,7 +11,9 @@ This package emits two spans that make it visible, following
 [the code-mode semantic conventions](../../spec/otel-code-mode.md). It depends on the OpenTelemetry
 **API** and never the SDK, which is OpenTelemetry's own rule for instrumentation and the reason it
 is worth using: you emit through the API, and whatever exporters the application owner already
-configured receive it. There is no destination of ours to wire.
+configured receive it. There is no destination of ours to wire — but there has to be one of yours.
+If your telemetry goes to structured logs today, standing up a trace pipeline is the real cost of
+adopting this, and it is much larger than the two wrappers.
 
 ## Two wrappers
 
@@ -163,3 +165,28 @@ Read section 16 of the conventions for the full list. The two that bite most:
 
 Development, version 0.1.0. The conventions it implements are a draft, and the `gen_ai.*` and
 `mcp.*` attributes it reuses are themselves Development upstream with no compatibility guarantee.
+
+## Integrating for real
+
+Four parity trials put this library on real servers against hand-rolled observability. It lost all
+four, never on the model and always on delivery, and the most expensive single mistake was merging
+the code before the destination existed. So do it in this order, which is the reverse of the
+tempting one.
+
+1. **Decide whether you want a trace pipeline at all.** If you already run OpenTelemetry, most of
+   the cost is sunk. If your telemetry goes to logs, adopting this means running a collector and a
+   trace store, and that decision should be made on its own merits rather than as a side effect.
+2. **Deploy the destination first.** Merge `collector/codemode.yaml` into your collector, point it
+   at your real backend, and confirm data arrives with nothing instrumented yet.
+3. **Import `dashboards/code-mode.json`**, repoint its two datasource uids at yours, and check it
+   renders empty rather than broken.
+4. **Then the code.** Two wrappers, a tracer provider in your real entrypoint rather than a test,
+   and the conservative declaration above. Everything under "Four traps" applies here.
+5. **Turn it on in staging.** Run a program that makes several calls including one that fails and
+   one your host refuses, and confirm the spans arrive and the dashboard fills.
+6. **Only then retire what you are replacing.** Deleting a live log line in the same change that
+   ships its replacement switched off makes the day-one delta negative. That is what happened.
+
+Status: Development, 0.1.0, one implementation, and a namespace nobody else has agreed to. The two
+things judges confirmed logs genuinely cannot do, and the honest reason to bother, are span
+parentage and knowing a call was still in flight when its execution was killed.
