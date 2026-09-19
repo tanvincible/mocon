@@ -439,12 +439,12 @@ def stream_files():
     return sorted(glob.glob(os.path.join(STREAMS, "*.jsonl")))
 
 
-def cmd_validate():
+def cmd_validate(paths=None):
     ok = True
     schemas, registry = load_schemas() if HAVE_JSONSCHEMA else (None, None)
     if not HAVE_JSONSCHEMA:
         print(NOTICE)
-    for path in stream_files():
+    for path in paths or stream_files():
         records, skipped = parse_lines(open(path).readlines())
         bad = []
         for o in records:
@@ -661,12 +661,12 @@ def declaration_warnings(records, decls, warn_):
     return problems
 
 
-def cmd_lint():
+def cmd_lint(paths=None):
     """provenance.md 7's lint rules, plus core.md 7's end.time >= start. These are
     warnings about streams core.md calls legal, so `all` prints them without
     failing on them (provenance.md 7 says as much for the third rule)."""
     problems = 0
-    for path in stream_files():
+    for path in paths or stream_files():
         base_name = os.path.basename(path)
         records, _ = parse_lines(open(path).readlines())
         decls, crossings_by_host = {}, {}
@@ -702,8 +702,19 @@ def cmd_lint():
 def main():
     args = sys.argv[1:]
     cmd = args[0] if args else "all"
+    # A path argument names the stream to check. Without this, `validate mine.jsonl` checked the
+    # suite's own corpus and exited 0, so an adaptor author read a false pass as their own.
+    rest = args[1:]
+    if cmd != "permute":
+        missing = [p for p in rest if not os.path.isfile(p)]
+        if missing:
+            print(f"{os.path.basename(sys.argv[0])}: no such file: {', '.join(missing)}")
+            sys.exit(2)
+        if rest and cmd not in ("validate", "lint"):
+            print(f"{os.path.basename(sys.argv[0])}: {cmd} takes no file argument")
+            sys.exit(2)
     if cmd == "validate":
-        ok = cmd_validate()
+        ok = cmd_validate(rest or None)
     elif cmd == "view":
         ok = cmd_view()
     elif cmd == "order":
@@ -713,7 +724,7 @@ def main():
     elif cmd == "invalid":
         ok = cmd_invalid()
     elif cmd == "lint":
-        ok = cmd_lint()
+        ok = cmd_lint(rest or None)
     elif cmd == "all":
         ok = cmd_validate()
         ok = cmd_view() and ok

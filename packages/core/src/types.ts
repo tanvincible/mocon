@@ -254,7 +254,7 @@ export interface Mocon {
      * returned unchanged and recorded as the result. A body that ends the
      * handle itself wins: a handle ignores every settlement after the first.
      */
-    run<T>(options: ExecutionStartOptions, body: (execution: ExecutionHandle) => T): T;
+    run<T>(options: RunOptions, body: (execution: ExecutionHandle) => T): T;
   };
   /** Re-writes the host line byte for byte; a re-send is a no-op (5.1). */
   declare(): void;
@@ -350,6 +350,16 @@ export interface CapturePolicy {
    * its `class`. A function rule tells them apart through its context.
    */
   rules?: Partial<Record<CaptureSlot, CaptureRule>>;
+}
+
+/**
+ * `run`'s options: a start, plus the body's own answer shape turned into the
+ * execution's end fields. A body that answers with a failure envelope instead of
+ * throwing reads it here, the way `instrument` reads a bridge's answer. Default:
+ * a return is `completed` with the value, a throw is `failed` with the cause.
+ */
+export interface RunOptions extends ExecutionStartOptions {
+  end?: (value: unknown) => ExecutionEndOptions | undefined | void;
 }
 
 export interface ExecutionStartOptions {

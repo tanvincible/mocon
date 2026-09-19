@@ -9,7 +9,7 @@ import { Execution } from "./execution.js";
 import { createRuntime, follow } from "./instance.js";
 import { Capturer, REDACTED_TEXT } from "./payload.js";
 import { extJson, objectJson, quote, raw } from "./serialize.js";
-import type { Attestation, Capabilities, Ext, ExecutionContext, ExecutionHandle, ExecutionStartOptions, HostLine, Mocon, MoconOptions } from "./types.js";
+import type { Attestation, Capabilities, ExecutionContext, ExecutionEndOptions, ExecutionHandle, ExecutionStartOptions, Ext, HostLine, Mocon, MoconOptions, RunOptions } from "./types.js";
 import { SPEC_VERSION } from "./version.js";
 
 export type * from "./types.js";
@@ -57,8 +57,21 @@ export function mocon(options: MoconOptions): Mocon {
     return execution;
   };
 
-  const run = <T>(o: ExecutionStartOptions, body: (execution: ExecutionHandle) => T): T => {
+  const run = <T>(o: RunOptions, body: (execution: ExecutionHandle) => T): T => {
     const execution = start(o);
+    // A host whose body answers with a failure envelope rather than a throw reads it here, the way
+    // `instrument` reads a bridge's answer. Without this the default settles every such run
+    // `completed`, which is wrong in the direction nothing complains about.
+    const settle = (value: unknown): void => {
+      let ended: ExecutionEndOptions | undefined | void;
+      try {
+        ended = o.end?.(value);
+      } catch {
+        ended = undefined;
+      }
+      if (ended) execution.end(ended);
+      else execution.complete({ result: value });
+    };
     let out: T;
     try {
       out = body(execution);
@@ -68,7 +81,7 @@ export function mocon(options: MoconOptions): Mocon {
     }
     return follow(
       out,
-      (value) => execution.complete({ result: value }),
+      settle,
       (e) => execution.fail(e),
     );
   };

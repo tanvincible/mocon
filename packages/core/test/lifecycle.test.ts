@@ -333,3 +333,30 @@ test("instrument itself throws only for an option of the wrong shape", () => {
   }
   assert.throws(() => ex.instrument("not a function" as never), TypeError);
 });
+
+test("run reads the body's own answer: an envelope host settles failed, not completed", () => {
+  const h = harness();
+  const out = h.m.execution.run(
+    {
+      program: "p",
+      notice: false,
+      end: (v) => ((v as { ok?: boolean }).ok === false ? { disposition: "failed", error: { class: "runtime", message: "envelope" } } : undefined),
+    },
+    () => ({ ok: false, error: "boom" }),
+  );
+  assert.deepEqual(out, { ok: false, error: "boom" }, "the body's value reaches the caller unchanged");
+  const rec = h.last("execution");
+  assert.equal((rec["end"] as Rec)["disposition"], "failed");
+  assert.deepEqual((rec["end"] as Rec)["error"], { class: "runtime", message: "envelope" });
+  assertValidStream(h.sink.lines);
+});
+
+test("run without an end hook, and one whose hook throws, still complete", () => {
+  const h = harness();
+  h.m.execution.run({ program: "p", notice: false }, () => ({ ok: true }));
+  assert.equal((h.last("execution")["end"] as Rec)["disposition"], "completed");
+  const g = harness();
+  g.m.execution.run({ program: "p", notice: false, end: () => { throw new Error("hook"); } }, () => ({ ok: true }));
+  assert.equal((g.last("execution")["end"] as Rec)["disposition"], "completed", "a throwing hook costs the hook, not the record");
+  assertValidStream(g.sink.lines);
+});
