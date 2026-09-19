@@ -40,8 +40,14 @@ export interface Capabilities {
   crossing_edge?: CrossingEdge;
   /** What the host observed rather than took from the program. Omitted means it attests nothing. */
   attested?: readonly Attestation[];
-  /** Required with `host_attributes`: the keys in the host's own namespace that it observed. */
+  /** Requires `host_attributes`: the keys in the host's own namespace that the host itself observed. */
   attested_attributes?: readonly string[];
+  /**
+   * Requires `host_attributes`: the keys the host passed through unchanged from a target, such as a
+   * credit count an API reported. Target-relayed, not host-observed: the host did not measure it and
+   * does not vouch for it, but the program did not shape it either.
+   */
+  relayed_attributes?: readonly string[];
 }
 
 /**
@@ -57,6 +63,7 @@ export function declaration(capabilities: Capabilities): Readonly<Attributes> {
     crossing_edge: edge,
     attested,
     attested_attributes: attestedKeys,
+    relayed_attributes: relayedKeys,
   } = capabilities;
 
   if (!OBSERVES.has(observes)) throw new RangeError('@mocon/trace: observes_crossings must be "all", "some" or "none"');
@@ -80,13 +87,27 @@ export function declaration(capabilities: Capabilities): Readonly<Attributes> {
   out["code_mode.attested"] = entries;
 
   if (entries.includes("host_attributes")) {
-    const keys = attestedKeys === undefined ? [] : [...attestedKeys];
-    for (const key of keys) if (typeof key !== "string" || key === "") throw new TypeError("@mocon/trace: attested_attributes entries must be non-empty strings");
-    if (keys.length === 0) throw new RangeError('@mocon/trace: attested_attributes is required when "host_attributes" is attested');
-    out["code_mode.attested_attributes"] = keys;
-  } else if (attestedKeys !== undefined) {
-    throw new RangeError('@mocon/trace: attested_attributes needs "host_attributes" in attested, which is the gate a consumer reads');
+    const observed = names(attestedKeys, "attested_attributes");
+    const relayed = names(relayedKeys, "relayed_attributes");
+    if (observed.length === 0 && relayed.length === 0) {
+      throw new RangeError('@mocon/trace: "host_attributes" is attested but no attribute is named, so it claims nothing');
+    }
+    // A key cannot be both measured by the host and passed through from a target, and a host that
+    // says both has not decided which claim it is making.
+    for (const key of relayed) if (observed.includes(key)) throw new RangeError(`@mocon/trace: ${JSON.stringify(key)} is in both attested_attributes and relayed_attributes`);
+    if (observed.length > 0) out["code_mode.attested_attributes"] = observed;
+    if (relayed.length > 0) out["code_mode.relayed_attributes"] = relayed;
+  } else if (attestedKeys !== undefined || relayedKeys !== undefined) {
+    throw new RangeError('@mocon/trace: naming host attributes needs "host_attributes" in attested, which is the gate a consumer reads');
   }
 
   return Object.freeze(out);
+}
+
+function names(given: readonly string[] | undefined, field: string): string[] {
+  if (given === undefined) return [];
+  if (!Array.isArray(given)) throw new TypeError(`@mocon/trace: ${field} must be an array`);
+  const keys = [...given];
+  for (const key of keys) if (typeof key !== "string" || key === "") throw new TypeError(`@mocon/trace: ${field} entries must be non-empty strings`);
+  return keys;
 }

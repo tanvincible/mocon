@@ -54,12 +54,36 @@ program printed, the program chooses what your trace says.
 program. Everything you do not attest is read as a program claim, so forgetting something
 under-claims rather than over-claims. Attest only what is true for **every** span you emit.
 
+Your own attributes are program claims too, until you say otherwise. Two lists say which:
+
+```ts
+capabilities: {
+  // ...
+  attested: ["crossing.target", "host_attributes"],
+  attested_attributes: ["com.acme.sandbox_id"],   // you measured these
+  relayed_attributes: ["com.acme.credits_used"],  // a target reported these
+}
+```
+
+The second list matters more than it looks. A credit count your API returned is not something you
+measured, so attesting it is a lie, and leaving it unlisted makes it a program claim and bars you
+from summing it into a cost metric. Naming it as relayed is the honest option, and the only one that
+gets you a billing number you can defend.
+
 Two rules that are not optional:
 
 - **Context flows into the sandbox, never out.** Never accept trace context the program supplies,
   or it chooses where its execution appears in the trace, including inside another tenant's.
 - **Wrapper two must be host code, outside the sandbox.** A wrapper the program can reach or replace
   is a channel the program writes through, and a server in that position should attest nothing.
+
+## One thing to wire, which nothing will remind you about
+
+Register a context manager in your application, or `NodeSDK`, which does it for you. Without one the
+OpenTelemetry API's default is a no-op, so any *other* instrumentation running inside your program
+dispatch will not nest under the execution span. The spans this package emits are unaffected either
+way, because a crossing is given its parent explicitly, which is exactly why the problem is easy to
+miss: your own trace looks perfect and everything else floats.
 
 ## Payload capture
 

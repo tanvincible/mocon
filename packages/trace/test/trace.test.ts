@@ -489,3 +489,28 @@ test("a host's own attribute is a program claim until both gates are passed", ()
   assert.equal("code_mode.provenance.com.acme.credits" in span.attributes, false, "named and attested, so observed");
   assert.equal(span.attributes["code_mode.provenance.com.acme.plan"], "P", "attested but unnamed is still a claim");
 });
+
+test("a number the target reported is target-relayed, which is neither the host's word nor the program's", () => {
+  // The case that has no honest expression without this: a host bills from a credit count its API
+  // returned. Attesting it claims the host measured it, which is false. Leaving it a program claim
+  // is also false, and forbids the cost metric an operator actually needs.
+  const h = harness({
+    ...CAPS,
+    attested: [...ATTESTED, "host_attributes"],
+    attested_attributes: ["com.acme.engine"],
+    relayed_attributes: ["com.acme.credits_used"],
+  });
+  const ex = h.m.execution.start({ program: "p", attributes: { "com.acme.engine": "quickjs" } });
+  ex.crossing.start({ target: "search", attributes: { "com.acme.credits_used": 5, "com.acme.cache_hit": true } }).output(1);
+  ex.complete();
+  const crossing = h.one("execute_tool");
+  assert.equal(crossing.attributes["code_mode.provenance.com.acme.credits_used"], "T", "the target's number, passed through");
+  assert.equal(crossing.attributes["code_mode.provenance.com.acme.cache_hit"], "P", "named in neither list, so still a claim");
+  assert.equal("code_mode.provenance.com.acme.engine" in h.one("execute_code").attributes, false, "the host measured this one");
+});
+
+test("an attribute cannot be both measured and relayed, and naming any needs the gate", () => {
+  assert.throws(() => codeMode({ capabilities: { ...CAPS, attested: [...ATTESTED, "host_attributes"], attested_attributes: ["com.acme.x"], relayed_attributes: ["com.acme.x"] } }), RangeError);
+  assert.throws(() => codeMode({ capabilities: { ...CAPS, relayed_attributes: ["com.acme.x"] } }), RangeError, "the gate a consumer reads is still required");
+  assert.throws(() => codeMode({ capabilities: { ...CAPS, attested: [...ATTESTED, "host_attributes"] } }), RangeError, "the gate without any name claims nothing");
+});

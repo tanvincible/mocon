@@ -34,6 +34,12 @@ const OUTCOMES: ReadonlySet<unknown> = new Set<Outcome>(["output", "error", "aba
 const ERRORED: ReadonlySet<unknown> = new Set<Disposition>(["failed", "terminated"]);
 /** The well-known fallback for `error.type`, for a host with a failure and no reason it can name. */
 const OTHER = "_OTHER";
+/** How a host classed its own attributes: observed by it, relayed from a target, or neither. */
+interface HostClasses {
+  observed: ReadonlySet<string>;
+  relayed: ReadonlySet<string>;
+}
+
 /** The namespaces section 8 reserves. A host's own attributes go in the host's own namespace. */
 const RESERVED = ["code_mode.", "gen_ai.", "mcp.", "otel."];
 
@@ -49,11 +55,12 @@ const RESERVED = ["code_mode.", "gen_ai.", "mcp.", "otel."];
  * host's own keys, which are program-determined unless the host both attested `host_attributes` and
  * named them. Absence of a label means host-observed, so a field this misses under-claims.
  */
-function mark(attrs: Attributes, map: Labels["execution"], attestedKeys: ReadonlySet<string>): void {
+function mark(attrs: Attributes, map: Labels["execution"], host: HostClasses): void {
   label(attrs as Record<string, unknown>, map);
   for (const key of Object.keys(attrs)) {
     if (RESERVED.some((prefix) => key.startsWith(prefix)) || key === "error.type") continue;
-    if (!attestedKeys.has(key)) attrs["code_mode.provenance." + key] = "P";
+    if (host.observed.has(key)) continue;
+    attrs["code_mode.provenance." + key] = host.relayed.has(key) ? "T" : "P";
   }
 }
 
@@ -246,10 +253,13 @@ export function codeMode(options: CodeModeOptions): CodeMode {
   // Read back from the frozen declaration, never from the caller's object a second time: a getter
   // that answered the closed-set check with one value could otherwise answer this with another.
   const marks = labels((declared["code_mode.attested"] ?? []) as Attestation[]);
-  const attestedKeys = new Set((declared["code_mode.attested_attributes"] ?? []) as string[]);
+  const host: HostClasses = {
+    observed: new Set((declared["code_mode.attested_attributes"] ?? []) as string[]),
+    relayed: new Set((declared["code_mode.relayed_attributes"] ?? []) as string[]),
+  };
 
   const start = (o: ExecutionStartOptions): ExecutionHandle =>
-    new ExecutionSpan(tracer, declared, capture, ordered, marks, attestedKeys, o);
+    new ExecutionSpan(tracer, declared, capture, ordered, marks, host, o);
 
   const run = <T>(o: RunOptions, body: (execution: ExecutionHandle) => T): T => {
     const execution = start(o);
@@ -267,7 +277,11 @@ export function codeMode(options: CodeModeOptions): CodeMode {
       }
       execution.complete({ result: value });
     };
-    // Activating the span is what makes any other instrumentation inside the body a child of it.
+    // Activates the span so that OTHER instrumentation running inside the body nests under it. This
+    // only takes effect when the application has registered a context manager: `NodeSDK` does,
+    // `BasicTracerProvider.register()` does not, and with the API's default `NoopContextManager`
+    // the call is a no-op. Our own crossings are unaffected either way, because they are given
+    // their parent explicitly rather than read from the active context.
     return activeContext.with(execution.context, () => {
       let out: T;
       try {
@@ -300,7 +314,7 @@ class ExecutionSpan implements ExecutionHandle {
     private readonly capture: Capture,
     private readonly ordered: boolean,
     private readonly marks: Labels,
-    private readonly attestedKeys: ReadonlySet<string>,
+    private readonly host: HostClasses,
     o: ExecutionStartOptions,
   ) {
     const program = o.program;
@@ -317,7 +331,7 @@ class ExecutionSpan implements ExecutionHandle {
     put(attributes, "gen_ai.tool.call.id", o.toolCallId);
     put(attributes, "gen_ai.conversation.id", o.conversationId);
     put(attributes, "mcp.session.id", o.sessionId);
-    mark(attributes, this.marks.execution, this.attestedKeys);
+    mark(attributes, this.marks.execution, this.host);
     const parent = o.parent ?? activeContext.active();
     this.span = this.tracer.startSpan(
       o.tool === undefined ? "execute_code" : "execute_code " + o.tool,
@@ -367,7 +381,7 @@ class ExecutionSpan implements ExecutionHandle {
       this.span.setStatus({ code: SpanStatusCode.ERROR, message: type });
     }
     writeNotes(attrs, this.notes);
-    mark(attrs, this.marks.execution, this.attestedKeys);
+    mark(attrs, this.marks.execution, this.host);
     this.span.setAttributes(attrs);
     this.span.end(endTime);
   }
@@ -419,7 +433,7 @@ class ExecutionSpan implements ExecutionHandle {
     const given = o.seq;
     const usable = typeof given === "number" && Number.isInteger(given) && given > 0;
     const seq = usable ? given : this.ordered ? ++this.seq : undefined;
-    const crossing = new CrossingSpan(this.tracer, this.declared, this.capture, this.context, this, target, seq, this.ownId, this.marks, this.attestedKeys, o);
+    const crossing = new CrossingSpan(this.tracer, this.declared, this.capture, this.context, this, target, seq, this.ownId, this.marks, this.host, o);
     if (!this.ended) this.open.add(crossing);
     return crossing;
   }
@@ -441,7 +455,7 @@ class CrossingSpan implements CrossingHandle {
     seq: number | undefined,
     executionId: string,
     private readonly marks: Labels,
-    private readonly attestedKeys: ReadonlySet<string>,
+    private readonly host: HostClasses,
     o: CrossingStartOptions,
   ) {
     const attributes: Attributes = {
@@ -460,7 +474,7 @@ class CrossingSpan implements CrossingHandle {
       put(attributes, "mcp.resource.uri", o.mcp.resourceUri);
     }
     if (o.input !== undefined) this.capture.value("gen_ai.tool.call.arguments", o.input, attributes, this.notes);
-    mark(attributes, this.marks.crossing, this.attestedKeys);
+    mark(attributes, this.marks.crossing, this.host);
     this.start = o.startTime === undefined ? hrNow() : toHrTime(o.startTime);
     this.span = tracer.startSpan(
       o.name ?? "execute_tool " + target,
@@ -505,7 +519,7 @@ class CrossingSpan implements CrossingHandle {
       this.span.setStatus({ code: SpanStatusCode.ERROR, message: type });
     }
     writeNotes(attrs, this.notes);
-    mark(attrs, this.marks.crossing, this.attestedKeys);
+    mark(attrs, this.marks.crossing, this.host);
     this.span.setAttributes(attrs);
     this.span.end(close);
   }

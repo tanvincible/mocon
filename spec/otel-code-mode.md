@@ -101,7 +101,8 @@ instrumentation scope attributes. Section 3.2 says why, and the reason is not a 
 | `code_mode.unmediated_egress` | boolean | Required | `true`, `false` |
 | `code_mode.crossing_edge` | string | Conditionally Required: when `observes_crossings` is not `none` | `invocation`, `dispatch` |
 | `code_mode.attested` | string[] | Required | entries from the closed list in section 6.4; empty array when the host attests nothing |
-| `code_mode.attested_attributes` | string[] | Conditionally Required: when `code_mode.attested` contains `host_attributes` | fully qualified attribute keys in the host's own namespace, section 8 |
+| `code_mode.attested_attributes` | string[] | Conditionally Required: with `host_attributes`, when the host measured any of its own attributes | keys in the host's own namespace that the host itself measured, section 8 |
+| `code_mode.relayed_attributes` | string[] | Conditionally Required: with `host_attributes`, when any of the host's attributes came from a target | keys the host passed through unchanged from a target, section 8 |
 
 `observes_crossings: all` claims that every invocation routed through the host-provided surface
 is recorded. `some` claims the host mediates but records a subset, by policy or by mechanism.
@@ -662,6 +663,7 @@ does not know.
 | `crossing.error` | `error.type`, the status description and `code_mode.error.body` on crossing spans | T |
 | `execution.error.class` | `error.type` and the status description on execution spans | H |
 | `host_attributes` | the attributes named in `code_mode.attested_attributes` (section 8) | H |
+| `host_attributes` | and those named in `code_mode.relayed_attributes` (section 8) | T |
 
 The entries are bundled rather than per attribute because they travel together. A host that
 observed the call boundary observed the target, the order and the outcome; a host that attested
@@ -713,7 +715,8 @@ attributes, `code_mode.execution.id`, `code_mode.execution.disposition`,
 | status description | crossing | P | `crossing.error` | T |
 | `code_mode.error.message` | crossing | P | `crossing.error` | T |
 | `code_mode.error.body` | crossing | P | `crossing.error` | T |
-| host's own namespace | either | P | `host_attributes`, per key | H |
+| host's own namespace | either | P | `host_attributes` via `attested_attributes` | H |
+| host's own namespace | either | P | `host_attributes` via `relayed_attributes` | T |
 
 **These classes are written onto the span.** For every attribute above whose effective class is `P`
 or `T`, an emitter writes `code_mode.provenance.<that attribute's key>` with the value `P` or `T`. A
@@ -830,17 +833,29 @@ count, a cache result, a model name. These go in the host's own namespace, forme
 reverse domain name or its application name, for example `com.acme.credits_used`. They are never
 minted inside `gen_ai.*`, `mcp.*`, `code_mode.*` or `otel.*`.
 
-They are **P at baseline**, like everything else the host did not declare it observed. A host
-lists the ones it determines at a point the program cannot write through in
-`code_mode.attested_attributes`, and adds `host_attributes` to `code_mode.attested`. Both gates
-are needed, for the reason the underlying model gives: the list alone is an upgrade path
-invisible in the attested declaration, which is the one place a consumer looks for an observation
-claim; and the entry alone would upgrade every host attribute at once, forcing a host to choose
-between recording a value the caller supplied and attesting its own meter.
+They are **P at baseline**, like everything else the host did not declare it observed. Adding
+`host_attributes` to `code_mode.attested` is the gate, and it says only that the host is making
+provenance claims about its own attributes at all. Which claim, per key, comes from two lists:
 
-A host's own reading of its own meter is H. A number it copied out of a target's reply, or out of
-the program's return value, is not, and one boolean cannot say which, so such a host leaves the
-key off the list.
+- `code_mode.attested_attributes` names keys the host **measured itself**, at a point the program
+  cannot write through. Those are H and carry no label.
+- `code_mode.relayed_attributes` names keys the host **passed through unchanged from a target**,
+  such as a credit count an API returned. Those are T.
+
+A key in neither list stays P. A key in both MUST be refused: a host claiming both has not decided
+which claim it is making.
+
+Two gates rather than one, for the reason the underlying model gives: a list alone is an upgrade
+path invisible in the attested declaration, which is the one place a consumer looks; and the entry
+alone would upgrade every host attribute at once, forcing a host to choose between recording a value
+the caller supplied and attesting its own meter.
+
+**Why T exists here.** Without it the common case has no honest expression. A host that bills from a
+number its target reported cannot attest it, having not measured it, and leaving it P forbids the
+cost metric an operator needs, because section 9 bars a metric measured from a program claim. An
+earlier draft had only the one list, and the result was that every host with a real cost meter had an
+incentive to over-claim in a way nothing could detect. This is the same distinction sections 6.2 and
+6.5 already draw for a crossing's output; it was missing only here.
 
 Nothing is minted for units, aggregation or display names. OpenTelemetry already models them on
 the metric instrument: the instrument type is the aggregation, the instrument unit is the unit,
@@ -992,7 +1007,7 @@ A consumer MUST NOT:
 
 ## 13. Attribute index
 
-Eighteen keys, one new enum value and one span event. Each names the invariant it carries.
+Nineteen keys, one new enum value and one span event. Each names the invariant it carries.
 Everything else in this document reuses an attribute that already exists.
 
 | Attribute | Type | Where | Carries |
@@ -1001,7 +1016,8 @@ Everything else in this document reuses an attribute that already exists.
 | `code_mode.unmediated_egress` | boolean | both spans | C5 |
 | `code_mode.crossing_edge` | string | both spans | X2: two edges |
 | `code_mode.attested` | string[] | both spans | X1: provenance |
-| `code_mode.attested_attributes` | string[] | both spans | X1, for the host's own attributes |
+| `code_mode.attested_attributes` | string[] | both spans | X1, for the host's own attributes it measured |
+| `code_mode.relayed_attributes` | string[] | both spans | X1, for the host's own attributes a target reported |
 | `code_mode.execution.id` | string | both spans | C3: identity, and the only key that reads a crossing alone |
 | `code_mode.execution.disposition` | string | execution span | C3, C4: the closed disposition set Status cannot carry |
 | `code_mode.program.text` | string | execution span | C1: one program per execution |
@@ -1206,7 +1222,26 @@ produces both a crossing span and an `mcp.client` span. Issue #509 is the place 
 compatibility guarantee, and `code_mode.*` is a namespace this project owns and nobody else has
 agreed to.
 
-**L15. A late settlement usually has nowhere in the trace to go.** A span that has ended takes no
+**L15. A closed vocabulary cannot be extended by a host, and that is both the point and the price.**
+The host's own namespace can add a field. It cannot add a *value* to
+`code_mode.execution.disposition` or `code_mode.crossing.outcome`, and it cannot make a consumer stop
+believing the closed one. The case that exposes this is a host whose logical run pauses at the end of
+one dispatch and resumes in a later one: each dispatch is its own execution, so the paused one
+reports `completed`, and a consumer following section 12 reads one logical run as having completed
+three times. A host attribute saying `paused` can sit right beside it and section 12 tells the
+consumer the closed value is normative. Closing the vocabularies is what lets a consumer be written
+once and work everywhere. It is also what makes the model unextensible at exactly these two points,
+and this document does not tell a reader which of its sets are open and which are closed in a way
+they could act on.
+
+**L16. Activating the execution span does nothing unless the application registered a context
+manager.** An emitter can place its span in the active context, but with the API's default
+`NoopContextManager` that call has no effect, and `BasicTracerProvider.register()` installs no
+manager. So neighbouring instrumentation inside a dispatch does not nest under the execution unless
+the application owner wired one, which `NodeSDK` does and a hand-assembled provider does not. The
+spans defined here are unaffected, because a crossing is given its parent explicitly.
+
+**L17. A late settlement usually has nowhere in the trace to go.** A span that has ended takes no
 further events, by specification, and the thing that closed a crossing early is normally the
 execution ending, which closes the execution span too. So the one case the `code_mode.late_settlement`
 event was defined for is the case where no span is still open to carry it. What survives is the log
