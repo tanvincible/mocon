@@ -12,3 +12,6 @@ coverage/
 # editor swap files
 *.swp
 *.swo
+
+# mdbook output
+docs/book/

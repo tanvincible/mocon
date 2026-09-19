@@ -13,7 +13,9 @@
   "scripts": {
     "build": "tsc -b packages/trace",
     "test": "npm run build && npm run test --workspaces --if-present",
-    "bench": "npm run build && node bench/trace.mjs"
+    "bench": "npm run build && node bench/trace.mjs",
+    "docs": "mdbook build docs",
+    "docs:serve": "mdbook serve docs --open"
   },
   "devDependencies": {
     "@opentelemetry/api": "^1.9.1",

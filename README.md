@@ -76,12 +76,21 @@ they are why this exists.
   can be written once and work everywhere. Span status collapses them to two, which is why the
   attributes are normative and the status is a display hint.
 
+## Documentation
+
+**<https://tanvincible.github.io/mocon>** — the full book, including the specification, the ideas
+behind it, the traps, and an honest account of four parity trials it lost.
+
+Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
+
 ## Repository
 
 - `spec/otel-code-mode.md` is the specification. It ends with the fifteen things it cannot do and
   the open questions it has not settled.
 - `packages/trace` is `@mocon/trace`, the reference emitter, on the OpenTelemetry API only.
 - `bench/trace.mjs` measures what it costs against the SDK's own floor.
+- `collector/` and `dashboards/` are what turns arriving data into data something understands.
+- `docs/` is the mdBook source for the site above.
 
 Status: Development. The conventions are a draft, `code_mode.*` is a namespace this project owns and
 nobody else has agreed to, and the `gen_ai.*` and `mcp.*` attributes it reuses are themselves

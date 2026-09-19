@@ -1,0 +1,20 @@
+[book]
+title = "mocon"
+description = "Semantic conventions for observing code-mode MCP servers, and a reference emitter."
+authors = ["tanvincible"]
+language = "en"
+src = "src"
+
+[output.html]
+site-url = "/mocon/"
+git-repository-url = "https://github.com/tanvincible/mocon"
+edit-url-template = "https://github.com/tanvincible/mocon/edit/main/docs/{path}"
+default-theme = "rust"
+no-section-label = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true

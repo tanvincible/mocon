@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: latest
+      # The book embeds spec/otel-code-mode.md, so a build failure here means the specification
+      # moved or was renamed and the site would ship a hole where it used to be.
+      - run: mdbook build docs
+      - name: Check the specification really was embedded
+        run: grep -q 'code_mode.observes_crossings' docs/book/spec.html
