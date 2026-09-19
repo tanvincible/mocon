@@ -476,6 +476,7 @@ and the value then failed to reach the program, the outcome stays `output`.
 | `code_mode.crossing.timing` | string | Conditionally Required: when the host synthesized either span time | one of `start_only`, `end_only`, `none`; section 5.4 |
 | `code_mode.execution.id` | string | Required | the same id as the execution span this crossing belongs to |
 | `gen_ai.tool.call.id` | string | Recommended | the host's own id for this crossing |
+| `code_mode.crossing.dispatched` | boolean | Recommended | whether the host sent this call toward its target; `false` for a refusal it answered itself, or a cache hit |
 | `code_mode.crossing.seq` | int | Recommended: when the host declares `observes_crossings: all` and has an initiation order | initiation order within the execution, from 1 |
 | `gen_ai.tool.type` | string | Recommended | `function`, `extension` or `datastore`, when the host knows |
 | `error.type` | string | Conditionally Required: when the status is `Error` | section 5.3 |
@@ -607,6 +608,13 @@ values, and anything derived from those.
 **T, target-relayed.** Passed by the host unchanged from the target of a crossing, or produced by
 the host's own handling of that crossing, such as a refusal or a policy error. The program did
 not shape it.
+
+**T does not mean the target saw the call.** The name misleads on exactly the case an operator meets
+at three in the morning. A refusal the host answered itself is T, because the program did not shape
+it, and an operator reading a `T` error goes to the target's own logs for a request that never left
+the process. `code_mode.crossing.dispatched` separates them. It is the host's own knowledge, so it
+is H and carries no label, and a host that can tell SHOULD set it. This was found by someone working
+a real trace at a console, not by reading this table.
 
 Whether a program is adversarial is a deployment question. These labels are about fidelity, not
 intent.
@@ -1020,7 +1028,7 @@ A consumer MUST NOT:
 
 ## 13. Attribute index
 
-Nineteen keys, one new enum value and one span event. Each names the invariant it carries.
+Twenty keys, one new enum value and one span event. Each names the invariant it carries.
 Everything else in this document reuses an attribute that already exists.
 
 | Attribute | Type | Where | Carries |
@@ -1038,6 +1046,7 @@ Everything else in this document reuses an attribute that already exists.
 | `code_mode.program.language` | string | execution span | C2: language is a hint |
 | `code_mode.output.<channel>` | any | execution span | X4: no universal output channel |
 | `code_mode.crossing.outcome` | string | crossing span | C6: the closed outcome set Status cannot carry |
+| `code_mode.crossing.dispatched` | boolean | crossing span | C6: whether an invocation reached a target at all |
 | `code_mode.crossing.seq` | int | crossing span | C10: no implicit order |
 | `code_mode.crossing.timing` | string | crossing span | C7: crossing times exist only where the host observed them |
 | `code_mode.error.message` | string | either | C4: the reason, moved off the one field nothing can label |
