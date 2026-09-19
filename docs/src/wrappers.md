@@ -1,67 +1,99 @@
-# Two wrappers
+# The two wrappers
 
-That is the whole code change.
+## Wrapper one: around the run
 
 ```ts
-import { codeMode } from "@mocon/trace";
-
-const observed = codeMode({
-  capabilities: {
-    // Start here and earn your way up. Read "Declaring honestly" before changing it.
-    observes_crossings: "some",
-    unmediated_egress: true,
-    crossing_edge: "invocation",
-    attested: [],
-  },
-});
-
-// Wrapper one: around the handler that runs the program.
-return observed.execution.run({ program: source, tool: "execute" }, (execution) => {
-  // Wrapper two: around the outermost function the program can reach.
-  const callTool = execution.instrument(bridge.callTool);
-  return runInSandbox(source, { callTool });
+observed.execution.run({ program: source, tool: "execute" }, async (execution) => {
+  // your existing handler body
 });
 ```
 
-You get one `execute_code` span per dispatch and one `execute_tool` span per call the program made,
-correctly parented, in whatever backend you already run.
+**Start it before your first rejection.** A run starts when you first see the submission, including
+ones you then refuse for a bad key, a failed lint, or being at capacity. If you start the span after
+those checks, every refused run is invisible, and an outage that rejects everything looks exactly
+like no traffic.
 
-## Where the wrappers go
+For a refusal, end it on purpose:
 
-**Wrapper one goes around the handler that runs the program**, and it must start *before* your first
-rejection branch. An execution begins when the host first observes the dispatch, which includes
-dispatches it then refuses for a bad key, a failed lint, or being at capacity. Start it after those
-guards and every refused run is invisible in a way that looks like no traffic.
+```ts
+execution.fail(new Error("unknown tool in script"), { errorType: "validation" });
+```
 
-**Wrapper two goes around the outermost function the program can reach.** Not the innermost. If your
-sandbox is handed a function that then calls another function that then dispatches, wrap the one the
-sandbox holds. Anything above your wrapper that can answer the program produces no span, which is
-also what makes [the declaration](./declaring.md) false if you are not careful.
+**If your handler returns a failure object instead of throwing**, say so, or every failed run gets
+recorded as a success:
 
-Both wrappers must be host code, outside the sandbox. A wrapper the program can reach, replace or
-observe is a channel the program writes through, and a host in that position should attest nothing.
+```ts
+observed.execution.run(
+  {
+    program: source,
+    end: (value) => (value.ok ? undefined : { disposition: "failed", errorType: "runtime" }),
+  },
+  body,
+);
+```
 
-## Reading the bridge's answer
+Return `undefined` from `end` to mean "just use the default".
 
-Many bridges never throw. They answer with an envelope, `{ ok: false, error }`, and return it
-normally. The default here reads a return as success, so on such a bridge every failed call would be
-recorded as having worked.
+## Wrapper two: around the bridge
+
+```ts
+const callTool = execution.instrument(bridge.callTool);
+```
+
+**Wrap the outermost function the program can reach.** If your sandbox gets a function that calls
+another one that then dispatches, wrap the one the sandbox holds. Anything above your wrapper that
+can answer the program produces no span at all.
+
+**It has to be your code, outside the sandbox.** A function the program can reach, swap out or watch
+is just another thing the program controls. If yours is reachable from inside, your telemetry says
+whatever the program wants.
+
+### If your bridge doesn't throw
+
+Lots of bridges return `{ ok: false, error }` instead of throwing. mocon reads a normal return as
+success, so on a bridge like that every failure gets quietly recorded as working. One option fixes
+it:
 
 ```ts
 const callTool = execution.instrument(bridge.callTool, {
   end: (answer) =>
-    !answer.threw && !(answer.value as { ok: boolean }).ok
+    !answer.threw && !answer.value.ok
       ? { outcome: "error", errorType: "capability_error", dispatched: true }
       : undefined,
 });
 ```
 
-The same applies to wrapper one, via its own `end` option, for a handler that returns a failure
-envelope rather than throwing.
+### If your bridge takes more than two arguments
 
-## Saying whether the call left
+By default the first argument is the target and everything after it is the input. So a bridge shaped
+`callTool(name, params, { signal, deadline })` ends up recording your own abort signal and deadline as
+the program's arguments. Tell it what the input really is:
 
-`dispatched` tells a reader whether the call actually went to a target. Set it `false` on a refusal
-your host answered itself, or a cache hit. Without it, an operator reading an error has no way to
-tell a target that failed from a call that never reached one, and will go looking in the wrong
-system.
+```ts
+execution.instrument(bridge.callTool, { input: (_name, params) => params });
+```
+
+### If your server handles the call itself
+
+Span kind defaults to `client`, which says you forwarded the call somewhere remote. For a tool your
+own process serves, say so:
+
+```ts
+execution.crossing.start({ target: "cache_get", kind: "local" });
+```
+
+## Doing it by hand
+
+`instrument` covers the normal case. When you need more control, open and close a call yourself:
+
+```ts
+const crossing = execution.crossing.start({ target: "company_search", input: params });
+try {
+  const result = await dispatch(params);
+  crossing.output(result, { dispatched: true });
+} catch (e) {
+  crossing.error(e, { errorType: "capability_error", dispatched: true });
+}
+```
+
+A call you never close gets closed for you as `abandoned` when the run ends, so nothing dangles.

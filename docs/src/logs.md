@@ -1,23 +1,22 @@
-# No trace store
+# Using your logger instead
 
-Standing up a collector and a trace backend is a real decision. For a team whose telemetry is
-structured logs it costs far more than the two wrappers, and it is the reason this library lost
-[three of four parity trials](./trials.md). You do not have to make that decision to use this.
+Standing up a collector and a trace backend is a real decision. If your telemetry today is structured
+logs, that's a lot more work than the two wrappers. You don't have to do it.
 
 ```ts
 import { codeMode, logTracer } from "@mocon/trace";
 
 const observed = codeMode({
-  capabilities: { /* as before */ },
+  capabilities: { /* same as before */ },
   tracer: logTracer((record) => logger.info(record)),
 });
 ```
 
-That is the only line that differs. No SDK, no exporter, no collector, no backend.
+That's the only line that changes. No SDK, no exporter, no collector, no backend.
 
 ## What you get
 
-Each finished span becomes one flat record handed to your logger:
+Every finished span becomes one flat record handed to your logger:
 
 ```json
 {
@@ -36,28 +35,37 @@ Each finished span becomes one flat record handed to your logger:
 }
 ```
 
-The full attribute set, the provenance labels, the ids, a duration and a status. Payloads come back
-as values rather than JSON strings, because a log record can hold a map where a span attribute
-cannot. Group by `code_mode.execution.id` and you have the whole run, in the pipeline you already
-query.
+The whole attribute set, the provenance labels, the ids, a duration and a status. Payloads come back
+as real values rather than JSON strings, because a log record can hold an object where a span
+attribute can't. Group by `code_mode.execution.id` and you've got the whole run, in the pipeline you
+already query.
 
 ## What you give up
 
-What a trace store is actually for: a rendered waterfall, and metrics derived from spans without
+The things a trace store is actually for. A rendered waterfall, and metrics off spans without
 aggregating log lines yourself.
 
 ## What you keep
 
-The ability to change your mind. The same host code moves to a real trace pipeline by passing a
-different tracer, with nothing else touched. Tracing becomes a decision you can defer and reverse
-rather than a precondition.
+The ability to change your mind. Switching to a real trace pipeline later means passing a different
+tracer and touching nothing else.
 
-## One design choice
+## One thing to know
 
-Records are flat, one per span, rather than crossings nested inside their execution.
+Records are flat, one per span, rather than nesting calls inside their run.
 
-Nesting means buffering children until the parent closes, and a call the program makes on a later
-tick is then never written at all. That is not hypothetical. It was measured on a hand-written
-destination during an experiment, and it lost calls with no error of any kind, which is the worst
-way to lose them. Flat records carry `parent_span_id`, so a reader reassembles the tree by grouping
-rather than by trusting the writer's buffering.
+Nesting means holding children until the parent closes, and a call the program makes a tick later
+then never gets written at all. Flat records carry `parent_span_id`, so you rebuild the tree by
+grouping instead of trusting the writer to buffer correctly.
+
+## Options
+
+```ts
+logTracer({
+  write: (record) => logger.info(record),
+  raw: true,   // leave payloads as JSON strings instead of decoding them
+});
+```
+
+If your logger throws, the record is dropped and the call carries on. An observability problem should
+never break the thing it's watching.

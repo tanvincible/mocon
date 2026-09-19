@@ -31,8 +31,9 @@ every span becomes a flat record in the logger you already run: the same vocabul
 provenance labels, the same join key, no SDK and no backend. The same host code moves to real
 tracing later by passing a different tracer.
 
-If you do want a trace pipeline, the code change is the small half, and `packages/trace/README.md`
-ends with the order four trials paid for: destination first, code last.
+If you do want a trace pipeline, the code change is the small half. [Rolling it
+out](https://tanvincible.github.io/mocon/rollout.html) has the order that avoids making the day you
+merge worse than the day before: destination first, code last.
 
 ## Use
 
@@ -78,8 +79,8 @@ they are why this exists.
 
 ## Documentation
 
-**<https://tanvincible.github.io/mocon>** — the full book, including the specification, the ideas
-behind it, the traps, and an honest account of four parity trials it lost.
+**<https://tanvincible.github.io/mocon>** is the full guide: how to set it up, what the output looks
+like, what goes wrong, the API, and the specification.
 
 Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
 

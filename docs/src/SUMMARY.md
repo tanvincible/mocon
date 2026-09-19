@@ -1,34 +1,32 @@
 # Summary
 
-[Introduction](./introduction.md)
+[What mocon is](./introduction.md)
 
-# Using it
+# Getting started
 
 - [Install](./install.md)
-- [Two wrappers](./wrappers.md)
-- [No trace store](./logs.md)
-- [Declaring honestly](./declaring.md)
-- [Traps](./traps.md)
-- [Integrating for real](./integrating.md)
+- [Your first trace](./quickstart.md)
+- [What you get](./output.md)
 
-# The ideas
+# Guide
 
-- [Provenance](./provenance.md)
-- [The capability declaration](./declaration.md)
-- [Self-describing attributes](./declared.md)
-- [Closed vocabularies](./vocabularies.md)
+- [The two wrappers](./wrappers.md)
+- [Declaring what your server sees](./declaring.md)
+- [Observed or claimed](./provenance.md)
+- [Your own attributes](./attributes.md)
+- [Capturing payloads](./capture.md)
+- [Using your logger instead](./logs.md)
+- [Common mistakes](./mistakes.md)
 
-# Shipping it
+# Operating
 
+- [Rolling it out](./rollout.md)
 - [The collector](./collector.md)
 - [The dashboard](./dashboard.md)
 
 # Reference
 
+- [API](./api.md)
+- [Attributes](./attributes-reference.md)
+- [Limits](./limits.md)
 - [Specification](./spec.md)
-- [What it cannot do](./limitations.md)
-
-# History
-
-- [Why this replaced a record format](./history.md)
-- [What four trials found](./trials.md)

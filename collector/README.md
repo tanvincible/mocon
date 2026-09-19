@@ -3,11 +3,9 @@
 `codemode.yaml` is a collector configuration, not a component you compile in. That is deliberate.
 
 A custom collector component has to be built into a distribution with the OpenTelemetry Collector
-Builder, which means every adopter rebuilds and redeploys their collector before they see anything.
-This project has lost three parity trials to hand-rolled code, every one of them because something
-had to be wired before any data appeared. Shipping another thing to wire would repeat the mistake.
-Everything here is stock `opentelemetry-collector-contrib`, so it works with the collector you
-already run.
+Builder, which means everyone adopting it has to rebuild and redeploy their collector before seeing
+anything at all. Everything here is stock `opentelemetry-collector-contrib`, so it works with the
+collector you already run.
 
 ## What it does
 
@@ -57,7 +55,7 @@ boundary, one from a host that did not. Run it and read the collector's log.
 | `company_search`, which the host observed | yes | yes |
 | `refund_customer`, which the program claimed | yes | no |
 
-That is the whole point, and it is checkable in about a minute.
+That is the whole point, and it takes about a minute to check.
 
 ## What it does not do
 

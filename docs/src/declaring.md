@@ -1,55 +1,79 @@
-# Declaring honestly
+# Declaring what your server sees
 
-This is the part that goes wrong, and it goes wrong in the direction that does the most damage.
-Everything else on the span is conditional on the declaration, and it is the one claim this library
-cannot check for you.
-
-## `observes_crossings: "all"` is a claim about the whole path
-
-Not "my wrapper sees every call that reaches it". It means **nothing can answer the program before
-your wrapper**.
-
-Before you claim it, go looking for code that answers the program itself: a call-count cap, a
-deadline guard, a rate limiter, a cache, a permission check that refuses before dispatch. If any of
-those can return to the program without passing through the function you wrapped, some calls produce
-no span and `"all"` is false.
-
-That mistake is easy to make and invisible afterwards. A real integration of this library declared
-`"all"` on a host whose sandbox refuses over-cap calls a layer above the bridge. Four calls, two
-spans, and a declaration asserting two was all of them.
-
-**The test is mechanical.** Instrument, then make a program hit every refusal path you have, and
-count. If the spans do not match the calls, you are `"some"`.
-
-## Attest nothing you derive from something the program wrote
-
-If your error class is computed partly from a thrown value's name or message, a program can choose
-it. A host with both an observed path and a parsed path for the same field does not attest that
-field.
-
-The same integration attested its error class, and a program throwing a specially named error
-published its own choice as host-observed fact, with no provenance label, which is precisely the
-failure [provenance](./provenance.md) exists to prevent.
-
-## Your own attributes
-
-They are program claims until you say otherwise. Two lists say which:
+Four values, set once, that ride on every span. They tell whoever's reading how much of the picture
+they're actually looking at.
 
 ```ts
-capabilities: {
-  attested: ["crossing.target", "host_attributes"],
-  attested_attributes: ["com.acme.sandbox_id"],   // you measured these
-  relayed_attributes: ["com.acme.credits_used"],  // a target reported these
-}
+codeMode({
+  capabilities: {
+    observes_crossings: "all",
+    unmediated_egress: false,
+    crossing_edge: "invocation",
+    attested: ["crossing.target", "crossing.input", "crossing.output"],
+  },
+});
 ```
 
-The second list matters more than it looks. A credit count your API returned is not something you
-measured, so attesting it is false, and leaving it unlisted makes it a program claim and bars you
-from summing it into a cost metric. Naming it as relayed is the honest option and the only one that
-yields a billing number you can defend.
+## Why it exists
 
-## The rule underneath all of this
+A run whose trace shows no calls means one of two opposite things. Either the program made no calls,
+or your server can't see the ones it made. Nothing else in the trace tells them apart. This does, and
+every other claim depends on it being honest.
 
-Declare the weakest values true for every dispatch. Silence reads as `none`, which is safe. The
-design is built so that forgetting something under-claims rather than over-claims, and you should
-let it.
+## `observes_crossings`
+
+`all`, `some`, or `none`.
+
+**`all` means nothing can answer the program before your wrapper does.** Not "my wrapper sees every
+call that reaches it". Before you claim it, go look for code that answers the program itself:
+
+- a cap on calls per run
+- a deadline or time budget guard
+- a rate limiter
+- a cache that returns without dispatching
+- a permission check that refuses before dispatch
+
+If any of those can return to the program without going through the function you wrapped, then some
+calls make no span, and `all` is false. Use `some`.
+
+**How to check, in five minutes.** Instrument it, write a program that deliberately hits every
+refusal path you've got, and count the spans against the calls. If they don't match, you're `some`.
+
+## `unmediated_egress`
+
+`true` if the program has any way out that you don't see: raw network, subprocesses, an isolate that
+can be escaped. It stops someone concluding "three spans, so three external calls".
+
+Not sure your sandbox is airtight? `true` is the honest answer.
+
+## `crossing_edge`
+
+`invocation` if a span describes what the program asked for. `dispatch` if it describes what you
+actually sent after retries and rewrites. Most integrations wrap the bridge the program calls, so
+that's `invocation`.
+
+## `attested`
+
+By default **everything is treated as a program claim**, which is the safe reading. This list is how
+you upgrade specific things to "my server saw this":
+
+| Entry | What it upgrades |
+|---|---|
+| `crossing.target` | the tool name, its order and its outcome |
+| `crossing.input` | the call arguments |
+| `crossing.output` | the result, to "a target reported it" |
+| `crossing.error` | the error class and message, to "a target reported it" |
+| `execution.error.class` | the run's error type |
+| `host_attributes` | your own attributes, listed separately |
+
+Only attest something if it's true for **every** span you emit. There's no per-call opt-out.
+
+**Don't attest anything you work out from what the program wrote.** If your error class comes partly
+from matching a thrown value's name or message, the program can pick it. If you've got both an
+observed path and a parsed path for the same field, don't attest that field.
+
+## The rule that keeps this safe
+
+Declare the weakest thing that's true for every run. Saying nothing reads as `none`, nothing
+attested, egress unknown, and that's safe. Forgetting to claim something costs you a bit of detail.
+Claiming something that isn't true quietly corrupts every conclusion anyone draws from your traces.

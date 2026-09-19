@@ -1,45 +1,37 @@
 # The dashboard
 
-`dashboards/code-mode.json` is a Grafana dashboard for code-mode execution.
+`dashboards/code-mode.json` is a Grafana dashboard for code-mode runs.
 
-OpenTelemetry renders your spans without any of this: a waterfall, correct parentage, real
-durations, free on the first emit. What it does not render is the meaning. Grafana has never heard
-of `code_mode.` and will not tell you that a run was abandoned rather than completed, that a call the
-host never observed is sitting in your trace looking exactly like one it did, or that an absence of
-calls means nothing on this particular host.
+OpenTelemetry already renders your spans without it. You get a waterfall, correct nesting and real
+durations for free. What you don't get is any of the meaning. Grafana has never heard of
+`code_mode.` and won't tell you a run was abandoned rather than finished, or that a call your server
+never saw is sitting in the trace looking just like one it did.
 
-## The panels that earn their place
+## The panels that matter
 
-**Can an absence of calls be believed?** The [declaration](./declaration.md), aggregated. Mediating
-everything with no unmediated egress is the only combination in which an execution showing no calls
-really made none.
+**Can you believe there were no calls?** The [declaration](./declaring.md), aggregated. Watching
+everything with no unmediated egress is the only combination where a run showing no calls really made
+none.
 
-**Executions by disposition** and **crossings by outcome.** Span status has three values where these
-[vocabularies](./vocabularies.md) have four and three. A run the host gave up on renders identically
-to a clean one in every default dashboard. These two are the correction.
+**Runs by disposition** and **calls by outcome.** Span status has three values where these have four
+and three. A run you gave up on looks identical to a clean one everywhere else. These two fix that.
 
-**Abandoned crossings.** Calls in flight when their execution ended. If your targets spend money or
-change state, that number is the count of things that may or may not have happened.
+**Abandoned calls.** Calls still in flight when their run ended. If your targets spend money or change
+state, that number is how many things may or may not have happened.
 
-**Calls the program claimed, not calls the host saw.** These reach no metric by design, so the trace
-panel is the only place they appear at all.
+**Calls the program claimed.** These reach no metric by design, so the trace panel is the only place
+they show up at all.
 
-## Why a dashboard is the deliverable
+## Why a dashboard ships with this
 
-This is the part a team cannot hand-roll and keep. A hand-rolled dashboard is built once for one
-server and transfers to nothing. This one works on any host that follows the conventions, which is
-the only real return on standardising anything.
+It's the part you can't hand-roll and keep. A dashboard you build for your server transfers to
+nothing. This one works on any server following the conventions, which is the actual payoff of
+standardising anything.
 
-## What is validated
+## Setup
 
-The PromQL was run against a live Prometheus-compatible datasource, including a deliberately broken
-control to confirm that a syntax error surfaces rather than returning empty.
+You need a Prometheus-compatible datasource holding `traces_span_metrics_*` from
+[the collector](./collector.md), and a Tempo-compatible trace store. Both datasource uids are in the
+JSON and you'll need to repoint them.
 
-The TraceQL was **not** validated. The search endpoint available returned 200 with no results for a
-deliberately malformed query, so a passing response proved nothing. The four trace panels want a
-manual check on first import.
-
-## Requirements
-
-A Prometheus-compatible datasource holding `traces_span_metrics_*` from [the collector](./collector.md),
-and a Tempo-compatible trace store. Both datasource uids are in the JSON and will need repointing.
+The PromQL panels are tested. The four TraceQL panels aren't, so give them a look on first import.

@@ -1,60 +1,80 @@
-# mocon
+# What mocon is
 
-**Makes code-mode MCP servers debuggable, in the observability stack you already run.**
+**mocon shows you what a code-mode server actually did, using the observability tools you already
+have.**
 
-In code mode, an agent does not call one tool. It submits a **program**. The server runs that
-program in a sandbox, and from inside it, the server's tools are reached through a bridge.
+If that already makes sense, jump to [Install](./install.md). If not, here's the whole problem in a
+page.
 
-From outside the server, the entire run is a single opaque tool call. Which tools the program
-called, in what order, what it passed, what came back, how long each took, whether any of it
-failed, and whether the server could even see any of it: all invisible.
+## The problem
+
+The Model Context Protocol lets an AI agent call tools on your server. Normally it calls one tool at
+a time. Search for companies. Then enrich this person. One request each.
+
+**Code mode is different.** Instead of calling one tool, the agent writes a small program and sends
+you that. You run it in a sandbox, and while it runs, the program calls your tools itself:
+
+```js
+const companies = await callTool("company_search", { q: "food testing" });
+for (const c of companies.rows) {
+  await callTool("company_enrich", { id: c.id });
+}
+```
+
+It's much faster and much cheaper than sending every call back through the model. It's also much
+harder to see into.
+
+From outside your server, the whole run is **one tool call**. One request in, one result out. Which
+tools the program called, in what order, what it passed, what came back, how long each took, which
+one broke: all of that happened inside, and none of it got recorded.
 
 ```
-agent ──"here is a program"──▶ server ──▶ sandbox ─┐
-                                   ▲               │ callTool("company_search", …)
-                                   └───────────────┘ callTool("person_enrich",  …)
-                                                     callTool("refund_customer", …)
-        ◀──"here is one result"──
+agent ──"run this program"──▶ your server ──▶ sandbox ─┐
+                                   ▲                   │ callTool("company_search", …)
+                                   └───────────────────┘ callTool("company_enrich",  …)
+                                                         callTool("company_enrich",  …)
+      ◀────"here is a result"────
 ```
 
-One tool call went in. One result came out. Three calls happened in between and nothing recorded
-them.
+So when a customer says "it gave me the wrong answer", you've got the program and the answer and
+nothing in between.
 
-## What this is
+## What mocon does
 
-A set of [OpenTelemetry semantic conventions](./spec.md) for that shape, and a small emitter that
-implements them. OpenTelemetry is the wire format rather than an export target, so there is no
-format here for anyone to learn and no destination of ours to wire.
+You add two wrappers to your server. For every run you get:
 
-You add two wrappers. You get one span per program dispatch and one span per call the program made,
-correctly parented, in whatever backend you already run. If you run no trace backend at all, you can
-[point it at your logger instead](./logs.md) and get the same information as flat records.
+- **One span for the program.** How long it took, how it ended.
+- **One span per call the program made**, nested under it, with the target, the duration and what
+  happened.
 
-## What it contributes
+They're ordinary OpenTelemetry spans. They go wherever your telemetry already goes, and any trace
+viewer draws them as a waterfall you can read. No trace backend? You can
+[send them to your logger instead](./logs.md) and get the same thing as flat records.
 
-OpenTelemetry already models spans, parentage and duration. Three things it has no answer for, and
-they are the whole reason this exists.
+## Why not just log it yourself
 
-**[Provenance](./provenance.md).** A code-mode program is written by an agent, and it can lie. Many
-hosts build their telemetry out of what that program printed. So every value carries its class:
-something the host observed, something the program claimed, or something a target reported. Nothing
-in OpenTelemetry's data model does this, anywhere.
+Plenty of teams do, and it works. Three things are hard to get right that way.
 
-**[The capability declaration](./declaration.md).** Without it, a trace showing no calls means either
-the program made none or the host is blind to the ones it made. Those are opposite conclusions and
-no trace can tell them apart.
+**Knowing what you can trust.** The program is written by an AI, and it can say whatever it likes. If
+any part of your telemetry comes from what the program printed or threw, then the program is picking
+what your dashboard shows. mocon tags every value as something your server *saw* or something the
+program *said*, so you can tell them apart. Nothing in OpenTelemetry does this.
 
-**[Closed vocabularies](./vocabularies.md).** Four ways an execution can end and three ways a call
-can settle, so a consumer can be written once and work everywhere. Span status collapses them to
-two, which is why the attributes are normative and the status is a display hint.
+**Knowing what missing data means.** A run with no calls recorded means one of two opposite things.
+Either the program made no calls, or your server can't see the calls it made. You declare which,
+once, and every span carries the answer.
+
+**A fixed vocabulary.** A run ends one of four ways and a call ends one of three, with the same names
+on every server that follows this. So a dashboard or an alert or a script you write against those
+names works on any of them.
+
+## Where to go next
+
+- [Install](./install.md), then [your first trace](./quickstart.md). About ten minutes.
+- [What you get](./output.md) if you want to see the output before you commit to anything.
+- [Specification](./spec.md) if you'd rather just read the spec.
 
 ## Status
 
-Development, version 0.1.0, one implementation, and a namespace nobody else has agreed to. The
-`gen_ai.*` and `mcp.*` attributes it reuses are themselves Development upstream with no
-compatibility guarantee.
-
-This project previously specified a JSON Lines record format with its own schema, conformance suite
-and viewer. [It was retired](./history.md), and [four parity trials](./trials.md) against hand-rolled
-observability all went the other way. Both of those stories are written down here, because what they
-found is more useful than a pitch.
+Version 0.1.0. Everything here can still change. The attributes mocon defines are its own, and the
+`gen_ai.*` and `mcp.*` ones it reuses are still in development upstream.

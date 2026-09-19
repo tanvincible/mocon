@@ -1,75 +1,76 @@
-# Provenance
+# Observed or claimed
 
-**A code-mode program is written by an agent, and it can lie.**
+The program running in your sandbox was written by an AI. It can print anything, throw anything and
+return anything.
 
-This is not an adversarial assumption. It is the ordinary consequence of building telemetry out of a
-channel the subject controls. Many hosts construct their crossing records from what the program
-printed, or classify errors by pattern-matching what it threw. Such a program can print a line that
-becomes a record of a call it never made, or throw an error whose name decides the classification
-your dashboard shows.
+That matters because of where telemetry comes from. If you record a call because the program logged
+one, then a program that logs a call it never made just put a fiction in your trace. If you classify
+errors by matching the message, then a program throwing `new Error("timeout")` picked what your
+dashboard says.
 
-Consumers of these traces are increasingly language models. A model reading "the program deleted
-contact 42" needs to know whether the host saw that happen or the program said so.
+This isn't about hostile programs. It's just what happens when you build telemetry out of something
+the subject controls.
 
-**OpenTelemetry has no notion of this distinction, and no per-attribute provenance channel anywhere
-in its data model.** A `KeyValue` is a key and a value. That narrow gap is what this fills.
+And more and more, the thing reading these traces is another model. A model reading *"the program
+deleted contact 42"* needs to know whether you watched that happen or the program said it did.
 
-## Three classes
+**No general observability tool records this.** A span attribute is a key and a value. There's
+nowhere to put where the value came from. That's the gap this fills.
 
-**H, host-observed.** Determined where the program cannot write: the host's own clock, its own id
-generation, an exit status, a call boundary the host mediates. Relative to the declaring host and
-conditional on its isolation holding. It means faithfully observed by this host. It does not mean
-true and it does not mean safe.
+## Three answers
 
-**P, program-determined.** Authored by the program, or computed by the host from a channel the
-program can write: the program text, standard output, thrown errors, return values, and anything
-derived from those.
+**Your server saw it.** Determined somewhere the program can't write: your clock, your id generator,
+an exit status, a call boundary you control.
 
-**T, target-relayed.** Passed through unchanged from the target of a call, or produced by the host's
-own handling of it, such as a refusal. The program did not shape it.
+**The program said it.** Written by the program, or worked out by you from something it wrote: the
+program text, its output, its thrown errors, its return values.
 
-**T does not mean the target saw the call.** A refusal the host answered itself is T, because the
-program did not shape it, and an operator reading a `T` error will go to the target's logs for a
-request that never left the process. `code_mode.crossing.dispatched` is what separates them. That
-was found by someone working a real trace at a console, not by reading the table.
+**A target reported it.** Passed through unchanged from whatever the call reached, or produced by
+your own handling of that call, like a refusal. The program didn't shape it.
 
-## How it reaches the span
+## How it shows up
 
-Every value whose class is not host-observed carries a label beside it:
+Any value that isn't something your server saw gets a label right next to it:
 
 ```
-gen_ai.tool.name                            = "company_search"
-code_mode.provenance.gen_ai.tool.name       = "P"
+gen_ai.tool.name                            company_search
+code_mode.provenance.gen_ai.tool.name       P
 ```
 
-Absence of a label means host-observed. That direction matters: an emitter that has not heard of a
-field simply does not label it, which **under-claims rather than over-claims**.
+`P` for the program said it, `T` for a target reported it, and **no label** for your server saw it.
 
-A host upgrades specific fields by declaring what it observed, in a closed list:
+The default runs the safe way round. Anything you haven't declared you observed gets `P`. So
+forgetting to declare something costs you a bit of detail, and it can't accidentally turn a guess
+into a fact.
 
-| Entry | Upgrades |
-|---|---|
-| `crossing.target` | the tool name, its order and its outcome, to H |
-| `crossing.input` | the call arguments, to H |
-| `crossing.output` | the result, to T |
-| `crossing.error` | the error class and body, to T |
-| `execution.error.class` | the execution's error class, to H |
-| `host_attributes` | the host's own attributes it names, to H or T |
+## One thing that trips people up
 
-## What attestation is and is not
+**`T` doesn't mean the target saw the call.** A refusal your own server produced is `T`, because the
+program didn't shape it. Someone reading a `T` error will naturally go digging in the target's logs
+for a request that never left your process.
 
-It makes a claim visible and attributable. It does not make it true.
+`code_mode.crossing.dispatched` is what separates them. Set it, and "their API broke" versus "we
+never called them" is one field instead of an afternoon.
 
-Nothing in a trace distinguishes a host reading its own call boundary from a host copying a value
-out of the program's return and attesting it anyway. No format detects that. Attestation puts a name
-on the claim, which is all a format can do.
+## What attesting isn't
 
-## Two things it cannot label
+Saying you observed something makes the claim visible and makes it yours. It doesn't make it true.
+Nothing in a trace can tell a server reading its own call boundary apart from a server copying a
+value out of the program's return and attesting it anyway.
 
-A span's **name** and its **status description**. Neither has an attribute key, so nothing can carry
-a class beside them. The name is what span-metrics connectors, service maps and span-name-keyed
-alerting all read, and on a host that does not attest its targets they read a program's claim as
-fact.
+No format can catch that. What a format can do is put a name on the claim, so if it's wrong, it's
+wrong in public.
 
-The status description is handled by refusing to put anything unlabellable there: it carries a
-closed-vocabulary value and never the program's words. The span name has no such fix.
+## Two things that can't be labelled
+
+A span's **name** and its **status description** have no attribute key, so nothing can sit beside
+them.
+
+The name matters because span-metrics tools, service maps and name-keyed alerts all read it. On a
+server that doesn't attest its targets, they're reading a program's claim as fact. [The
+collector](./collector.md) stops the metrics mocon defines from doing that. It can't stop tooling
+somebody else set up.
+
+The status description is handled by never putting anything unlabellable in it. It carries a
+fixed-vocabulary value, never the program's words. The message goes in an attribute, where it can be
+labelled.

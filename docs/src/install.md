@@ -1,30 +1,34 @@
 # Install
 
-**Not published to npm yet.** Today you install from the repository:
-
 ```sh
 npm install github:tanvincible/mocon
 npm install @opentelemetry/api
 ```
 
-`@opentelemetry/api` is a peer dependency you install yourself.
+`@mocon/trace` isn't on npm yet, so it comes from the repo. `@opentelemetry/api` is a peer dependency,
+so you install it yourself and pick the version.
 
-## You also need somewhere for spans to go
+## You need somewhere for spans to go
 
-You need an OpenTelemetry SDK and an exporter configured in your application, as for any
-OpenTelemetry instrumentation.
+mocon emits through the OpenTelemetry API and never the SDK. That's on purpose. It means your app
+decides where telemetry goes, and mocon has no opinion and no config of its own.
 
-**Without a registered tracer provider the API is a no-op and nothing is emitted, silently, with
-exit code zero.** That is OpenTelemetry's behaviour rather than ours, and it is the single most
-common way an integration produces nothing at all. It is not a warning you will see; it is an
-absence you have to go looking for. Grep your own source for `NodeSDK` or `TracerProvider` and make
-sure you find something outside a test.
+It also means **nothing comes out until your app registers a tracer provider.** If there isn't one,
+the OpenTelemetry API quietly does nothing. No spans, no error, no warning, exit code zero. This is
+the number one reason an integration looks like it isn't working.
 
-If you have no trace pipeline and do not want to run one, read [No trace store](./logs.md) first.
-The vocabulary is the contribution here, and it does not need a trace backend.
+Already running OpenTelemetry? You're done, go to [your first trace](./quickstart.md).
 
-## The code change is the small half
+If you're not, you've got two options.
 
-If you are adopting this on a real server, read [Integrating for real](./integrating.md) before you
-start. The order you do things in decides whether the day you merge is an improvement or a
-regression, and four trials paid for that lesson.
+**Set it up.** You'll need an SDK, an exporter, and somewhere for spans to land: Tempo, Jaeger,
+Honeycomb, Datadog, whatever. That's real infrastructure work, so decide on it for its own reasons,
+not because a library asked you to.
+
+**Or skip it.** If your telemetry today is structured logs, send mocon's output to the logger you
+already have. One line, no new infrastructure. See [Using your logger instead](./logs.md). You can
+switch to real tracing later without touching your server code.
+
+## Requirements
+
+Node 20 or newer. TypeScript types are included, and plain JavaScript works fine.
