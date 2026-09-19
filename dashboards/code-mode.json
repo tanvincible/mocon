@@ -1,0 +1,447 @@
+{
+  "uid": "mocon-code-mode",
+  "title": "Code mode",
+  "tags": [
+    "mocon",
+    "code-mode",
+    "opentelemetry"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 0,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "editable": true,
+  "description": "What a code-mode MCP server did while it ran. Every panel here shows something OpenTelemetry renders but does not interpret: the closed vocabularies that span status collapses, the declaration that says whether an absence of calls means anything, and the separation between what the host observed and what the agent's program merely claimed. Metrics come from the spanmetrics connector in collector/codemode.yaml; traces from any OTLP trace store.",
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "qryType": 1,
+          "query": "label_values(traces_span_metrics_calls_total, service_name)",
+          "refId": "A"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "execution",
+        "label": "Execution id",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "description": "An id from a host log line. Feeds the Find one run panel."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Can an absence of calls be believed?",
+      "description": "The one question a trace cannot answer on its own. `all` with no unmediated egress is the only combination where an execution showing no crossings really made no calls. Anything else means the host either does not record every call, or the program has a way out it cannot see. Both labels are host-observed on every host, so this panel is always trustworthy.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code_mode_observes_crossings, code_mode_unmediated_egress) (increase(traces_span_metrics_calls_total{service_name=~\"$service\", code_mode_execution_disposition!=\"\"}[$__range]))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 2,
+      "title": "Executions by disposition",
+      "description": "Span status cannot show this. It has three values, and this vocabulary has four: `completed` and `abandoned` both render as Unset, `failed` and `terminated` both as Error. So a run the host gave up on looks identical to one that finished cleanly in every default dashboard, including Grafana's own. This panel is the correction.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code_mode_execution_disposition) (rate(traces_span_metrics_calls_total{service_name=~\"$service\", code_mode_execution_disposition!=\"\"}[$__rate_interval]))",
+          "legendFormat": "{{code_mode_execution_disposition}}",
+          "refId": "A",
+          "instant": false,
+          "range": true,
+          "format": "time_series"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "Crossings by outcome",
+      "description": "Same problem, one level down. `output` and `abandoned` are both Unset in span status, so a call the host stopped watching is indistinguishable from one that returned. `abandoned` does not mean the call failed, and it does not mean the target never answered. It means the host stopped looking, usually because the execution ended first.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code_mode_crossing_outcome) (rate(traces_span_metrics_calls_total{service_name=~\"$service\", code_mode_crossing_outcome!=\"\"}[$__rate_interval]))",
+          "legendFormat": "{{code_mode_crossing_outcome}}",
+          "refId": "A",
+          "instant": false,
+          "range": true,
+          "format": "time_series"
+        }
+      ],
+      "gridPos": {
+        "x": 8,
+        "y": 5,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Abandoned crossings",
+      "description": "Calls in flight when their execution ended. Each one is an operation the host started and never learned the result of. If any of your targets change state, spend money or send something, this number is the count of things that may or may not have happened.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(traces_span_metrics_calls_total{service_name=~\"$service\", code_mode_crossing_outcome=\"abandoned\"}[$__range]))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": false,
+          "range": true,
+          "format": "time_series"
+        }
+      ],
+      "gridPos": {
+        "x": 16,
+        "y": 5,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Execution duration, p95 by disposition",
+      "description": "Read the `abandoned` series with care: an abandoned execution's span ends when the host gave up, not when the program stopped, so its duration is the host's patience rather than the work.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, code_mode_execution_disposition) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service\", code_mode_execution_disposition!=\"\"}[$__rate_interval])))",
+          "legendFormat": "{{code_mode_execution_disposition}}",
+          "refId": "A",
+          "instant": false,
+          "range": true,
+          "format": "time_series"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "Slowest targets, p95",
+      "description": "Only targets the host actually observed appear here. A target the program merely claimed to call is dropped before anything counts it, by the collector config that ships beside this dashboard, because a metric has no way to carry the doubt.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"$service\", code_mode_crossing_outcome!=\"\"}[$__rate_interval]))))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "Failing targets, by error type",
+      "description": "Crossings that settled `error`. The host's own classification where it attested the error, and the program's where it did not, which is why the trace panels below matter.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(15, sum by (gen_ai_tool_name, error_type) (increase(traces_span_metrics_calls_total{service_name=~\"$service\", code_mode_crossing_outcome=\"error\"}[$__range])))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "title": "Calls the program claimed, not calls the host saw",
+      "description": "These crossings were built from something the agent's program wrote. The target may name a call that never happened. They appear in no metric on this dashboard by design, so this is the only place you will see them, and nothing else in your stack will tell you they are different.",
+      "type": "table",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ span.code_mode.provenance.gen_ai.tool.name = \"P\" }",
+          "limit": 20,
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 9,
+      "title": "Abandoned crossings, in the trace",
+      "description": "The individual calls behind the count above. Each renders as a zero-width tick in the waterfall with no status colour, which reads to the eye as a call that did not happen. It is the opposite: it started and the host never learned how it ended.",
+      "type": "table",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ span.code_mode.crossing.outcome = \"abandoned\" }",
+          "limit": 20,
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 10,
+      "title": "Find one run",
+      "description": "Paste an execution id from a log line into the variable at the top. Both the execution span and every crossing under it carry that id, so this returns the whole run rather than just its root, and it still works when the process died before the execution span was exported.",
+      "type": "table",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ span.code_mode.execution.id = \"$execution\" }",
+          "limit": 50,
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ]
+}

@@ -63,6 +63,10 @@ connectors:
       - name: code_mode.execution.disposition
       - name: code_mode.crossing.outcome
       - name: error.type
+      # Host-observed on every host, so both are always safe to key a metric on, and together they
+      # are the only way a dashboard can say whether an absence of calls means anything.
+      - name: code_mode.observes_crossings
+      - name: code_mode.unmediated_egress
     exemplars:
       enabled: true
     metrics_flush_interval: 15s
