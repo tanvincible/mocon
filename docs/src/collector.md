@@ -5,7 +5,7 @@ from turning into a metric that looks like a measured fact.**
 
 If you don't attest `crossing.target`, the tool name on a call span is whatever the program said.
 A span-metrics connector doesn't read provenance, so left alone it happily produces
-`calls_total{gen_ai.tool.name="refund_customer"}` from a name the program picked, and a metric has
+`calls_total{gen_ai.tool.name="order_ship"}` from a name the program picked, and a metric has
 nowhere to carry the doubt.
 
 Your server can't prevent that, because the connector runs downstream. A collector can, because it
@@ -41,8 +41,8 @@ boundary, one from a server that didn't.
 
 | | in traces | in metrics |
 |---|---|---|
-| `company_search`, observed | yes | yes |
-| `refund_customer`, claimed | yes | no |
+| `inventory_search`, observed | yes | yes |
+| `order_ship`, claimed | yes | no |
 
 Takes about a minute.
 

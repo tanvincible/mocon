@@ -33,7 +33,7 @@ your own handling of that call, like a refusal. The program didn't shape it.
 Any value that isn't something your server saw gets a label right next to it:
 
 ```
-gen_ai.tool.name                            company_search
+gen_ai.tool.name                            inventory_search
 code_mode.provenance.gen_ai.tool.name       P
 ```
 

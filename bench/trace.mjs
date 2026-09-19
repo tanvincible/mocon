@@ -23,7 +23,7 @@ const CAPS = { observes_crossings: "all", unmediated_egress: false, crossing_edg
 const CROSSINGS = 8;
 const ITERATIONS = 20000;
 const ROUNDS = 3;
-const program = "await callTool('person_search', { limit: 50 });\n".repeat(8);
+const program = "await callTool('inventory_search', { limit: 50 });\n".repeat(8);
 const payload = { rows: Array.from({ length: 20 }, (_, i) => ({ name: "Person " + i, title: "Engineer" })) };
 const ATTRS = {
   "gen_ai.operation.name": "execute_code",
@@ -38,7 +38,7 @@ const ATTRS = {
 function otelOnly() {
   const execution = tracer.startSpan("execute_code execute", { kind: SpanKind.SERVER, attributes: ATTRS });
   for (let i = 0; i < CROSSINGS; i++) {
-    const crossing = tracer.startSpan("execute_tool person_search", { kind: SpanKind.CLIENT, attributes: ATTRS });
+    const crossing = tracer.startSpan("execute_tool inventory_search", { kind: SpanKind.CLIENT, attributes: ATTRS });
     crossing.setAttributes({ "code_mode.crossing.outcome": "output" });
     crossing.end();
   }
@@ -50,7 +50,7 @@ function emitter(capture) {
   const m = codeMode({ capabilities: CAPS, capture, tracer });
   return () => m.execution.run({ program, tool: "execute" }, (execution) => {
     const bridge = execution.instrument((name, args) => payload);
-    for (let i = 0; i < CROSSINGS; i++) bridge("person_search", { limit: 50 });
+    for (let i = 0; i < CROSSINGS; i++) bridge("inventory_search", { limit: 50 });
     return payload;
   });
 }

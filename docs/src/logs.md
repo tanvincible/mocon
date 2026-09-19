@@ -20,7 +20,7 @@ Every finished span becomes one flat record handed to your logger:
 
 ```json
 {
-  "name": "execute_tool company_search",
+  "name": "execute_tool inventory_search",
   "kind": "client",
   "trace_id": "f3d8f44c4f3d6a83bd2518356040dd1a",
   "span_id": "33924c3b939b1dcc",
@@ -29,8 +29,8 @@ Every finished span becomes one flat record handed to your logger:
   "duration_ms": 17.68,
   "code_mode.execution.id": "exec_7f3a",
   "code_mode.crossing.outcome": "output",
-  "gen_ai.tool.name": "company_search",
-  "gen_ai.tool.call.arguments": { "q": "food" },
+  "gen_ai.tool.name": "inventory_search",
+  "gen_ai.tool.call.arguments": { "q": "widget" },
   "code_mode.provenance.gen_ai.tool.call.result": "P"
 }
 ```

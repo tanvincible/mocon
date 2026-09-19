@@ -545,10 +545,9 @@ Under `none` the span's position says only when the host closed it.
 
 An `abandoned` crossing usually lands in `start_only`. A trace viewer renders that as a
 zero-width tick inside its parent, with no status colour, which reads to the eye as a call that
-did not happen. It is the opposite. The case worth keeping in mind is a five thousand dollar wire
-transfer that the host started, stopped watching when the execution's time limit fired, and closed
-`abandoned`. The transfer may
-or may not have gone out. Section 15 shows what that trace looks like.
+did not happen. It is the opposite. The case worth keeping in mind is a shipment the host started,
+stopped watching when the execution's time limit fired, and closed `abandoned`. The goods may or may
+not have gone out. Section 15 shows what that trace looks like.
 
 The inference this attribute exists to block, stated as a rule: a
 consumer MUST NOT treat an unresolved crossing as evidence the call is still in progress, or an
@@ -1118,16 +1117,16 @@ One execution, two crossings, the second abandoned. Every value below comes from
 project has carried since before the move, and the emitter reproduces all of them.
 
 The host is a synchronous bridge. It mediates every call at the call boundary and attests the
-target, the input and the output. The program deletes a CRM record and then starts a wire
-transfer. The transfer waits for an approval that never comes, the host's own five minute limit
-fires, and the host closes the execution `terminated`. Before it does, it closes the wire transfer
-crossing `abandoned` with no end time, because it never determined an outcome for it.
+target, the input and the output. The program cancels one order and then ships another. The
+shipment waits for an approval that never comes, the host's own five minute limit fires, and the
+host closes the execution `terminated`. Before it does, it closes the shipping crossing `abandoned`
+with no end time, because it never determined an outcome for it.
 
 ```
 14:00:00.000  host accepts the dispatch            execution span starts
-14:00:00.080  program calls crm.deleteRecord       crossing span starts
+14:00:00.080  program calls orders.cancel       crossing span starts
 14:00:00.240  the delete returns                   crossing ends, outcome output
-14:00:00.260  program calls finance.wireTransfer   crossing span starts
+14:00:00.260  program calls orders.ship   crossing span starts
 14:05:00.000  execution TTL elapsed                crossing closed abandoned, then execution ends
 ```
 
@@ -1159,13 +1158,13 @@ reader holding a host log line can pick it up.
   "traceId": "0057b132ad41f0ea8a76f9299ba13793",
   "spanId": "7d1c04e9b8a3f265",
   "parentSpanId": "bb27b8faea63e97b",
-  "name": "execute_tool connectors.finance.wireTransfer",
+  "name": "execute_tool orders.ship",
   "kind": 3,
   "startTimeUnixNano": "1789567200260000000",
   "endTimeUnixNano": "1789567200260000000",
   "attributes": [
     {"key": "gen_ai.operation.name",         "value": {"stringValue": "execute_tool"}},
-    {"key": "gen_ai.tool.name",              "value": {"stringValue": "connectors.finance.wireTransfer"}},
+    {"key": "gen_ai.tool.name",              "value": {"stringValue": "orders.ship"}},
     {"key": "code_mode.crossing.outcome",    "value": {"stringValue": "abandoned"}},
     {"key": "code_mode.crossing.timing",     "value": {"stringValue": "start_only"}},
     {"key": "code_mode.crossing.seq",        "value": {"intValue": "2"}},
@@ -1183,9 +1182,9 @@ reader holding a host log line can pick it up.
 ```
 
 What a reader gets right from this span: the target and the input are attested, so the call was
-observed leaving, and the wire transfer really was initiated. `observes_crossings: all` with
+observed leaving, and the shipment really was requested. `observes_crossings: all` with
 `unmediated_egress: false` means there were exactly two crossings. The outcome is `abandoned`, so
-the host never learned whether the transfer went out.
+the host never learned whether it went out.
 
 What a reader gets wrong if they read only the picture: a zero-width tick at 14:00:00.260, no
 status colour, inside a five minute parent. It looks like nothing happened. Section 16, L4.

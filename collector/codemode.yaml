@@ -6,7 +6,7 @@
 # A code-mode program is agent-written. On a host that does not observe its own call boundary, the
 # target on a crossing span is whatever the program said it called, and the emitter marks it
 # `code_mode.provenance.gen_ai.tool.name = "P"`. A span-metrics connector does not read that, so it
-# will happily produce `calls_total{gen_ai.tool.name="refund_customer"}` from a name the program
+# will happily produce `calls_total{gen_ai.tool.name="order_ship"}` from a name the program
 # chose. The metric then has no provenance channel at all, and nobody downstream can tell.
 #
 # The specification forbids that and says plainly it cannot be enforced from inside a host. Here it

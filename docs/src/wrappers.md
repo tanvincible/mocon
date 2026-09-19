@@ -87,7 +87,7 @@ execution.crossing.start({ target: "cache_get", kind: "local" });
 `instrument` covers the normal case. When you need more control, open and close a call yourself:
 
 ```ts
-const crossing = execution.crossing.start({ target: "company_search", input: params });
+const crossing = execution.crossing.start({ target: "inventory_search", input: params });
 try {
   const result = await dispatch(params);
   crossing.output(result, { dispatched: true });

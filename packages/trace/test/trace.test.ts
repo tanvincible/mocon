@@ -126,16 +126,16 @@ test("with capture on the reason is written where it can be labelled as a progra
 test("a crossing span is a child of its execution, named and kinded as section 5 defines", () => {
   const h = harness();
   const ex = h.m.execution.start({ program: "p" });
-  ex.crossing.start({ target: "crm.deleteRecord", id: "c1", toolType: "function" }).output({ deleted: true });
+  ex.crossing.start({ target: "orders.cancel", id: "c1", toolType: "function" }).output({ deleted: true });
   ex.complete();
   const crossing = h.one("execute_tool");
   const execution = h.one("execute_code");
-  assert.equal(crossing.name, "execute_tool crm.deleteRecord");
+  assert.equal(crossing.name, "execute_tool orders.cancel");
   assert.equal(crossing.kind, SpanKind.CLIENT);
   assert.equal(crossing.parentSpanId, execution.spanContext().spanId);
   assert.equal(crossing.spanContext().traceId, execution.spanContext().traceId);
   assert.equal(crossing.attributes["gen_ai.operation.name"], "execute_tool");
-  assert.equal(crossing.attributes["gen_ai.tool.name"], "crm.deleteRecord");
+  assert.equal(crossing.attributes["gen_ai.tool.name"], "orders.cancel");
   assert.equal(crossing.attributes["gen_ai.tool.call.id"], "c1");
   assert.equal(crossing.attributes["gen_ai.tool.type"], "function");
   assert.equal(crossing.attributes["code_mode.crossing.outcome"], "output");
@@ -169,10 +169,10 @@ test("an abandoned crossing carries no error.type: nothing failed, the host stop
 test("a crossing open at the execution's end is closed first, at its own start, and says the time was made up", () => {
   const h = harness();
   const ex = h.m.execution.start({ program: "p" });
-  ex.crossing.start({ target: "finance.wireTransfer" });
+  ex.crossing.start({ target: "orders.ship" });
   ex.end({ disposition: "terminated", errorType: "timeout" });
   const [first, second] = h.spans() as [ReadableSpan, ReadableSpan];
-  assert.equal(first.name, "execute_tool finance.wireTransfer", "the crossing ends before the execution that owns it");
+  assert.equal(first.name, "execute_tool orders.ship", "the crossing ends before the execution that owns it");
   assert.equal(second.name, "execute_code");
   assert.equal(first.attributes["code_mode.crossing.outcome"], "abandoned");
   assert.equal(first.attributes["code_mode.crossing.timing"], "start_only");
@@ -367,11 +367,11 @@ test("an unbounded target keeps the span name bounded and the full target in the
 
 test("the worked example in section 15 comes out of the emitter as the document prints it", () => {
   const h = harness({ ...CAPS, attested: [...ATTESTED] }, { values: true });
-  const program = "await connectors.crm.deleteRecord({id: 'rec_50'});\n";
+  const program = "await orders.cancel({id: 'rec_50'});\n";
   const ex = h.m.execution.start({ program, tool: "execute", language: "javascript", id: "3c95e2578dd5e0169e81c566e43fac92" });
-  ex.crossing.start({ target: "connectors.crm.deleteRecord", input: { id: "rec_50" } }).output({ deleted: true });
-  ex.crossing.start({ target: "connectors.finance.wireTransfer", input: { amountCents: 500000, to: "acct_9" } });
-  ex.end({ disposition: "terminated", errorType: "timeout", message: "execution TTL (300s) elapsed while wireTransfer awaited approval" });
+  ex.crossing.start({ target: "orders.cancel", input: { id: "rec_50" } }).output({ deleted: true });
+  ex.crossing.start({ target: "orders.ship", input: { amountCents: 500000, to: "acct_9" } });
+  ex.end({ disposition: "terminated", errorType: "timeout", message: "execution TTL (300s) elapsed while orders.ship awaited approval" });
 
   const [settled, abandoned, execution] = h.spans() as [ReadableSpan, ReadableSpan, ReadableSpan];
   assert.equal(execution.name, "execute_code execute");
@@ -385,7 +385,7 @@ test("the worked example in section 15 comes out of the emitter as the document 
   assert.equal(settled.attributes["code_mode.crossing.outcome"], "output");
   assert.equal(settled.attributes["code_mode.crossing.seq"], 1);
 
-  assert.equal(abandoned.name, "execute_tool connectors.finance.wireTransfer");
+  assert.equal(abandoned.name, "execute_tool orders.ship");
   assert.equal(abandoned.kind, SpanKind.CLIENT);
   assert.equal(abandoned.parentSpanId, execution.spanContext().spanId);
   assert.equal(abandoned.status.code, SpanStatusCode.UNSET, "abandoned is not a failure");
@@ -417,15 +417,15 @@ test("a host attribute cannot overwrite the declaration, the disposition or the 
 test("a crossing span carries the execution id, so a span-scoped query finds it without its parent", () => {
   const h = harness();
   const ex = h.m.execution.start({ program: "p", id: "exec_42" });
-  ex.crossing.start({ target: "company_search" }).output({ rows: 4 });
-  ex.crossing.start({ target: "company_identify" }).error(new Error("429"), { errorType: "rate_limited" });
+  ex.crossing.start({ target: "inventory_search" }).output({ rows: 4 });
+  ex.crossing.start({ target: "item_fetch" }).error(new Error("429"), { errorType: "rate_limited" });
   ex.complete();
 
   // The query a backend actually runs: one span at a time, both terms on the same span. Parentage
   // cannot answer it, which is why the id is repeated rather than left to the parent.
   const failed = h.spans().filter((s) => s.attributes["code_mode.execution.id"] === "exec_42" && s.attributes["code_mode.crossing.outcome"] === "error");
   assert.equal(failed.length, 1, "the failing crossing is reachable by the execution's own id");
-  assert.equal(failed[0]?.attributes["gen_ai.tool.name"], "company_identify");
+  assert.equal(failed[0]?.attributes["gen_ai.tool.name"], "item_fetch");
   assert.equal(failed[0]?.attributes["error.type"], "rate_limited");
   assert.equal(h.spans().filter((s) => s.attributes["code_mode.execution.id"] === "exec_42").length, 3, "the whole run answers to one key");
 });
@@ -456,12 +456,12 @@ test("a host with no id of its own gets one minted, so the query cannot silently
 test("an unattested host labels every program claim beside the value, for a reader who never saw the spec", () => {
   const h = harness({ observes_crossings: "none", unmediated_egress: true }, { values: true });
   const ex = h.m.execution.start({ program: "p" });
-  ex.crossing.start({ target: "company_identify", input: { q: 1 } }).output({ ok: true });
+  ex.crossing.start({ target: "item_fetch", input: { q: 1 } }).output({ ok: true });
   ex.complete();
   const crossing = h.one("execute_tool");
   // The target names the span and is what every span-metrics connector keys on. Unattested, it is
   // something the program said, and this is the only thing on the span that says so.
-  assert.equal(crossing.attributes["gen_ai.tool.name"], "company_identify");
+  assert.equal(crossing.attributes["gen_ai.tool.name"], "item_fetch");
   assert.equal(crossing.attributes["code_mode.provenance.gen_ai.tool.name"], "P");
   assert.equal(crossing.attributes["code_mode.provenance.code_mode.crossing.outcome"], "P");
   assert.equal(crossing.attributes["code_mode.provenance.gen_ai.tool.call.arguments"], "P");

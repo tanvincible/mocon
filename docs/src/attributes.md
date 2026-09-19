@@ -5,7 +5,7 @@ tenant. Put them on the spans.
 
 ```ts
 execution.crossing.start({
-  target: "company_search",
+  target: "inventory_search",
   attributes: { "com.acme.credits_used": 5, "com.acme.cache_hit": false },
 });
 ```

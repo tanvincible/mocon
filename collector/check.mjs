@@ -7,8 +7,8 @@
  *     otel/opentelemetry-collector-contrib:latest --config=/cfg/codemode.yaml
  *   node collector/check.mjs
  *
- * Then read the collector's log with `verbosity: detailed`. `company_search` appears in both the
- * traces and the metrics; `refund_customer` appears only in the traces.
+ * Then read the collector's log with `verbosity: detailed`. `inventory_search` appears in both the
+ * traces and the metrics; `order_ship` appears only in the traces.
  */
 
 import { BasicTracerProvider, BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -22,14 +22,14 @@ const tracer = provider.getTracer("e2e");
 // A host that observes its own call boundary. Its targets are facts.
 const observed = codeMode({ tracer, capabilities: { observes_crossings: "all", unmediated_egress: false, crossing_edge: "invocation", attested: ["crossing.target", "crossing.input", "crossing.output"] } });
 observed.execution.run({ program: "p", tool: "execute", id: "obs-1" }, (e) => {
-  e.instrument((n) => 1)("company_search");
+  e.instrument((n) => 1)("inventory_search");
 });
 
 // A host that builds its crossings from what the program printed. Its targets are claims.
 const claimed = codeMode({ tracer, capabilities: { observes_crossings: "some", unmediated_egress: true, crossing_edge: "invocation" } });
 claimed.execution.run({ program: "p", tool: "execute", id: "claim-1" }, (e) => {
-  e.instrument((n) => 1)("refund_customer");
+  e.instrument((n) => 1)("order_ship");
 });
 
 await provider.forceFlush();
-console.log("emitted: one observed crossing (company_search), one claimed crossing (refund_customer)");
+console.log("emitted: one observed crossing (inventory_search), one claimed crossing (order_ship)");

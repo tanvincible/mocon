@@ -15,9 +15,9 @@ a time. Search for companies. Then enrich this person. One request each.
 you that. You run it in a sandbox, and while it runs, the program calls your tools itself:
 
 ```js
-const companies = await callTool("company_search", { q: "food testing" });
+const companies = await callTool("inventory_search", { q: "blue widget" });
 for (const c of companies.rows) {
-  await callTool("company_enrich", { id: c.id });
+  await callTool("item_fetch", { id: c.id });
 }
 ```
 
@@ -30,9 +30,9 @@ one broke: all of that happened inside, and none of it got recorded.
 
 ```
 agent ──"run this program"──▶ your server ──▶ sandbox ─┐
-                                   ▲                   │ callTool("company_search", …)
-                                   └───────────────────┘ callTool("company_enrich",  …)
-                                                         callTool("company_enrich",  …)
+                                   ▲                   │ callTool("inventory_search", …)
+                                   └───────────────────┘ callTool("item_fetch",  …)
+                                                         callTool("item_fetch",  …)
       ◀────"here is a result"────
 ```
 

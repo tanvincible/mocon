@@ -5,9 +5,9 @@ One run, two calls, second one refused. Here's everything mocon produces for it.
 ## Shape
 
 ```
-execute_code execute                    303 ms   completed
-├── execute_tool company_search         127 ms   output
-└── execute_tool refund_customer         17 ms   error      refused
+execute_code execute                 303 ms   completed
+├── execute_tool inventory_search   127 ms   output
+└── execute_tool order_ship          17 ms   error     refused
 ```
 
 One span for the program. One span per call it made, nested underneath, in the order they started.
@@ -44,11 +44,11 @@ anything.
 ## A success
 
 ```
-name                              execute_tool company_search
+name                              execute_tool inventory_search
 kind                              client
 duration                          127 ms
 
-gen_ai.tool.name                  company_search
+gen_ai.tool.name                  inventory_search
 code_mode.crossing.outcome        output
 code_mode.crossing.seq            1
 code_mode.crossing.dispatched     true
@@ -64,7 +64,7 @@ whoever's debugging will go looking in the wrong system.
 ## A failure
 
 ```
-name                              execute_tool refund_customer
+name                              execute_tool order_ship
 duration                          17 ms
 status                            error
 
@@ -79,7 +79,7 @@ code_mode.error.message           "over the call cap for this run"
 If your server didn't see a value itself, mocon says so, right next to it:
 
 ```
-gen_ai.tool.name                            refund_customer
+gen_ai.tool.name                            order_ship
 code_mode.provenance.gen_ai.tool.name       P
 ```
 

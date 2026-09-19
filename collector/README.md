@@ -14,7 +14,7 @@ It stops a program's claim from becoming a metric that reads as a measured fact.
 A code-mode program is agent-written. On a host that does not observe its own call boundary, the
 target on a crossing span is whatever the program said it called. The emitter marks that, as
 `code_mode.provenance.gen_ai.tool.name = "P"`. A span-metrics connector does not read provenance, so
-left alone it produces `calls_total{gen_ai.tool.name="refund_customer"}` from a name the program
+left alone it produces `calls_total{gen_ai.tool.name="order_ship"}` from a name the program
 chose, and a metric has no provenance channel in which to carry the doubt.
 
 The specification forbids this and says in its own limitations that a host cannot enforce it. A
@@ -52,8 +52,8 @@ boundary, one from a host that did not. Run it and read the collector's log.
 
 | | reached traces | reached metrics |
 |---|---|---|
-| `company_search`, which the host observed | yes | yes |
-| `refund_customer`, which the program claimed | yes | no |
+| `inventory_search`, which the host observed | yes | yes |
+| `order_ship`, which the program claimed | yes | no |
 
 That is the whole point, and it takes about a minute to check.
 

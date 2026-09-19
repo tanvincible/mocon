@@ -20,13 +20,13 @@ function harness(caps: Capabilities = CAPS, capture?: { values: boolean }) {
 test("a whole run reaches a plain logger, with no SDK, exporter, collector or trace store", () => {
   const h = harness();
   h.m.execution.run({ program: "await callTool('search', {})", tool: "execute", id: "exec-1" }, (execution) => {
-    execution.instrument((name: string) => ({ rows: 2 }))("company_search");
+    execution.instrument((name: string) => ({ rows: 2 }))("inventory_search");
   });
   assert.equal(h.records.length, 2);
   const [crossing, execution] = h.records as [LogRecord, LogRecord];
   assert.equal(execution.name, "execute_code execute");
   assert.equal(execution["code_mode.execution.disposition"], "completed");
-  assert.equal(crossing.name, "execute_tool company_search");
+  assert.equal(crossing.name, "execute_tool inventory_search");
   assert.equal(crossing["code_mode.crossing.outcome"], "output");
   assert.equal(crossing["code_mode.execution.id"], "exec-1", "the join key an operator holds");
 });
