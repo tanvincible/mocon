@@ -360,3 +360,13 @@ test("run without an end hook, and one whose hook throws, still complete", () =>
   assert.equal((g.last("execution")["end"] as Rec)["disposition"], "completed", "a throwing hook costs the hook, not the record");
   assertValidStream(g.sink.lines);
 });
+
+test("a hook answering with a shape the wire refuses costs the hook, and never raises into the caller", () => {
+  for (const answer of ["failed", 1, true, { disposition: "exploded" }, { disposition: "failed", error: 7 }]) {
+    const h = harness();
+    const out = h.m.execution.run({ program: "p", notice: false, end: () => answer as never }, () => ({ ok: true }));
+    assert.deepEqual(out, { ok: true }, "the body's value reaches the caller unchanged");
+    assert.equal((h.last("execution")["end"] as Rec)["disposition"], "completed");
+    assertValidStream(h.sink.lines);
+  }
+});

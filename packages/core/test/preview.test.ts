@@ -42,11 +42,23 @@ test("a value inside the preview is still written whole, with its bytes and hash
   assert.deepEqual(payload, { value: small, bytes: 12, hash: sha('{"limit":50}') });
 });
 
-test("the program is previewed too, and keeps the bytes and hash of the whole text so two runs of it still match", () => {
+test("the program is not previewed: it is the host's own record of what it ran, and a reader wants it whole", () => {
   const { program } = capture(1);
   const text = "const rows = await callTool('person_search', {});\n".repeat(20);
+  assert.equal(program["truncated"], undefined, "well under the program cap, so nothing is cut");
+  assert.equal(program["value"], text);
+  assert.equal(program["bytes"], Buffer.byteLength(text));
+  assert.equal(program["hash"], sha(text));
+});
+
+test("a program past its own cap is still cut there, and keeps the bytes and hash of the whole", () => {
+  const h = harness({ capture: { caps: { program: 512 } } });
+  const text = "const rows = await callTool('person_search', {});\n".repeat(40);
+  h.m.execution.start({ program: text, notice: false }).complete();
+  const program = h.last("execution")["program"] as Record<string, unknown>;
   assert.equal(program["truncated"], true);
   assert.ok(text.startsWith(program["value"] as string));
+  assert.ok(Buffer.byteLength(program["value"] as string) <= 512);
   assert.equal(program["bytes"], Buffer.byteLength(text));
   assert.equal(program["hash"], sha(text));
 });

@@ -9,7 +9,7 @@ import { Execution } from "./execution.js";
 import { createRuntime, follow } from "./instance.js";
 import { Capturer, REDACTED_TEXT } from "./payload.js";
 import { extJson, objectJson, quote, raw } from "./serialize.js";
-import type { Attestation, Capabilities, ExecutionContext, ExecutionEndOptions, ExecutionHandle, ExecutionStartOptions, Ext, HostLine, Mocon, MoconOptions, RunOptions } from "./types.js";
+import type { Attestation, Capabilities, ExecutionContext, ExecutionHandle, ExecutionStartOptions, Ext, HostLine, Mocon, MoconOptions, RunOptions } from "./types.js";
 import { SPEC_VERSION } from "./version.js";
 
 export type * from "./types.js";
@@ -63,14 +63,18 @@ export function mocon(options: MoconOptions): Mocon {
     // `instrument` reads a bridge's answer. Without this the default settles every such run
     // `completed`, which is wrong in the direction nothing complains about.
     const settle = (value: unknown): void => {
-      let ended: ExecutionEndOptions | undefined | void;
-      try {
-        ended = o.end?.(value);
-      } catch {
-        ended = undefined;
+      if (o.end !== undefined) {
+        try {
+          const given = o.end(value);
+          if (given !== null && typeof given === "object") {
+            execution.end(given);
+            return;
+          }
+        } catch {
+          // `execution.end` validates before it writes, so the execution is still open for the default below.
+        }
       }
-      if (ended) execution.end(ended);
-      else execution.complete({ result: value });
+      execution.complete({ result: value });
     };
     let out: T;
     try {

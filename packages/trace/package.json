@@ -1,7 +1,7 @@
 {
-  "name": "@mocon/core",
+  "name": "@mocon/trace",
   "version": "0.1.0",
-  "description": "Emitter for mocon, the observability record format for code-mode MCP hosts. Zero dependencies.",
+  "description": "The two wrappers of the mocon code-mode semantic conventions, on the OpenTelemetry API.",
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -13,14 +13,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./capture": {
-      "types": "./dist/capture.d.ts",
-      "default": "./dist/capture.js"
-    },
-    "./fold": {
-      "types": "./dist/fold.d.ts",
-      "default": "./dist/fold.js"
     },
     "./package.json": "./package.json"
   },
@@ -34,10 +26,12 @@
   "scripts": {
     "build": "tsc -b",
     "prepack": "npm run build",
-    "test": "node --import tsx --test test/*.test.ts",
-    "typecheck": "tsc -p test/tsconfig.json"
+    "test": "node --import tsx --test test/*.test.ts"
   },
-  "devDependencies": {
-    "fast-check": "^3.23.2"
+  "dependencies": {
+    "@mocon/core": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": ">=1.3.0 <2"
   }
 }

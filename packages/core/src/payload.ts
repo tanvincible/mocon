@@ -38,10 +38,10 @@ export const DEFAULT_CAPS: Readonly<Record<CapKey, number>> = {
 };
 
 /**
- * Bytes of a Payload's `value` the default policy writes. The cap above is
- * what the encoder reads, so a value between the two is written as a prefix
- * with the `bytes` and `hash` of the whole; `capture.preview` moves it and
- * `ctx.capture(v, { full: true })` opts one value out.
+ * Bytes of a Payload's `value` the default policy writes for a slot that carries a target's or a
+ * program's data. The cap above is what the encoder reads, so a value between the two is written as
+ * a prefix with the `bytes` and `hash` of the whole; `capture.preview` moves it and
+ * `ctx.capture(v, { full: true })` opts one value out. `program` is exempt: see PREVIEWED.
  */
 export const DEFAULT_PREVIEW = 256;
 
@@ -691,18 +691,19 @@ type ErrorSlot = "error" | "crossing.error";
 const RULE_SLOTS: ReadonlySet<string> = new Set<CaptureSlot>(["program", "result", "outputs", "error", "crossing.input", "crossing.output", "crossing.error"]);
 
 /**
- * The slots the preview bounds: what the program submitted, returned or exchanged with a target. An error's
- * Payload is its diagnosis, not that traffic — its `class` and `message` are outside the preview already, and a
- * stack cut at 256 bytes is one frame — so the error slots keep their cap and a host shortens them with a cap
- * or a rule.
+ * Slots the default preview bounds. The error slots are outside it — a stack cut at 256 bytes is one frame — and
+ * so is `program`, the host's own record of what it was asked to run, which a host that sets `preview` itself
+ * still bounds (`programPreview` below).
  */
-const PREVIEWED: ReadonlySet<string> = new Set<CaptureSlot>(["program", "result", "outputs", "crossing.input", "crossing.output"]);
+const PREVIEWED: ReadonlySet<string> = new Set<CaptureSlot>(["result", "outputs", "crossing.input", "crossing.output"]);
 
 /** Caps, rules and the encoder for one instance. Compiled once. */
 export class Capturer {
   readonly caps: Readonly<Record<CapKey, number>>;
   /** Bytes of a `value` written; the cap is still what is read, hashed and measured. */
   readonly preview: number;
+  /** The same for `program`, which the default preview leaves whole: a host that sets one means it. */
+  private readonly programPreview: number;
   private readonly rules: Partial<Record<CaptureSlot, CaptureRule>>;
   private readonly encoder: Encoder;
 
@@ -712,6 +713,7 @@ export class Capturer {
     const preview: unknown = policy?.preview;
     if (preview !== undefined && (typeof preview !== "number" || !Number.isInteger(preview) || preview < 0)) throw new RangeError("mocon: preview must be a non-negative integer");
     this.preview = preview === undefined ? DEFAULT_PREVIEW : preview;
+    this.programPreview = preview === undefined ? Infinity : preview;
     const caps = { ...DEFAULT_CAPS };
     if (policy?.caps !== undefined) {
       for (const slot of Object.keys(policy.caps)) {
@@ -824,7 +826,7 @@ export class Capturer {
 
   private apply(slot: CaptureSlot, value: unknown, cap: number, target: string | undefined, channel: string | undefined): Captured {
     const rule = this.rules[slot];
-    const preview = PREVIEWED.has(slot) ? this.preview : cap;
+    const preview = PREVIEWED.has(slot) ? this.preview : slot === "program" ? this.programPreview : cap;
     if (rule === undefined) return this.encode(slot, value, cap, false, preview);
     if (rule === "drop") return REDACTED;
     if (rule === "hash-only") return this.hashOnly(slot, value);
