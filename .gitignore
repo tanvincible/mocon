@@ -8,3 +8,7 @@ venv/
 mocon.jsonl
 *.tsbuildinfo
 coverage/
+
+# editor swap files
+*.swp
+*.swo
