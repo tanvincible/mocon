@@ -878,10 +878,35 @@ earlier draft had only the one list, and the result was that every host with a r
 incentive to over-claim in a way nothing could detect. This is the same distinction sections 6.2 and
 6.5 already draw for a crossing's output; it was missing only here.
 
-Nothing is minted for units, aggregation or display names. OpenTelemetry already models them on
-the metric instrument: the instrument type is the aggregation, the instrument unit is the unit,
-the instrument description is the display name. Use UCUM where one exists, `By`, `ms`, `s`, and a
-curly-brace annotation otherwise, `{credit}`, `{token}`.
+**A host says what its own attributes mean, in `code_mode.declared`.** A map from attribute key to
+`{ agg, unit, card, name }`: whether the value can be summed (`sum`, `last`, `none`), what it counts,
+whether grouping by it is safe (`low`, `high`), and what to call it in a legend. It carries X5.
+
+This is on the execution span only, and the difference from section 3.1 is the point. The capability
+declaration is repeated on every span because it changes how *one* span is read. This one is about
+combining values *across* spans, which is already a multi-span operation, so one carrier per trace is
+enough and a crossing does not pay for it.
+
+It needs no attestation, because it is a claim about meaning rather than about fidelity. The two are
+separate and a consumer needs both: the declaration says a number adds up, and the provenance label
+says whose number it is. A value declared `sum` that carries a `P` label is still barred from a
+metric by section 9.
+
+An earlier draft dropped this on the grounds that aggregation and unit belong to a metric instrument.
+That conflated two things. The instrument describes a metric the host chose to emit; this describes an
+attribute a consumer found, so that a consumer which has never heard of this host can do something
+correct with it. Nothing in OpenTelemetry carries per-attribute semantics, which is why it is minted
+here.
+
+**What reads it, honestly.** No general-purpose backend does, and none will. A declaration is worth
+something to three consumers: a language model reading the trace, which increasingly is the consumer
+and which can act on it with no vendor support at all; a dashboard written against these conventions,
+which can then render a host's own fields without being rebuilt per host; and a collector deriving
+metrics, which can respect section 9 mechanically. Shipping it does not make Grafana understand your
+credit meter. It makes it possible for something to.
+
+Use UCUM for units where one exists, `By`, `ms`, `s`, and a curly-brace annotation otherwise,
+`{credit}`, `{token}`.
 
 ## 9. Metrics
 
@@ -1028,7 +1053,7 @@ A consumer MUST NOT:
 
 ## 13. Attribute index
 
-Twenty keys, one new enum value and one span event. Each names the invariant it carries.
+Twenty-one keys, one new enum value and one span event. Each names the invariant it carries.
 Everything else in this document reuses an attribute that already exists.
 
 | Attribute | Type | Where | Carries |
@@ -1039,6 +1064,7 @@ Everything else in this document reuses an attribute that already exists.
 | `code_mode.attested` | string[] | both spans | X1: provenance |
 | `code_mode.attested_attributes` | string[] | both spans | X1, for the host's own attributes it measured |
 | `code_mode.relayed_attributes` | string[] | both spans | X1, for the host's own attributes a target reported |
+| `code_mode.declared` | any | execution span | X5: what the host's own attributes mean, so a stranger can aggregate them |
 | `code_mode.execution.id` | string | both spans | C3: identity, and the only key that reads a crossing alone |
 | `code_mode.execution.disposition` | string | execution span | C3, C4: the closed disposition set Status cannot carry |
 | `code_mode.program.text` | string | execution span | C1: one program per execution |
@@ -1076,8 +1102,9 @@ For a reader who knew the retired JSON Lines format.
 - **Start notices, and the unresolved state.** A span exports when it ends. Section 4.4.
 - **The supersede and conflict rules.** They belong to a line-oriented format. Two spans with one
   span id are a backend problem, not this document's.
-- **`dimensions`.** Aggregation, unit and display name are native to a metric instrument. What
-  survives is section 9, the rule that a program-determined value never becomes a metric point.
+- **`dimensions`.** Restored as `code_mode.declared` in section 8, after being dropped on reasoning
+  that conflated a metric instrument with an attribute a consumer found. Section 9's rule, that a
+  program-determined value never becomes a metric point, survives alongside it.
 - **`spec_version` as a field.** The scope version, and eventually `schema_url`, carry it.
 - **Stateless sinks, malformed lines, line order.** All properties of a JSON Lines stream.
 - **`OK` for a completed execution.** Section 4.1.

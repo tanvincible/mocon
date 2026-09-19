@@ -22,6 +22,8 @@ export type Attestation =
 
 const OBSERVES: ReadonlySet<unknown> = new Set<Observes>(["all", "some", "none"]);
 const EDGES: ReadonlySet<unknown> = new Set<CrossingEdge>(["invocation", "dispatch"]);
+const AGG: ReadonlySet<unknown> = new Set<Aggregation>(["sum", "last", "none"]);
+const CARD: ReadonlySet<unknown> = new Set<Cardinality>(["low", "high"]);
 const ATTESTED: ReadonlySet<unknown> = new Set<Attestation>([
   "crossing.target",
   "crossing.input",
@@ -30,6 +32,24 @@ const ATTESTED: ReadonlySet<unknown> = new Set<Attestation>([
   "execution.error.class",
   "host_attributes",
 ]);
+
+/** How a value combines across records. `none` means it must not be added up at all. */
+export type Aggregation = "sum" | "last" | "none";
+/** Whether grouping by a value is safe. `high` is per-user, per-run or otherwise unbounded. */
+export type Cardinality = "low" | "high";
+
+/**
+ * What one of the host's own attributes means, in the only terms a stranger needs: whether it can
+ * be summed, what it counts, and whether grouping by it is safe.
+ */
+export interface Dimension {
+  agg: Aggregation;
+  /** UCUM where one exists, `ms`, `By`, `s`; a curly-brace annotation otherwise, `{credit}`. */
+  unit?: string;
+  card?: Cardinality;
+  /** A display name, for a key that reads badly in a legend. */
+  name?: string;
+}
 
 export interface Capabilities {
   /** `all` and `some` claim the host mediates; `none` says it does not observe a call boundary. */
@@ -48,6 +68,13 @@ export interface Capabilities {
    * does not vouch for it, but the program did not shape it either.
    */
   relayed_attributes?: readonly string[];
+  /**
+   * What the host's own attributes MEAN, so a consumer that has never heard of this host can add
+   * them up and group by them correctly. Keyed by attribute name. Needs no attestation: it is a
+   * claim about meaning rather than about fidelity, and provenance still decides whether the value
+   * can be believed at all.
+   */
+  declared?: Readonly<Record<string, Dimension>>;
 }
 
 /**
@@ -64,6 +91,7 @@ export function declaration(capabilities: Capabilities): Readonly<Attributes> {
     attested,
     attested_attributes: attestedKeys,
     relayed_attributes: relayedKeys,
+    declared,
   } = capabilities;
 
   if (!OBSERVES.has(observes)) throw new RangeError('@mocon/trace: observes_crossings must be "all", "some" or "none"');
@@ -101,7 +129,42 @@ export function declaration(capabilities: Capabilities): Readonly<Attributes> {
     throw new RangeError('@mocon/trace: naming host attributes needs "host_attributes" in attested, which is the gate a consumer reads');
   }
 
+  const dimensions = checkDeclared(declared);
+  if (dimensions !== undefined) out["code_mode.declared"] = dimensions;
+
   return Object.freeze(out);
+}
+
+/**
+ * Read once and rebuilt from what was read, as everything else here is, then serialized at
+ * construction so the per-span cost is one string and no `toJSON` of the caller's can run on a
+ * request path.
+ */
+function checkDeclared(given: Capabilities["declared"]): string | undefined {
+  if (given === undefined) return undefined;
+  if (given === null || typeof given !== "object") throw new TypeError("@mocon/trace: declared must be an object");
+  const out: Record<string, Dimension> = {};
+  for (const key of Object.keys(given)) {
+    const d = given[key];
+    if (d === null || typeof d !== "object") throw new TypeError(`@mocon/trace: declared[${JSON.stringify(key)}] must be an object`);
+    const { agg, unit, card, name } = d;
+    if (!AGG.has(agg)) throw new RangeError(`@mocon/trace: declared[${JSON.stringify(key)}].agg must be "sum", "last" or "none"`);
+    const entry: Dimension = { agg };
+    if (unit !== undefined) {
+      if (typeof unit !== "string" || unit === "") throw new TypeError(`@mocon/trace: declared[${JSON.stringify(key)}].unit must be a non-empty string`);
+      entry.unit = unit;
+    }
+    if (card !== undefined) {
+      if (!CARD.has(card)) throw new RangeError(`@mocon/trace: declared[${JSON.stringify(key)}].card must be "low" or "high"`);
+      entry.card = card;
+    }
+    if (name !== undefined) {
+      if (typeof name !== "string" || name === "") throw new TypeError(`@mocon/trace: declared[${JSON.stringify(key)}].name must be a non-empty string`);
+      entry.name = name;
+    }
+    out[key] = entry;
+  }
+  return Object.keys(out).length === 0 ? undefined : JSON.stringify(out);
 }
 
 function names(given: readonly string[] | undefined, field: string): string[] {

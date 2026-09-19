@@ -124,6 +124,29 @@ measured, so attesting it is a lie, and leaving it unlisted makes it a program c
 from summing it into a cost metric. Naming it as relayed is the honest option, and the only one that
 gets you a billing number you can defend.
 
+And say what your own attributes **mean**, so something that has never heard of your server can
+still do the right thing with them:
+
+```ts
+capabilities: {
+  // ...
+  declared: {
+    "com.acme.credits_used": { agg: "sum", unit: "{credit}", card: "low", name: "Credits" },
+    "com.acme.tenant_id":    { agg: "none", card: "high" },
+  },
+}
+```
+
+Summable by declaration, believable by provenance. They are separate claims and a reader needs both:
+this says the number adds up, the label says whose number it is.
+
+Be clear-eyed about who reads it. No general-purpose backend does, and none will. It is worth
+something to three consumers: a language model reading the trace, which increasingly is the consumer
+and needs no vendor to support it; a dashboard written against these conventions, which can then
+render your own fields without being rebuilt for your server; and a collector deriving metrics, which
+can respect the provenance rule mechanically. It does not make Grafana understand your credit meter.
+It makes it possible for something to.
+
 Two rules that are not optional:
 
 - **Context flows into the sandbox, never out.** Never accept trace context the program supplies,

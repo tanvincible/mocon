@@ -474,6 +474,10 @@ class CrossingSpan implements CrossingHandle {
       "gen_ai.tool.name": target,
       ...declared,
     };
+    // 3.1 repeats the capability declaration on every span because it changes how one span is read.
+    // `code_mode.declared` is about combining values across spans, so the execution span carries it
+    // once and a crossing does not pay for it.
+    delete attributes["code_mode.declared"];
     if (seq !== undefined) attributes["code_mode.crossing.seq"] = seq;
     put(attributes, "code_mode.execution.id", executionId);
     if (typeof o.dispatched === "boolean") attributes["code_mode.crossing.dispatched"] = o.dispatched;

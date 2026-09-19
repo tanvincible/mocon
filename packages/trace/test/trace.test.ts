@@ -539,3 +539,39 @@ test("a host that cannot tell whether a call left writes nothing rather than gue
   ex.complete();
   assert.equal("code_mode.crossing.dispatched" in h.one("execute_tool").attributes, false);
 });
+
+test("a host says what its own attributes mean, so a stranger can add them up correctly", () => {
+  const h = harness({
+    ...CAPS,
+    attested: [...ATTESTED, "host_attributes"],
+    relayed_attributes: ["com.acme.credits_used"],
+    declared: {
+      "com.acme.credits_used": { agg: "sum", unit: "{credit}", card: "low", name: "Credits" },
+      "com.acme.tenant_id": { agg: "none", card: "high" },
+    },
+  });
+  const ex = h.m.execution.start({ program: "p", attributes: { "com.acme.tenant_id": "t_9" } });
+  ex.crossing.start({ target: "search", attributes: { "com.acme.credits_used": 5 } }).output(1);
+  ex.complete();
+  const declared = JSON.parse(h.one("execute_code").attributes["code_mode.declared"] as string) as Record<string, Record<string, unknown>>;
+  assert.deepEqual(declared["com.acme.credits_used"], { agg: "sum", unit: "{credit}", card: "low", name: "Credits" });
+  assert.deepEqual(declared["com.acme.tenant_id"], { agg: "none", card: "high" });
+  // Summable by declaration, believable by provenance. A consumer needs both and they are separate
+  // claims: this one says the number adds up, the label says whose number it is.
+  assert.equal(h.one("execute_tool").attributes["code_mode.provenance.com.acme.credits_used"], "T");
+});
+
+test("the meaning declaration rides the execution span only, since it is about combining across spans", () => {
+  const h = harness({ ...CAPS, declared: { "com.acme.x": { agg: "sum" } } });
+  const ex = h.m.execution.start({ program: "p" });
+  ex.crossing.start({ target: "t" }).output(1);
+  ex.complete();
+  assert.equal("code_mode.declared" in h.one("execute_tool").attributes, false, "a crossing does not pay for it");
+  assert.ok("code_mode.declared" in h.one("execute_code").attributes);
+});
+
+test("a meaning nobody could act on is refused at construction", () => {
+  assert.throws(() => codeMode({ capabilities: { ...CAPS, declared: { "com.acme.x": { agg: "average" } } as never } }), RangeError);
+  assert.throws(() => codeMode({ capabilities: { ...CAPS, declared: { "com.acme.x": { agg: "sum", card: "medium" } } as never } }), RangeError);
+  assert.throws(() => codeMode({ capabilities: { ...CAPS, declared: { "com.acme.x": "sum" } as never } }), TypeError);
+});
