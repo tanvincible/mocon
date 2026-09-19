@@ -31,8 +31,9 @@ every span becomes a flat record in the logger you already run: the same vocabul
 provenance labels, the same join key, no SDK and no backend. The same host code moves to real
 tracing later by passing a different tracer.
 
-If you do want a trace pipeline, the code change is the small half. [Rollout](https://tanvincible.github.io/mocon/rollout.html) has the order that avoids making the day you
-merge worse than the day before: destination first, code last.
+If you do want a trace pipeline, the code change is the small half.
+[Rollout](https://tanvincible.github.io/mocon/rollout.html) has the order that avoids making the
+day you merge worse than the day before: destination first, code last.
 
 ## Use
 
