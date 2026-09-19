@@ -10,6 +10,7 @@ import { test } from "node:test";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { BasicTracerProvider, InMemorySpanExporter, type ReadableSpan, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { type Capabilities, type CapturePolicy, codeMode } from "../src/index.js";
+type Rec2 = { attributes: Record<string, unknown> };
 
 const ATTESTED = ["crossing.target", "crossing.input", "crossing.output"] as const;
 const CAPS: Capabilities = { observes_crossings: "all", unmediated_egress: false, crossing_edge: "invocation", attested: ATTESTED };
@@ -513,4 +514,28 @@ test("an attribute cannot be both measured and relayed, and naming any needs the
   assert.throws(() => codeMode({ capabilities: { ...CAPS, attested: [...ATTESTED, "host_attributes"], attested_attributes: ["com.acme.x"], relayed_attributes: ["com.acme.x"] } }), RangeError);
   assert.throws(() => codeMode({ capabilities: { ...CAPS, relayed_attributes: ["com.acme.x"] } }), RangeError, "the gate a consumer reads is still required");
   assert.throws(() => codeMode({ capabilities: { ...CAPS, attested: [...ATTESTED, "host_attributes"] } }), RangeError, "the gate without any name claims nothing");
+});
+
+test("a crossing says whether it left the host, so an error points at the right system", () => {
+  const h = harness({ ...CAPS, attested: [...ATTESTED, "crossing.error"] });
+  const ex = h.m.execution.start({ program: "p" });
+  // A refusal the host answered itself. Its error is not the program's, so it reads target-relayed,
+  // which alone would send an operator to an API the call never reached.
+  ex.crossing.start({ target: "t", dispatched: false }).error(new Error("over cap"), { errorType: "refused" });
+  ex.crossing.start({ target: "t", dispatched: true }).error(new Error("upstream"), { errorType: "capability_error" });
+  ex.complete();
+  const [refused, upstream] = h.spans() as [Rec2, Rec2];
+  assert.equal(refused.attributes["code_mode.crossing.dispatched"], false);
+  assert.equal(upstream.attributes["code_mode.crossing.dispatched"], true);
+  assert.equal(refused.attributes["code_mode.provenance.error.type"], "T", "both read T, which is why the bit is needed");
+  assert.equal(upstream.attributes["code_mode.provenance.error.type"], "T");
+  assert.equal("code_mode.provenance.code_mode.crossing.dispatched" in refused.attributes, false, "the host's own knowledge carries no label");
+});
+
+test("a host that cannot tell whether a call left writes nothing rather than guessing", () => {
+  const h = harness();
+  const ex = h.m.execution.start({ program: "p" });
+  ex.crossing.start({ target: "t" }).output(1);
+  ex.complete();
+  assert.equal("code_mode.crossing.dispatched" in h.one("execute_tool").attributes, false);
 });

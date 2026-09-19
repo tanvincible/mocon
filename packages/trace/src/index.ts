@@ -202,6 +202,13 @@ export interface CrossingStartOptions {
   kind?: "client" | "local";
   /** A bounded span name for a host whose targets are unbounded. The full target stays an attribute. */
   name?: string;
+  /**
+   * Whether the host sent this call toward its target. Always the host's own knowledge. Set it
+   * `false` on a refusal the host answered itself, a cache hit, or anything else that never left
+   * the process: without it an operator reading an error has no way to tell a target that failed
+   * from a call that never reached one.
+   */
+  dispatched?: boolean;
   /** The crossing went over MCP and this span is the only span for it. */
   mcp?: { method: string; session?: string; resourceUri?: string };
   attributes?: Attributes;
@@ -218,6 +225,8 @@ export interface CrossingEndOptions {
   attributes?: Attributes;
   /** Absent under `abandoned` closes the span at its start, which is what `start_only` means. */
   endTime?: TimeInput;
+  /** As on the start options, for a host that only learns it at settlement. */
+  dispatched?: boolean;
 }
 
 export interface CrossingHandle {
@@ -466,6 +475,7 @@ class CrossingSpan implements CrossingHandle {
     };
     if (seq !== undefined) attributes["code_mode.crossing.seq"] = seq;
     put(attributes, "code_mode.execution.id", executionId);
+    if (typeof o.dispatched === "boolean") attributes["code_mode.crossing.dispatched"] = o.dispatched;
     put(attributes, "gen_ai.tool.call.id", o.id);
     put(attributes, "gen_ai.tool.type", o.toolType);
     if (o.mcp !== undefined) {
@@ -503,6 +513,7 @@ class CrossingSpan implements CrossingHandle {
     this.ended = true;
     this.execution.release(this);
     const attrs: Attributes = { ...hostAttributes(attributes), "code_mode.crossing.outcome": outcome };
+    if (typeof options.dispatched === "boolean") attrs["code_mode.crossing.dispatched"] = options.dispatched;
     // 5.4: a span always has two times, so a host with no end time closes the span at its start and
     // says so. A consumer MUST NOT read that zero duration as how long the crossing took.
     let close: TimeInput | undefined = endTime;
