@@ -1,1 +1,0 @@
-core.md 5.2 and 8: end.disposition is closed to completed/failed/terminated/abandoned. 'success' is not a member.

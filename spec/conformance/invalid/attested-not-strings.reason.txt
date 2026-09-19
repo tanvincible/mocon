@@ -1,1 +1,0 @@
-provenance.md 4 and core.md 8: attested is an array of entry strings. A number is not an entry, known or unknown.

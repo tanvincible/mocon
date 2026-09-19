@@ -10,10 +10,10 @@ semantic-conventions registry, not to `gen_ai`. A host pins the registry version
 against by setting `schema_url` on its instrumentation scope once one is published, and until
 then by setting the scope version to the version of this document.
 
-This document is the OpenTelemetry form of the model in `core.md` and `provenance.md`. Those
-files describe a JSON Lines record format, which this replaces as the thing a host emits. The
-model, the closed vocabularies, the provenance rules and the capability declaration survive the
-move unchanged. Section 14 lists what did not survive it.
+This project previously specified a JSON Lines record format with its own wire, schema and
+conformance suite. This document replaces it. The model, the closed vocabularies, the provenance
+rules and the capability declaration survive that move unchanged; section 14 lists what did not,
+and Appendix A carries the invariants the whole design rests on.
 
 ## 1. Scope
 
@@ -81,9 +81,9 @@ of the first three MUST treat that attribute as absent and apply the "absent rea
 section 3; an unknown `attested` entry is ignored, which leaves the fields it would have upgraded
 at their baseline. Neither is a reason to discard the span.
 
-These come from a specification derived by profiling nineteen code-mode implementations and
-adversarially testing every candidate rule against them. The invariants are numbered C1 to C15
-and X1 to X5 in `core.md` Appendix B, and each new attribute below names the one it carries.
+These come from profiling nineteen code-mode implementations and adversarially testing every
+candidate rule against them. The surviving invariants are numbered C1 to C15 and X1 to X5 in
+Appendix A, and each new attribute below names the one it carries.
 
 ## 3. The capability declaration
 
@@ -141,9 +141,9 @@ not stored once.
   consumer SHOULD count the disagreement.
 
 A crossing span carries the declaration because a crossing span can reach a consumer without its
-execution span: sampled separately, exported in a different batch, or emitted for an execution
-the host never closed. This is the same reason `core.md` section 3 puts the host string on every
-line, so that a stream can be split, tailed from the middle or merged with no stream state.
+execution span: sampled separately, exported in a different batch, or emitted for an execution the
+host never closed. A record that cannot be read alone is a record that has to arrive with its
+context intact, and nothing in a telemetry pipeline promises that.
 
 The cost is five attributes on every span. The default `AttributeCountLimit` is 128 and a
 crossing span defined here carries at most fifteen attributes, so the repetition fits. It is not
@@ -165,9 +165,9 @@ owner, and the application owner is the party that does not know about code mode
 can ship a resource detector and hope the owner wires it, which is a deployment step that will
 sometimes not happen, and silence reads as `none`.
 
-**Capabilities are not static per process.** `core.md` 5.1 licenses this directly: "A profile MAY
-be selected per execution from a parameter the caller supplies, provided the host itself enforces
-the resulting capability." The profile survey has shipped examples. smolagents picks a local
+**Capabilities are not static per process.** A profile MAY be selected per dispatch from a parameter
+the caller supplies, provided the host itself enforces the resulting capability. The profile survey
+has shipped examples. smolagents picks a local
 executor or a remote one per agent, in one Python library and one process, and those two
 executors do not have the same answer for `observes_crossings`. mcp-use picks a VM executor or a
 hosted sandbox per session, in one npm package, and those two do not have the same answer for
@@ -530,12 +530,12 @@ Under `none` the span's position says only when the host closed it.
 
 An `abandoned` crossing usually lands in `start_only`. A trace viewer renders that as a
 zero-width tick inside its parent, with no status colour, which reads to the eye as a call that
-did not happen. It is the opposite. The conformance stream `conformance/streams/abandoned-at-end.jsonl`
-is the case worth keeping in mind: a five thousand dollar wire transfer that the host started,
-stopped watching when the execution's time limit fired, and closed `abandoned`. The transfer may
+did not happen. It is the opposite. The case worth keeping in mind is a five thousand dollar wire
+transfer that the host started, stopped watching when the execution's time limit fired, and closed
+`abandoned`. The transfer may
 or may not have gone out. Section 15 shows what that trace looks like.
 
-Carried from `core.md` section 12, because it is the inference this attribute exists to block: a
+The inference this attribute exists to block, stated as a rule: a
 consumer MUST NOT treat an unresolved crossing as evidence the call is still in progress, or an
 `abandoned` crossing as evidence the target never responded. Both say only that the host stopped
 observing.
@@ -551,9 +551,8 @@ carrying the crossing attributes and the MCP attributes together: `mcp.method.na
 for a tool call), `mcp.session.id` when there is a session, and `mcp.resource.uri` when the method
 takes one.
 
-This diverges from `otel-mapping.md` 7.2, which leaves `mcp.method.name` and `mcp.session.id`
-unset. That was right for a sink, which reads a record that carries no field saying whether a
-crossing was an MCP request. It is wrong for a host, which knows.
+A sink reading a record after the fact cannot know whether a crossing was an MCP request, because
+no field says so. A host knows, and should say.
 
 Where MCP client instrumentation is running in the same process and cannot detect the outer span,
 two spans per crossing is the result. That is a real failure and this document cannot prevent it
@@ -883,9 +882,7 @@ whether it should.
 Keep point attributes to low-cardinality dimensions. Never an execution id, a crossing id, a
 session id or anything per user.
 
-This section is the same rule `otel-mapping.md` 14 condition 3 applies to declared `ext` keys, and
-it is stated here so the two documents do not disagree. Section 16 records the part of it that
-cannot be enforced from inside a host.
+Section 16 records the part of this rule that cannot be enforced from inside a host.
 
 ## 10. Integration shape
 
@@ -925,9 +922,9 @@ everything below is Development.
 
 | Upstream | What it does | Relation to this document |
 |---|---|---|
-| PR #370 | `gen_ai.attribution.link_type` on span links: `CAUSED_BY_GENERATION`, `RETRY_OF`, `INFORMED_BY`. Titled "tool-call provenance" | Same channel and an overlapping vocabulary with `extensions/links.md` (`retry_of`, `replay_of`, `forked_from`, `continues`). The upstream version carries no counts field, which `links.md` 4 argues is mandatory because there is no safe default |
+| PR #370 | `gen_ai.attribution.link_type` on span links: `CAUSED_BY_GENERATION`, `RETRY_OF`, `INFORMED_BY`. Titled "tool-call provenance" | The same channel and an overlapping vocabulary for relating a retry or a replay to what it came from. The upstream version carries no count of attempts, which this project's own earlier design argued is mandatory because there is no safe default |
 | Issue #406 | Correlating GenAI spans with verified execution-environment attestation. States that "absence of attestation attributes must not be interpreted as a failed verification" | The same fail-safe shape as `code_mode.attested`, for a different subject: it attests the environment, this attests what the host observed of the program |
-| PR #445 | `gen_ai.agent.paused`, `.checkpointed`, `.resumed`, with `gen_ai.agent.execution.id`, `pause.reason`, `resumed_from.type`/`.id` | `extensions/events.md`'s suspend and resume, plus `links.md`'s `continues`. Its own text names its blocker: "LangGraph exposes no id spanning suspend and resume, so execution.id has no producer yet." `code_mode.execution.id` is exactly that id, defined and required by a model that has one |
+| PR #445 | `gen_ai.agent.paused`, `.checkpointed`, `.resumed`, with `gen_ai.agent.execution.id`, `pause.reason`, `resumed_from.type`/`.id` | Suspend and resume, which this project modelled as events and links. Its own text names its blocker: "LangGraph exposes no id spanning suspend and resume, so execution.id has no producer yet." `code_mode.execution.id` is exactly that id, defined and Required by a model that has one |
 | Issue #509 | Whether MCP tool calls are an `execute_tool` refinement | Decides section 5.5 |
 | Issue #511 | Stabilizing inference and core agentic execution conventions | Decides when any of this can stop being Development |
 | Issue #373 | Tool risk attributes for `execute_tool` and MCP tool call telemetry | Adjacent. A risk label on a target the host did not observe has the same problem section 9 describes |
@@ -1032,7 +1029,7 @@ and the whole trace data model: parentage, span links, span events and Status.
 
 ## 14. What the move away from a record format dropped
 
-For a reader who knows `core.md`.
+For a reader who knew the retired JSON Lines format.
 
 - **Id derivation.** Span ids are minted by the SDK and trace context propagates natively. The
   host's own execution id survives as `code_mode.execution.id`.
@@ -1052,9 +1049,8 @@ the two-wrapper integration shape.
 
 ## 15. Worked example
 
-One execution, two crossings, the second abandoned. Taken from
-`conformance/streams/abandoned-at-end.jsonl`, with that stream's program text, hashes, targets,
-inputs and six timestamps unchanged.
+One execution, two crossings, the second abandoned. Every value below comes from a fixture this
+project has carried since before the move, and the emitter reproduces all of them.
 
 The host is a synchronous bridge. It mediates every call at the call boundary and attests the
 target, the input and the output. The program deletes a CRM record and then starts a wire
@@ -1237,10 +1233,9 @@ code-mode execution span, and what happens to it.** Lead with `code_mode.executi
 #445 names its absence as its own blocker and this model has the id it needs. Take the collision
 list in section 11 into that conversation rather than making the reviewer derive it.
 
-**Namespace.** `code_mode.*` was chosen over continuing the retiring format's `mocon.*`, because
-an upstream proposal named after a product would fail the naming rules, and `gen_ai.*` and `mcp.*`
-are named for their domain. Whether the repository wants one name across `otel-mapping.md` and this
-document is a decision above this document.
+**Namespace.** `code_mode.*` was chosen over the retired format's `mocon.*`, because an upstream
+proposal named after a product would fail the naming rules, while `gen_ai.*` and `mcp.*` are named
+for their domain.
 
 **Merging with an existing MCP server span.** Section 4 allows two shapes: a fresh execution span,
 or the execution attributes added to an MCP server span that already covers exactly the dispatch.
@@ -1267,3 +1262,28 @@ two rules instead of one, which is why it is not the rule today.
 **The unresolved-execution log record.** Section 4.4 says a host MAY emit one and defines nothing
 about it. If more than one host does it, two hosts will do it differently, and then it needs an
 event name, a body shape and a severity, which is a second document.
+
+## Appendix A. Invariants
+
+These are the claims this specification is built on, not claims about any one implementation. They hold for a host as section 1 scopes one: a party that holds the program text it dispatched and can attribute the crossings it records to its own executions. Each attribute above cites the one it carries. They were derived by profiling nineteen implementations and adversarially testing every candidate against them, and they outlived the record format they were first written for.
+
+- **C1. One program per execution.** One execution is one dispatch of one program, never the session that contains it. The host holds that program text in full at dispatch. It is not guaranteed to be what an agent submitted for that dispatch — a reactive runtime re-runs a dependent cell, a scheduler resumes a checkpoint, and the text is then the host's own — nor everything that ran, nor what the runtime parsed.
+- **C2. Language is a hint.** A host may not know the language it runs. The label exists for display and routing only.
+- **C3. Identity and disposition.** Every execution has an id unique within its host and a host-observed start. If it ends, it ends with exactly one of `completed`, `failed`, `terminated`, `abandoned`. It may never end.
+- **C4. Completed or not.** When an end exists, the host can tell `completed` from every other disposition. Error detail is optional.
+- **C5. Mediation is declared, not assumed.** Whether the host observes crossings, and whether the program has a path out that the host does not see, differ by implementation and are declared.
+- **C6. Crossing shape.** Every recorded crossing has a target and an input fixed at initiation, and if it settles it settles as exactly one of `output`, `error`, `abandoned`. How many invocations or dispatches one record stands for follows from the declared edge (X2) and is not itself a core field.
+- **C7. Host clock.** Execution start and end are on the declaring host's clock. Crossing times exist only where the host observed the crossing.
+- **C8. Delivery varies.** How an outcome reaches the caller, and whether the caller sees crossings, differ by implementation and are outside the contract.
+- **C9. Opaque payloads.** Inputs, outputs and results have no standard shape. Truncation and redaction are annotated out of band; consumers never parse values.
+- **C10. No implicit order.** Crossings within an execution are unordered unless `seq` or host-clock timestamps are present, and they may overlap.
+- **C11. No universal session.** Session, user and conversation identity are optional context the host passes through.
+- **C12. Discovery is not universal.** How the agent learns the callable surface is outside the contract.
+- **C13. Nesting is a link.** A crossing may be served by another execution. Correlation is by `traceparent`, not by a core field.
+- **C14. Positions are not universal.** Source positions for errors and crossings are not guaranteed and are not in core.
+- **C15. Limits are not universal.** Host-enforced limits and termination are not guaranteed.
+- **X1. Provenance.** Every field is host-observed, program-determined or target-relayed by a rule fixed in this specification. Only the `attested` list upgrades a field.
+- **X2. Two edges.** A crossing record describes either the program-facing invocation or the host's dispatch toward the target. The host declares which.
+- **X3. Environment is not fixed.** The callable surface can change during an execution. Core does not record it.
+- **X4. No universal output channel.** Non-crossing outputs such as standard output are optional, per channel.
+- **X5. Meaning is declared, identity is fixed.** A host declares what its own attributes mean, so a consumer that has never heard of it can read them. No declaration reaches identity: not what an execution or a crossing is, not the closed dispositions and outcomes, not the reading of any attribute this document defines. This specification fixes the spine; everything above it is the host's to declare.

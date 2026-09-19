@@ -7,7 +7,7 @@
  * default and the cheap path: an absent Opt-In attribute says nothing, and claims nothing.
  */
 
-import { type Encoded, Encoder } from "@mocon/core/capture";
+import { type Encoded, Encoder } from "./encode.js";
 import type { Attributes } from "@opentelemetry/api";
 
 /** Bytes of JSON kept per value. Under every SDK, collector and backend limit we know of. */

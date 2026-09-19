@@ -1,1 +1,0 @@
-core.md 5.4: hash is sha256: followed by exactly 64 lowercase hex digits and nothing else. A trailing newline is not nothing: Python's $ matches before it, so this fixture pins the \Z anchoring check.py needs to agree with every ECMA-262 validator.

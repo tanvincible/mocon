@@ -1,1 +1,0 @@
-core.md 5.4: bytes is the size in bytes of the host's serialization, so it is never negative.

@@ -1,52 +1,46 @@
 /**
- * Payloads (core.md 5.4) as wire text: a line splices what a capture returns
- * instead of serializing a Payload object.
+ * The value encoder: a bounded JSON text plus the size and hash of the whole, written straight into
+ * a reused buffer so a large value is never materialized as a string first.
  *
- * The encoder reads a value once. A bounded walker serializes it under
- * `serialize.ts`'s rule and stops once its output passes the slot's cap, so
- * every property, getter and `toJSON` of a program-controlled value runs at
- * most once. The bytes the walker wrote are the bytes that are hashed,
- * measured and cut, so `bytes`, `hash` and a truncated `value` agree by
- * construction. `program` is the one exception: its text is hashed in full
- * even when `value` is cut, because core.md 5.2 wants `program.hash` and
- * `program.bytes` always present.
- *
- * The walker departs from `JSON.stringify` in three ways: binary anywhere is
- * a base64 string; a value nested deeper than `MAX_DEPTH` is cut there, so a
- * ref can always be serialized again; and a string far longer than the cap
- * is not read at all, because its first character read would flatten a rope
- * the program built for free.
+ * It moved here from the record format's emitter when that was retired. Serializing a code-mode
+ * payload runs program-authored code, a getter, a `toJSON`, a Proxy trap, and a cycle throws by
+ * design, so this is hardened against all of it and the caller reads a throw as a redaction rather
+ * than a fault. Do not replace it with `JSON.stringify` and a `slice`: that materializes the whole
+ * value before cutting it, which is what a program would use to exhaust the host.
  */
 
+import * as nodeCrypto from "node:crypto";
 import { types } from "node:util";
-import { sha256 } from "./hash.js";
-import { invariant, InvariantError } from "./invariants.js";
-import { parseFrozen, quote } from "./serialize.js";
-import type { CaptureContext, CapturePolicy, CaptureRule, CaptureSlot, ErrorInput, Payload } from "./types.js";
 
-type CapKey = CaptureSlot | "crossing.target";
+const oneShot = (nodeCrypto as { hash?: (a: string, d: string | Uint8Array, e: "hex") => string }).hash;
 
-export const DEFAULT_CAPS: Readonly<Record<CapKey, number>> = {
-  program: 768 << 10,
-  result: 1 << 16,
-  outputs: 1 << 16,
-  error: 1 << 14,
-  "crossing.target": 1 << 12,
-  "crossing.input": 1 << 14,
-  "crossing.output": 1 << 16,
-  "crossing.error": 1 << 14,
-};
+/** Lowercase hex SHA-256 of a string's UTF-8 bytes, or of the bytes themselves. */
+const sha256: (data: string | Uint8Array) => string =
+  typeof oneShot === "function" ? (d) => oneShot("sha256", d, "hex") : (d) => nodeCrypto.createHash("sha256").update(d).digest("hex");
 
-/**
- * Bytes of a Payload's `value` the default policy writes for a slot that carries a target's or a
- * program's data. The cap above is what the encoder reads, so a value between the two is written as
- * a prefix with the `bytes` and `hash` of the whole; `capture.preview` moves it and
- * `ctx.capture(v, { full: true })` opts one value out. `program` is exempt: see PREVIEWED.
- */
-export const DEFAULT_PREVIEW = 256;
+/** A failed invariant is a bug in this package, never bad input: bad input is refused first. */
+export class InvariantError extends Error {
+  override readonly name = "InvariantError";
+  readonly code = "ERR_MOCON_INVARIANT";
+  constructor(message: string) {
+    super("mocon invariant: " + message);
+  }
+}
 
-/** One line's payload budget: core.md 3's 1 MiB, less the envelope. */
-export const LINE_BUDGET = (1 << 20) - (1 << 12);
+function invariant(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new InvariantError(message);
+}
+
+/** A JSON string literal, skipping `JSON.stringify` for short text that needs no escaping. */
+function quote(s: string): string {
+  const n = s.length;
+  if (n > 32) return JSON.stringify(s);
+  for (let i = 0; i < n; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x20 || c === 0x22 || c === 0x5c || (c & 0xf800) === 0xd800) return JSON.stringify(s);
+  }
+  return '"' + s + '"';
+}
 
 /** Containers open at once; `JSON.stringify` and most parsers recurse. */
 const MAX_DEPTH = 256;
@@ -635,267 +629,3 @@ function escapeBoundary(body: string, end: number): number {
  * `bytes`, `hash`. `hash` is bare hex. A redacted Payload carries neither
  * `bytes` nor `hash`.
  */
-export function payloadWire(valueText: string | undefined, truncated: boolean, redacted: boolean, bytes: number | undefined, hash: string | undefined): string {
-  invariant(!truncated || valueText === undefined || valueText.charCodeAt(0) === 34, "truncated implies value is a string prefix");
-  invariant(hash === undefined || bytes !== undefined, "bytes equals the byte length of the serialization the hash is taken over");
-  let t = valueText === undefined ? "" : '"value":' + valueText;
-  if (truncated) t += (t === "" ? "" : ",") + '"truncated":true';
-  if (redacted) t += (t === "" ? "" : ",") + '"redacted":true';
-  else if (bytes !== undefined) t += ',"bytes":' + bytes + (hash === undefined ? "" : ',"hash":"sha256:' + hash + '"');
-  return "{" + t + "}";
-}
-
-/** The wire text of a Payload, and whether its value holds binary as base64. */
-export interface Captured {
-  text: string;
-  base64: boolean;
-}
-
-export const REDACTED_TEXT = '{"redacted":true}';
-const REDACTED: Captured = Object.freeze({ text: REDACTED_TEXT, base64: false });
-
-/**
- * What is left of a line's byte budget. A text counts at three bytes a UTF-16
- * unit, its most, measured exactly only once that estimate would cut a cap.
- */
-export class Budget {
-  private readonly pending: string[] = [];
-  private worst = 0;
-
-  constructor(private room: number) {}
-
-  /** `cap`, or less when less is left. */
-  cap(cap: number): number {
-    if (this.room - this.worst < cap && this.pending.length > 0) {
-      for (const text of this.pending) this.room -= Buffer.byteLength(text);
-      this.pending.length = 0;
-      this.worst = 0;
-    }
-    const left = this.room - this.worst;
-    return left >= cap ? cap : left > 0 ? left : 0;
-  }
-
-  spend(text: string): void {
-    this.pending.push(text);
-    this.worst += text.length * 3;
-  }
-}
-
-export interface CapturedError extends Captured {
-  /** `message` was cut at the slot's cap. */
-  messageTruncated: boolean;
-}
-
-type ErrorSlot = "error" | "crossing.error";
-
-const RULE_SLOTS: ReadonlySet<string> = new Set<CaptureSlot>(["program", "result", "outputs", "error", "crossing.input", "crossing.output", "crossing.error"]);
-
-/**
- * Slots the default preview bounds. The error slots are outside it — a stack cut at 256 bytes is one frame — and
- * so is `program`, the host's own record of what it was asked to run, which a host that sets `preview` itself
- * still bounds (`programPreview` below).
- */
-const PREVIEWED: ReadonlySet<string> = new Set<CaptureSlot>(["result", "outputs", "crossing.input", "crossing.output"]);
-
-/** Caps, rules and the encoder for one instance. Compiled once. */
-export class Capturer {
-  readonly caps: Readonly<Record<CapKey, number>>;
-  /** Bytes of a `value` written; the cap is still what is read, hashed and measured. */
-  readonly preview: number;
-  /** The same for `program`, which the default preview leaves whole: a host that sets one means it. */
-  private readonly programPreview: number;
-  private readonly rules: Partial<Record<CaptureSlot, CaptureRule>>;
-  private readonly encoder: Encoder;
-
-  constructor(policy: CapturePolicy | undefined) {
-    // A key this version does not read would be a redaction rule that never applies.
-    for (const key of Object.keys(policy ?? {})) if (key !== "caps" && key !== "rules" && key !== "preview") throw new RangeError(`mocon: unknown capture policy key "${key}"`);
-    const preview: unknown = policy?.preview;
-    if (preview !== undefined && (typeof preview !== "number" || !Number.isInteger(preview) || preview < 0)) throw new RangeError("mocon: preview must be a non-negative integer");
-    this.preview = preview === undefined ? DEFAULT_PREVIEW : preview;
-    this.programPreview = preview === undefined ? Infinity : preview;
-    const caps = { ...DEFAULT_CAPS };
-    if (policy?.caps !== undefined) {
-      for (const slot of Object.keys(policy.caps)) {
-        if (!Object.hasOwn(DEFAULT_CAPS, slot)) throw new RangeError(`mocon: unknown capture slot "${slot}"`);
-        const cap: unknown = policy.caps[slot as CapKey];
-        if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1) throw new RangeError(`mocon: cap for "${slot}" must be a positive integer`);
-        caps[slot as CapKey] = cap;
-      }
-    }
-    const rules: Partial<Record<CaptureSlot, CaptureRule>> = {};
-    if (policy?.rules !== undefined) {
-      for (const slot of Object.keys(policy.rules)) {
-        if (!RULE_SLOTS.has(slot)) throw new RangeError(`mocon: unknown capture slot "${slot}"`);
-        const rule: unknown = policy.rules[slot as CaptureSlot];
-        if (rule === undefined) continue;
-        if (rule !== "drop" && rule !== "hash-only" && typeof rule !== "function") throw new TypeError(`mocon: rule for "${slot}" must be "drop", "hash-only" or a function`);
-        rules[slot as CaptureSlot] = rule as CaptureRule;
-      }
-    }
-    this.caps = caps;
-    this.rules = rules;
-    this.encoder = new Encoder(Math.max(...Object.values(caps)));
-  }
-
-  program(text: string): Captured {
-    return this.apply("program", text, this.caps.program, undefined, undefined);
-  }
-
-  /** With a budget the slot's cap shrinks to what the line has left. */
-  value(slot: Exclude<CaptureSlot, "program">, value: unknown, budget?: Budget, target?: string, channel?: string): Captured {
-    const cap = budget === undefined ? this.caps[slot] : budget.cap(this.caps[slot]);
-    const c = this.apply(slot, value, cap, target, channel);
-    budget?.spend(c.text);
-    return c;
-  }
-
-  /**
-   * An Error (core.md 5.5) as wire text. Under a rule the rule decides
-   * `value` and no `message` is written, so a policy that withholds an
-   * error's content withholds all of it.
-   */
-  error(slot: ErrorSlot, input: ErrorInput, budget?: Budget, target?: string): CapturedError {
-    let text = '{"class":' + quote(input.class);
-    let messageTruncated = false;
-    if (input.message !== undefined && this.rules[slot] === undefined) {
-      const m = this.encoder.bounded(input.message, budget === undefined ? this.caps[slot] : budget.cap(this.caps[slot]));
-      if (m.text !== undefined) {
-        text += ',"message":' + m.text;
-        budget?.spend(m.text);
-      }
-      messageTruncated = m.cut;
-    }
-    if (input.value === undefined) return { text: text + "}", base64: false, messageTruncated };
-    const c = this.value(slot, input.value, budget, target);
-    return { text: text + ',"value":' + c.text + "}", base64: c.base64, messageTruncated };
-  }
-
-  /** The target as the line carries it, cut at the `crossing.target` cap. */
-  target(target: string): { text: string; value: string; truncated: boolean } {
-    const t = this.encoder.bounded(target, this.caps["crossing.target"]);
-    if (!t.cut) return { text: t.text as string, value: target, truncated: false };
-    const text = t.text ?? '""';
-    return { text, value: JSON.parse(text) as string, truncated: true };
-  }
-
-  /**
-   * A Payload a rule built instead of taking it from `ctx.capture`. Each
-   * field is read once, checked as core.md 5.4 and payload.json define it,
-   * and written from what was read; `value` goes through the encoder under
-   * `cap`. `undefined` for anything else.
-   */
-  private payload(p: unknown, cap: number): Captured | undefined {
-    if (p === null || typeof p !== "object" || isArray(p)) return undefined;
-    let value: unknown, truncated: unknown, redacted: unknown, bytes: unknown, hash: unknown;
-    try {
-      ({ value, truncated, redacted, bytes, hash } = p as Record<string, unknown>);
-      if (truncated !== undefined && typeof truncated !== "boolean") return undefined;
-      if (redacted !== undefined && typeof redacted !== "boolean") return undefined;
-      if (bytes !== undefined && !(typeof bytes === "number" && Number.isSafeInteger(bytes) && bytes >= 0)) return undefined;
-      if (hash !== undefined && !(typeof hash === "string" && HASH.test(hash))) return undefined;
-      let valueText: string | undefined;
-      let cut = truncated === true;
-      let base64 = false;
-      if (value !== undefined) {
-        if (cut) {
-          if (typeof value !== "string") return undefined;
-          valueText = this.encoder.bounded(value, cap).text;
-        } else {
-          const e = this.encoder.encode(value, cap, false);
-          if (e.omitted) return undefined;
-          valueText = e.valueText;
-          cut = e.truncated;
-          base64 = e.binary;
-        }
-      } else if (!cut && redacted !== true) {
-        return undefined;
-      }
-      const fields: string[] = [];
-      if (valueText !== undefined) fields.push('"value":' + valueText);
-      if (cut || truncated === false) fields.push('"truncated":' + cut);
-      if (redacted !== undefined) fields.push('"redacted":' + redacted);
-      if (bytes !== undefined) fields.push('"bytes":' + bytes);
-      if (hash !== undefined) fields.push('"hash":"' + hash + '"');
-      return { text: "{" + fields.join(",") + "}", base64 };
-    } catch (e) {
-      if (e instanceof InvariantError) throw e;
-      return undefined;
-    }
-  }
-
-  private apply(slot: CaptureSlot, value: unknown, cap: number, target: string | undefined, channel: string | undefined): Captured {
-    const rule = this.rules[slot];
-    const preview = PREVIEWED.has(slot) ? this.preview : slot === "program" ? this.programPreview : cap;
-    if (rule === undefined) return this.encode(slot, value, cap, false, preview);
-    if (rule === "drop") return REDACTED;
-    if (rule === "hash-only") return this.hashOnly(slot, value);
-    const issued: Array<[Payload, Captured]> = [];
-    const context: CaptureContext = {
-      slot,
-      cap,
-      capture: (v, options) => {
-        const c = this.encode(slot, v, cap, options?.redacted === true, options?.full === true ? cap : preview);
-        const payload = parseFrozen<Payload>(c.text);
-        issued.push([payload, c]);
-        return payload;
-      },
-    };
-    if (channel !== undefined) context.channel = channel;
-    if (target !== undefined) context.target = target;
-    try {
-      const out = rule(value, context);
-      if (out === "drop") return REDACTED;
-      if (out === "hash-only") return this.hashOnly(slot, value);
-      for (const [payload, c] of issued) if (payload === out) return c;
-      return this.payload(out, cap) ?? REDACTED;
-    } catch (e) {
-      if (e instanceof InvariantError) throw e;
-      return REDACTED;
-    }
-  }
-
-  /** `{redacted: true, bytes, hash}` over the whole original, up to `WHOLE_LIMIT`. */
-  private hashOnly(slot: CaptureSlot, value: unknown): Captured {
-    try {
-      let bytes: number;
-      let hash: string;
-      if (slot === "program" && typeof value === "string") {
-        ({ bytes, hash } = this.encoder.digest(value));
-      } else {
-        const v = settle(value, "");
-        const whole = v instanceof Binary ? v.view(v.length) : this.encoder.whole(v);
-        if (whole === undefined) return REDACTED;
-        bytes = whole.byteLength;
-        hash = sha256(whole);
-      }
-      return { text: '{"redacted":true,"bytes":' + bytes + ',"hash":"sha256:' + hash + '"}', base64: false };
-    } catch (e) {
-      if (e instanceof InvariantError) throw e;
-      return REDACTED;
-    }
-  }
-
-  /**
-   * A value the serialization rejects, a BigInt or a cycle, is written as
-   * `{redacted: true}`, and one that serializes to nothing as `null`. A
-   * failed invariant is a bug here and is not hidden that way.
-   */
-  private encode(slot: CaptureSlot, value: unknown, cap: number, redacted: boolean, preview: number = cap): Captured {
-    try {
-      if (slot === "program" && typeof value === "string") {
-        const t = this.encoder.literal(value, Math.min(cap, preview));
-        if (redacted) return { text: payloadWire(t.text, t.cut, true, undefined, undefined), base64: false };
-        // core.md 5.2 wants program.hash and program.bytes whatever the value shows, so the text is digested whole.
-        const { bytes, hash } = this.encoder.digest(value);
-        return { text: payloadWire(t.text, t.cut, false, bytes, hash), base64: false };
-      }
-      let e = this.encoder.encode(value, cap, !redacted, Math.min(cap, preview));
-      if (e.omitted) e = this.encoder.known("null", cap, !redacted);
-      return { text: payloadWire(e.valueText, e.truncated, redacted, e.bytes, e.hash), base64: e.binary };
-    } catch (e) {
-      if (e instanceof InvariantError) throw e;
-      return REDACTED;
-    }
-  }
-}

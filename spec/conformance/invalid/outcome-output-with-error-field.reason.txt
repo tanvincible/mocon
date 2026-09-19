@@ -1,1 +1,0 @@
-core.md 5.3: end.error is only licensed under outcome error, never alongside outcome output.

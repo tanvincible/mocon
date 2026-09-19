@@ -1,1 +1,0 @@
-core.md 7: a timestamp is RFC 3339 UTC with a trailing Z and nothing after it. Same \Z anchoring case as hash-with-trailing-newline.

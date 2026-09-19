@@ -1,1 +1,0 @@
-core.md 3: id is an opaque string. A JSON number is not one, and a consumer keying on it would collide with the string "42".

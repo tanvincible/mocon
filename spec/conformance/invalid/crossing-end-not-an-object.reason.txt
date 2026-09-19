@@ -1,1 +1,0 @@
-core.md 5.3: end is an object carrying outcome. An array carries none, and a validator must say so rather than raise.

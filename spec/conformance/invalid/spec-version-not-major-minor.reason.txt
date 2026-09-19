@@ -1,1 +1,0 @@
-core.md 5.1 and 11: spec_version is "MAJOR.MINOR". "1" has no minor component.

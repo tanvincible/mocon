@@ -1,1 +1,0 @@
-core.md 5.1.1: a dimensions entry is an object of declaration fields. A bare number declares nothing a consumer can read.

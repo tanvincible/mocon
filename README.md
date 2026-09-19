@@ -1,30 +1,88 @@
 # mocon
 
-mocon is a record format for observing code-mode MCP servers: it makes visible what a code-mode execution did while it ran. See `spec/README.md` for the full explanation, `core.md` section 1 for the definition of a code-mode MCP, and section 4 for the stateless, supersede-based record model.
+mocon makes code-mode MCP servers debuggable, in the observability stack you already run.
 
-Status: draft 1.1, dated 2026-09-19, and not yet stable. 1.1 is additive over 1.0: a host declares what its own `ext` keys mean (`core.md` 5.1.1), `links` relates a retry or a fork to what it came from (`spec/extensions/links.md`), and every 1.0 stream stays valid and reads the same. The specification is written and is the source of truth for the format. A host can conform without any library by emitting the JSON Lines described in the spec directly; `core.md` section 13 shows the shape in about sixty lines of plain JavaScript with no dependency, and `spec/conformance/README.md` section 5 is what you check a real adaptor against.
+In code mode the agent submits a **program** instead of one structured tool call. The server runs it
+in a sandbox, and from inside the program the server's tools are reached through a bridge. From
+outside, that whole run is one opaque tool call: the calls the program made, what it passed, what
+came back, and whether the server could see any of it are all invisible.
 
-The full specification, its conformance levels, and a file-by-file index live at `spec/README.md`.
+mocon is a set of OpenTelemetry semantic conventions that make it visible, and a small emitter that
+implements them. OpenTelemetry is the wire format rather than an export target, so there is no
+format here for anyone to learn and no destination of ours to wire.
 
-## Direction
+## Install
 
-Two parity trials against hand-rolled observability reached the same verdict: the model was right and the delivery lost, because records went somewhere new instead of where a team's telemetry already lands. `spec/otel-code-mode.md` is the answer being tried, and it makes OpenTelemetry the wire format rather than an export target. What mocon then contributes is the part OpenTelemetry has no equivalent for: the capability declaration, the closed vocabularies, and provenance, which is the rule for telling a value the host observed from one the agent's program merely claimed.
+```sh
+npm install @mocon/trace @opentelemetry/api
+```
 
-Nothing here is retired yet. The record format above is still what the rest of this repository describes, and it stays until the new emitter has been measured against the same bar.
+`@opentelemetry/api` is a peer dependency. You also need an OpenTelemetry SDK and an exporter
+configured in your application, as you would for any OpenTelemetry instrumentation. **Without a
+registered tracer provider the API is a no-op and nothing is emitted, silently.** That is
+OpenTelemetry's behaviour rather than ours, and it is the single most common way an integration
+produces nothing.
+
+## Use
+
+Two wrappers. That is the whole integration.
+
+```ts
+import { codeMode } from "@mocon/trace";
+
+const observed = codeMode({
+  capabilities: {
+    observes_crossings: "all",   // every call through our bridge is recorded
+    unmediated_egress: false,    // the program has no path out we cannot see
+    crossing_edge: "invocation", // spans describe what the program asked for
+    attested: ["crossing.target", "crossing.input", "crossing.output"],
+  },
+});
+
+// One: around the handler that runs the program.
+return observed.execution.run({ program: source, tool: "execute" }, (execution) => {
+  // Two: around the function the sandbox calls to reach you.
+  const callTool = execution.instrument(bridge.callTool);
+  return runInSandbox(source, { callTool });
+});
+```
+
+You get one `execute_code` span per dispatch and one `execute_tool` span per call the program made,
+correctly parented, in whatever backend you already run.
+
+## What it contributes
+
+OpenTelemetry already models spans, parentage and duration. Three things it has no answer for, and
+they are why this exists.
+
+- **Provenance.** A code-mode program is agent-written and can lie, and many hosts build their
+  telemetry out of what that program printed. Every value carries its class, so a reader can tell
+  what the host observed from what the program claimed. Nothing in OpenTelemetry's data model does
+  this.
+- **The capability declaration.** Without it, no crossing spans means either the program made no
+  calls or the host is blind to them, and those are opposite conclusions.
+- **Closed vocabularies.** Four execution dispositions and three crossing outcomes, so a consumer
+  can be written once and work everywhere. Span status collapses them to two, which is why the
+  attributes are normative and the status is a display hint.
 
 ## Repository
 
-- `spec/` is the specification, its JSON Schema and the conformance suite.
-- `packages/core` is `@mocon/core`, the emitter. Zero runtime dependencies.
-- `packages/otel` is `@mocon/otel`, the OTLP sink.
-- `packages/trace` is `@mocon/trace`, an emitter that writes OpenTelemetry spans directly through the OpenTelemetry API rather than records through a sink. It implements `spec/otel-code-mode.md`. See the direction note above.
-- `packages/adapter-mcp` is `@mocon/adapter-mcp`, wrappers for the MCP TypeScript SDK.
-- `packages/cli` is `@mocon/cli`, the `mocon validate|view|ui|otlp` command.
-- `packages/testkit` is test support every package shares: the spec schema through ajv, and an in-memory MCP transport pair. Not published.
-- `examples/node-vm-codemode` is a runnable code-mode host that writes a stream.
+- `spec/otel-code-mode.md` is the specification. It ends with the fifteen things it cannot do and
+  the open questions it has not settled.
+- `packages/trace` is `@mocon/trace`, the reference emitter, on the OpenTelemetry API only.
+- `bench/trace.mjs` measures what it costs against the SDK's own floor.
 
-Commands at the repository root: `npm test` builds every package and runs its tests, `npm run bench` runs the hot-path benchmark, `npm run conformance` runs the spec's reference checker.
+Status: Development. The conventions are a draft, `code_mode.*` is a namespace this project owns and
+nobody else has agreed to, and the `gen_ai.*` and `mcp.*` attributes it reuses are themselves
+Development upstream with no compatibility guarantee.
+
+This project previously specified a JSON Lines record format with its own schema, conformance suite
+and viewer. It was retired in favour of these conventions; section 14 of the specification records
+what that move gave up, and the history is in git.
 
 ## License
 
-Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE) or the MIT license (LICENSE-MIT), at your option. Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this work by you shall be dual licensed as above, without any additional terms or conditions.
+Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE) or the MIT license
+(LICENSE-MIT), at your option. Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in this work by you shall be dual licensed as above, without any additional
+terms or conditions.

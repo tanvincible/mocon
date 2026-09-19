@@ -1,1 +1,0 @@
-core.md 5.3: seq is an initiation order, so it is never negative (schema/crossing.json minimum 0).

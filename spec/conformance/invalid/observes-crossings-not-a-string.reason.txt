@@ -1,1 +1,0 @@
-core.md 5.1 and 8: observes_crossings is one of three strings. An object is outside the closed set, and testing membership must not raise.

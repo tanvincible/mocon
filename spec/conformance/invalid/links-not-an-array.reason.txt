@@ -1,1 +1,0 @@
-extensions/links.md 2: links is an array of entries. A bare object is one entry written where the array belongs, and a consumer iterating it would read its keys as entries.
