@@ -1,4 +1,4 @@
-# The collector
+# Collector
 
 `collector/codemode.yaml` does one job your server can't do for itself. **It stops a program's claim
 from turning into a metric that looks like a measured fact.**
@@ -11,13 +11,13 @@ nowhere to carry the doubt.
 Your server can't prevent that, because the connector runs downstream. A collector can, because it
 sits after every server and before every backend.
 
-## It's config, not a component
+## Config
 
 On purpose. A custom collector component has to be compiled into a distribution, so everyone adopting
 it has to rebuild and redeploy their collector first. Everything here is stock
 `opentelemetry-collector-contrib`, so it works with the collector you already run.
 
-## How it works
+## Pipelines
 
 Two passes over the same spans.
 
@@ -34,7 +34,7 @@ There's also an off-by-default `transform` processor that strips program-written
 when you want the shape of a run in your backend but not the content. The capture note survives it,
 so you still see the size and hash of whatever got removed.
 
-## Checking it works
+## Checking
 
 `collector/check.mjs` sends two calls through a real collector. One from a server that watched its own
 boundary, one from a server that didn't.
@@ -46,7 +46,7 @@ boundary, one from a server that didn't.
 
 Takes about a minute.
 
-## One gotcha
+## Gotcha
 
 Since v0.104 the collector binds OTLP to localhost by default, so a collector in a container with the
 stock config receives nothing at all and says nothing about it. The config here sets explicit

@@ -1,6 +1,6 @@
-# The two wrappers
+# Wrappers
 
-## Wrapper one: around the run
+## The run
 
 ```ts
 observed.execution.run({ program: source, tool: "execute" }, async (execution) => {
@@ -34,7 +34,7 @@ observed.execution.run(
 
 Return `undefined` from `end` to mean "just use the default".
 
-## Wrapper two: around the bridge
+## The bridge
 
 ```ts
 const callTool = execution.instrument(bridge.callTool);
@@ -48,7 +48,7 @@ can answer the program produces no span at all.
 is just another thing the program controls. If yours is reachable from inside, your telemetry says
 whatever the program wants.
 
-### If your bridge doesn't throw
+### Envelopes
 
 Lots of bridges return `{ ok: false, error }` instead of throwing. mocon reads a normal return as
 success, so on a bridge like that every failure gets quietly recorded as working. One option fixes
@@ -63,7 +63,7 @@ const callTool = execution.instrument(bridge.callTool, {
 });
 ```
 
-### If your bridge takes more than two arguments
+### Extra arguments
 
 By default the first argument is the target and everything after it is the input. So a bridge shaped
 `callTool(name, params, { signal, deadline })` ends up recording your own abort signal and deadline as
@@ -73,7 +73,7 @@ the program's arguments. Tell it what the input really is:
 execution.instrument(bridge.callTool, { input: (_name, params) => params });
 ```
 
-### If your server handles the call itself
+### Local calls
 
 Span kind defaults to `client`, which says you forwarded the call somewhere remote. For a tool your
 own process serves, say so:
@@ -82,7 +82,7 @@ own process serves, say so:
 execution.crossing.start({ target: "cache_get", kind: "local" });
 ```
 
-## Doing it by hand
+## By hand
 
 `instrument` covers the normal case. When you need more control, open and close a call yourself:
 

@@ -8,7 +8,7 @@ npm install @opentelemetry/api
 `@mocon/trace` isn't on npm yet, so it comes from the repo. `@opentelemetry/api` is a peer dependency,
 so you install it yourself and pick the version.
 
-## You need somewhere for spans to go
+## Destination
 
 mocon emits through the OpenTelemetry API and never the SDK. That's on purpose. It means your app
 decides where telemetry goes, and mocon has no opinion and no config of its own.
@@ -26,7 +26,7 @@ Honeycomb, Datadog, whatever. That's real infrastructure work, so decide on it f
 not because a library asked you to.
 
 **Or skip it.** If your telemetry today is structured logs, send mocon's output to the logger you
-already have. One line, no new infrastructure. See [Using your logger instead](./logs.md). You can
+already have. One line, no new infrastructure. See [Logging](./logs.md). You can
 switch to real tracing later without touching your server code.
 
 ## Requirements

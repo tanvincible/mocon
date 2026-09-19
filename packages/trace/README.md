@@ -48,15 +48,15 @@ already have.
 
 **Those capability values claim almost nothing.** Sharpening them is what makes the data worth
 trusting, and it's the one thing that quietly ruins everything else if you get it wrong. See
-[Declaring what your server sees](https://tanvincible.github.io/mocon/declaring.html).
+[Declaring](https://tanvincible.github.io/mocon/declaring.html).
 
 ## Docs
 
 | | |
 |---|---|
-| [Your first trace](https://tanvincible.github.io/mocon/quickstart.html) | ten minute setup |
-| [What you get](https://tanvincible.github.io/mocon/output.html) | the actual output |
-| [Common mistakes](https://tanvincible.github.io/mocon/mistakes.html) | five things that go wrong |
+| [Quick start](https://tanvincible.github.io/mocon/quickstart.html) | ten minute setup |
+| [Output](https://tanvincible.github.io/mocon/output.html) | the actual output |
+| [Mistakes](https://tanvincible.github.io/mocon/mistakes.html) | five things that go wrong |
 | [API](https://tanvincible.github.io/mocon/api.html) | every option |
 | [Limits](https://tanvincible.github.io/mocon/limits.html) | what it can't do |
 

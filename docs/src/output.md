@@ -1,8 +1,8 @@
-# What you get
+# Output
 
 One run, two calls, second one refused. Here's everything mocon produces for it.
 
-## The shape
+## Shape
 
 ```
 execute_code execute                    303 ms   completed
@@ -12,7 +12,7 @@ execute_code execute                    303 ms   completed
 
 One span for the program. One span per call it made, nested underneath, in the order they started.
 
-## The run
+## Run span
 
 ```
 name                              execute_code execute
@@ -41,7 +41,7 @@ so one query takes you from a log line to the whole trace.
 **The last four** are [the declaration](./declaring.md), which is what makes "no calls recorded" mean
 anything.
 
-## A call that worked
+## A success
 
 ```
 name                              execute_tool company_search
@@ -61,7 +61,7 @@ status, because `abandoned` and `output` both look like "unset" to a trace viewe
 **`dispatched`** says the call really went out. If your own server refused it, set this `false`, or
 whoever's debugging will go looking in the wrong system.
 
-## A call that failed
+## A failure
 
 ```
 name                              execute_tool refund_customer
@@ -74,7 +74,7 @@ code_mode.crossing.dispatched     false
 code_mode.error.message           "over the call cap for this run"
 ```
 
-## The bit nothing else gives you
+## Provenance
 
 If your server didn't see a value itself, mocon says so, right next to it:
 
@@ -88,9 +88,9 @@ target reported it.
 
 This matters because the program is written by an AI. If you build call records out of what the
 program printed, a program can put a call in your trace that never happened. You can't tell from the
-span, so mocon tags it. [Observed or claimed](./provenance.md) has the full story.
+span, so mocon tags it. [Provenance](./provenance.md) has the full story.
 
-## Payload values
+## Payloads
 
 Program text, call arguments and results are **off by default**, because they're AI-written code and
 customer data. Turn them on when you want them:
@@ -100,4 +100,4 @@ codeMode({ capabilities, capture: { values: true } });
 ```
 
 Then you also get the arguments and results, cut at a size cap, with a note recording the original
-size and hash of anything that got shortened. See [Capturing payloads](./capture.md).
+size and hash of anything that got shortened. See [Payloads](./capture.md).

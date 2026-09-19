@@ -1,4 +1,4 @@
-# Using your logger instead
+# Logging
 
 Standing up a collector and a trace backend is a real decision. If your telemetry today is structured
 logs, that's a lot more work than the two wrappers. You don't have to do it.
@@ -14,7 +14,7 @@ const observed = codeMode({
 
 That's the only line that changes. No SDK, no exporter, no collector, no backend.
 
-## What you get
+## Records
 
 Every finished span becomes one flat record handed to your logger:
 
@@ -40,17 +40,17 @@ as real values rather than JSON strings, because a log record can hold an object
 attribute can't. Group by `code_mode.execution.id` and you've got the whole run, in the pipeline you
 already query.
 
-## What you give up
+## Trade-offs
 
 The things a trace store is actually for. A rendered waterfall, and metrics off spans without
 aggregating log lines yourself.
 
-## What you keep
+## Reversible
 
 The ability to change your mind. Switching to a real trace pipeline later means passing a different
 tracer and touching nothing else.
 
-## One thing to know
+## Flat
 
 Records are flat, one per span, rather than nesting calls inside their run.
 

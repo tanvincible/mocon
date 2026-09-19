@@ -1,28 +1,28 @@
 # Summary
 
-[What mocon is](./introduction.md)
+[Overview](./introduction.md)
 
 # Getting started
 
 - [Install](./install.md)
-- [Your first trace](./quickstart.md)
-- [What you get](./output.md)
+- [Quick start](./quickstart.md)
+- [Output](./output.md)
 
 # Guide
 
-- [The two wrappers](./wrappers.md)
-- [Declaring what your server sees](./declaring.md)
-- [Observed or claimed](./provenance.md)
-- [Your own attributes](./attributes.md)
-- [Capturing payloads](./capture.md)
-- [Using your logger instead](./logs.md)
-- [Common mistakes](./mistakes.md)
+- [Wrappers](./wrappers.md)
+- [Declaring](./declaring.md)
+- [Provenance](./provenance.md)
+- [Custom attributes](./attributes.md)
+- [Payloads](./capture.md)
+- [Logging](./logs.md)
+- [Mistakes](./mistakes.md)
 
 # Operating
 
-- [Rolling it out](./rollout.md)
-- [The collector](./collector.md)
-- [The dashboard](./dashboard.md)
+- [Rollout](./rollout.md)
+- [Collector](./collector.md)
+- [Dashboard](./dashboard.md)
 
 # Reference
 

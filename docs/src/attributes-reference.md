@@ -2,7 +2,7 @@
 
 Everything mocon writes. The [specification](./spec.md) has the normative detail.
 
-## On both spans
+## Both spans
 
 | Attribute | |
 |---|---|
@@ -16,7 +16,7 @@ Everything mocon writes. The [specification](./spec.md) has the normative detail
 | `code_mode.capture` | what got truncated or redacted |
 | `code_mode.provenance.<key>` | `P` or `T` for any value your server didn't observe |
 
-## On the run span
+## Run span
 
 | Attribute | |
 |---|---|
@@ -33,7 +33,7 @@ Everything mocon writes. The [specification](./spec.md) has the normative detail
 | `mcp.session.id` | the MCP session |
 | `error.type` | when the run failed |
 
-## On a call span
+## Call span
 
 | Attribute | |
 |---|---|
@@ -67,7 +67,7 @@ Everything mocon writes. The [specification](./spec.md) has the normative detail
 Both lists of error types are open, so use a more specific low-cardinality name if you have one. The
 disposition and outcome lists are closed and nothing else is allowed.
 
-## Span names and kinds
+## Names
 
 | | Name | Kind |
 |---|---|---|

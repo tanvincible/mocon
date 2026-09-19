@@ -1,4 +1,4 @@
-# What mocon is
+# Overview
 
 **mocon shows you what a code-mode server actually did, using the observability tools you already
 have.**
@@ -39,7 +39,7 @@ agent ──"run this program"──▶ your server ──▶ sandbox ─┐
 So when a customer says "it gave me the wrong answer", you've got the program and the answer and
 nothing in between.
 
-## What mocon does
+## The fix
 
 You add two wrappers to your server. For every run you get:
 
@@ -51,7 +51,7 @@ They're ordinary OpenTelemetry spans. They go wherever your telemetry already go
 viewer draws them as a waterfall you can read. No trace backend? You can
 [send them to your logger instead](./logs.md) and get the same thing as flat records.
 
-## Why not just log it yourself
+## Versus logging
 
 Plenty of teams do, and it works. Three things are hard to get right that way.
 
@@ -68,10 +68,10 @@ once, and every span carries the answer.
 on every server that follows this. So a dashboard or an alert or a script you write against those
 names works on any of them.
 
-## Where to go next
+## Next
 
 - [Install](./install.md), then [your first trace](./quickstart.md). About ten minutes.
-- [What you get](./output.md) if you want to see the output before you commit to anything.
+- [Output](./output.md) if you want to see the output before you commit to anything.
 - [Specification](./spec.md) if you'd rather just read the spec.
 
 ## Status

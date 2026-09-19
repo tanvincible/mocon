@@ -1,4 +1,4 @@
-# Capturing payloads
+# Payloads
 
 Program text, call arguments, results and error bodies are **off by default**. They're AI-written
 code and customer data, so you opt in rather than out.
@@ -10,7 +10,7 @@ codeMode({
 });
 ```
 
-## What gets captured
+## Captured
 
 | Attribute | What it is |
 |---|---|
@@ -24,7 +24,7 @@ codeMode({
 The program's **hash** is always written, capture on or off. That's how you tell two runs of the same
 program apart, and it's what's left when you withhold the text itself.
 
-## Size limits
+## Size caps
 
 Big values get cut:
 
@@ -49,7 +49,7 @@ no way to say "this value was shortened", which is why the note exists.
 Set your cap below whatever limits your SDK, collector and backend have. Better to cut it yourself
 and say so than to have something downstream cut it silently.
 
-## Things that can't be serialized
+## Unserializable
 
 A value with a cycle in it, a getter that throws, a `toJSON` that blows up: these all get recorded as
 redacted rather than crashing anything.
@@ -61,7 +61,7 @@ code_mode.capture  {"gen_ai.tool.call.result":{"redacted":true}}
 That matters more here than in most libraries, because the values come from AI-written code. Whatever
 the program returns, capturing it can cost you the value and never the call.
 
-## Redacted is not the same as absent
+## Redacted
 
 **Absent** means you never captured that thing. It says nothing.
 

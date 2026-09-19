@@ -60,7 +60,7 @@ observed.execution.run({ program, tool: "execute" }, (execution) => { … });
 
 Same options, but you close it yourself. Use it when your handler shape doesn't suit a callback.
 
-## The execution handle
+## Execution handle
 
 | | |
 |---|---|
@@ -90,7 +90,7 @@ exact error, and follows a returned promise.
 If one of these options throws, you lose that field and not the call. The call still runs and the
 span is still recorded.
 
-## The crossing handle
+## Crossing handle
 
 | | |
 |---|---|

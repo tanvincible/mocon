@@ -1,4 +1,4 @@
-# Declaring what your server sees
+# Declaring
 
 Four values, set once, that ride on every span. They tell whoever's reading how much of the picture
 they're actually looking at.
@@ -14,7 +14,7 @@ codeMode({
 });
 ```
 
-## Why it exists
+## Why
 
 A run whose trace shows no calls means one of two opposite things. Either the program made no calls,
 or your server can't see the ones it made. Nothing else in the trace tells them apart. This does, and
@@ -72,7 +72,7 @@ Only attest something if it's true for **every** span you emit. There's no per-c
 from matching a thrown value's name or message, the program can pick it. If you've got both an
 observed path and a parsed path for the same field, don't attest that field.
 
-## The rule that keeps this safe
+## The rule
 
 Declare the weakest thing that's true for every run. Saying nothing reads as `none`, nothing
 attested, egress unknown, and that's safe. Forgetting to claim something costs you a bit of detail.

@@ -1,4 +1,4 @@
-# Your own attributes
+# Custom attributes
 
 Your server knows things mocon doesn't. Credits spent, a sandbox id, an attempt count, a cache hit, a
 tenant. Put them on the spans.
@@ -13,7 +13,7 @@ execution.crossing.start({
 Use your own namespace, from your domain or product name. Keys under `code_mode.`, `gen_ai.`, `mcp.`
 and `otel.` are reserved and get dropped rather than written.
 
-## They're program claims until you say otherwise
+## Trust
 
 By default everything you add gets labelled unverified, because mocon has no idea where your value
 came from. Two lists sort that out:
@@ -36,7 +36,7 @@ the one that gets you a billing number you can actually defend.
 
 A key can't be in both lists, and listing keys at all needs `host_attributes` in `attested`.
 
-## Say what they mean
+## Meaning
 
 Nothing outside your server knows what `com.acme.credits_used` is. Tell it:
 
@@ -61,7 +61,7 @@ declaration says the number adds up. The provenance label says whose number it i
 summable that carries a `P` label still shouldn't become a metric, because a metric has nowhere to
 carry the doubt.
 
-## Who actually reads this
+## Readers
 
 Worth being straight, because self-describing data is easy to oversell.
 

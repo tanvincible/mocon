@@ -1,4 +1,4 @@
-# Observed or claimed
+# Provenance
 
 The program running in your sandbox was written by an AI. It can print anything, throw anything and
 return anything.
@@ -17,7 +17,7 @@ deleted contact 42"* needs to know whether you watched that happen or the progra
 **No general observability tool records this.** A span attribute is a key and a value. There's
 nowhere to put where the value came from. That's the gap this fills.
 
-## Three answers
+## Three classes
 
 **Your server saw it.** Determined somewhere the program can't write: your clock, your id generator,
 an exit status, a call boundary you control.
@@ -28,7 +28,7 @@ program text, its output, its thrown errors, its return values.
 **A target reported it.** Passed through unchanged from whatever the call reached, or produced by
 your own handling of that call, like a refusal. The program didn't shape it.
 
-## How it shows up
+## Labels
 
 Any value that isn't something your server saw gets a label right next to it:
 
@@ -43,7 +43,7 @@ The default runs the safe way round. Anything you haven't declared you observed 
 forgetting to declare something costs you a bit of detail, and it can't accidentally turn a guess
 into a fact.
 
-## One thing that trips people up
+## A trap
 
 **`T` doesn't mean the target saw the call.** A refusal your own server produced is `T`, because the
 program didn't shape it. Someone reading a `T` error will naturally go digging in the target's logs
@@ -52,7 +52,7 @@ for a request that never left your process.
 `code_mode.crossing.dispatched` is what separates them. Set it, and "their API broke" versus "we
 never called them" is one field instead of an afternoon.
 
-## What attesting isn't
+## Not proof
 
 Saying you observed something makes the claim visible and makes it yours. It doesn't make it true.
 Nothing in a trace can tell a server reading its own call boundary apart from a server copying a
@@ -61,7 +61,7 @@ value out of the program's return and attesting it anyway.
 No format can catch that. What a format can do is put a name on the claim, so if it's wrong, it's
 wrong in public.
 
-## Two things that can't be labelled
+## Unlabelled
 
 A span's **name** and its **status description** have no attribute key, so nothing can sit beside
 them.
