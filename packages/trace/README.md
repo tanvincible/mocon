@@ -11,9 +11,10 @@ This package emits two spans that make it visible, following
 [the code-mode semantic conventions](../../spec/otel-code-mode.md). It depends on the OpenTelemetry
 **API** and never the SDK, which is OpenTelemetry's own rule for instrumentation and the reason it
 is worth using: you emit through the API, and whatever exporters the application owner already
-configured receive it. There is no destination of ours to wire — but there has to be one of yours.
-If your telemetry goes to structured logs today, standing up a trace pipeline is the real cost of
-adopting this, and it is much larger than the two wrappers.
+configured receive it. There is no destination of ours to wire.
+
+If you have no trace pipeline and do not want one, see "No trace store? Use your logger" below. The
+vocabulary is the contribution here, and it does not need a trace backend.
 
 ## Two wrappers
 
@@ -40,6 +41,36 @@ return observed.execution.run({ program: source, tool: "execute" }, (execution) 
 
 That is the whole integration. You get one `execute_code` span per dispatch and one `execute_tool`
 span per call the program made, correctly parented, in whatever backend you already run.
+
+## No trace store? Use your logger
+
+Standing up a collector and a trace backend is a real decision, and for a team whose telemetry is
+structured logs it costs far more than the two wrappers. You do not have to make it to use this.
+
+```ts
+import { codeMode, logTracer } from "@mocon/trace";
+
+const observed = codeMode({
+  capabilities: { /* as above */ },
+  tracer: logTracer((record) => logger.info(record)),   // your existing logger
+});
+```
+
+That is the only line that differs. No SDK, no exporter, no collector, no backend. Each finished
+span becomes one flat record: the full attribute set, the provenance labels, `trace_id`, `span_id`,
+`parent_span_id`, a duration and a status, with payloads decoded back into values because a log
+record can hold a map where a span attribute cannot. Group by `code_mode.execution.id` and you have
+the whole run in the pipeline you already query.
+
+What you give up is what a trace store is actually for: a rendered waterfall, and span-derived
+metrics without aggregating log lines yourself. What you keep is everything the conventions
+contribute, and the ability to change your mind. The same host code moves to a real trace pipeline
+by passing a different tracer, with nothing else touched.
+
+One deliberate choice worth knowing: records are flat, one per span, rather than crossings nested
+inside their execution. Nesting means buffering children until the parent closes, and a call the
+program makes on a later tick is then never written at all. That was measured, and it lost calls
+silently.
 
 ## Declaring honestly
 

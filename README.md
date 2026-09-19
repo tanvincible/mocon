@@ -26,8 +26,13 @@ a registered tracer provider the API is a no-op and nothing is emitted, silently
 zero.** That is OpenTelemetry's behaviour rather than ours, and it is the single most common way an
 integration produces nothing at all.
 
-The code change is the small half. `packages/trace/README.md` ends with the order to do things in,
-which four trials paid for: destination first, code last.
+**No trace pipeline, and no appetite for one?** Pass `logTracer(record => logger.info(record))` and
+every span becomes a flat record in the logger you already run: the same vocabulary, the same
+provenance labels, the same join key, no SDK and no backend. The same host code moves to real
+tracing later by passing a different tracer.
+
+If you do want a trace pipeline, the code change is the small half, and `packages/trace/README.md`
+ends with the order four trials paid for: destination first, code last.
 
 ## Use
 

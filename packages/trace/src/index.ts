@@ -19,6 +19,7 @@ import { type Attributes, type Context, context as activeContext, type HrTime, t
 
 export type { Attestation, Capabilities, CrossingEdge, Observes } from "./declare.js";
 export type { CapturePolicy } from "./capture.js";
+export { type LogRecord, type LogTracerOptions, logTracer } from "./log.js";
 
 const NAME = "@mocon/trace";
 const VERSION = "0.1.0";

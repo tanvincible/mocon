@@ -35,6 +35,24 @@ export interface CapturePolicy {
   measure?: number;
 }
 
+/**
+ * Attributes this emitter writes as JSON text rather than as a value. A span attribute cannot hold a
+ * map, so a payload is stringified; a log record can hold one, so a destination that is not a span
+ * wants them back. Exported so no destination has to keep its own copy of this list and watch it go
+ * stale. `code_mode.program.text` is deliberately absent: it is raw program source, and parsing it
+ * would turn a program that happens to start with a brace into something else.
+ */
+export function isEncoded(key: string): boolean {
+  return (
+    key === "code_mode.capture" ||
+    key === "code_mode.error.body" ||
+    key === "code_mode.error.message" ||
+    key === "gen_ai.tool.call.arguments" ||
+    key === "gen_ai.tool.call.result" ||
+    key.startsWith("code_mode.output.")
+  );
+}
+
 /** What the host did to each value, keyed by the attribute it did it to. */
 export type Notes = Record<string, Record<string, unknown>>;
 
