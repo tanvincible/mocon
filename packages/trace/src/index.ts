@@ -412,8 +412,13 @@ class ExecutionSpan implements ExecutionHandle {
     const target = o.target;
     if (typeof target !== "string") throw new TypeError("@mocon/trace: crossing target must be a string");
     // `seq` is auto-assigned only under `all`, which is the declaration that says the host mediates
-    // every call and therefore has an initiation order to report.
-    const seq = o.seq ?? (this.ordered ? ++this.seq : undefined);
+    // every call and therefore has an initiation order to report. A supplied value that is not a
+    // positive integer is refused rather than written: it carries C10, so a consumer orders crossings
+    // by it, and a wrong order is worse than no order. The refusal falls back to the counter, and
+    // costs the value rather than the call.
+    const given = o.seq;
+    const usable = typeof given === "number" && Number.isInteger(given) && given > 0;
+    const seq = usable ? given : this.ordered ? ++this.seq : undefined;
     const crossing = new CrossingSpan(this.tracer, this.declared, this.capture, this.context, this, target, seq, this.ownId, this.marks, this.attestedKeys, o);
     if (!this.ended) this.open.add(crossing);
     return crossing;

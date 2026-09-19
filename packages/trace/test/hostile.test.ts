@@ -89,3 +89,53 @@ test("an outputs container that is not an object is the host's own bug, refused 
   ex.complete();
   assert.equal(h.spans()[0]?.attributes["code_mode.execution.disposition"], "completed");
 });
+
+/**
+ * Ported from the retired format's negative corpus. Those fixtures were the reason it could not ship
+ * a defect this emitter did ship, so the cases that still apply are asserted here instead.
+ */
+
+test("a sequence number that is not a positive integer is refused, because a wrong order beats no order", () => {
+  const h = harness(false);
+  const ex = h.m.execution.start({ program: "p" });
+  for (const seq of [-1, 0, 1.5, "two", NaN, null]) ex.crossing.start({ target: "t", seq: seq as never }).output(1);
+  ex.complete();
+  const written = h.spans().filter((s) => s.name.startsWith("execute_tool")).map((s) => s.attributes["code_mode.crossing.seq"]);
+  assert.deepEqual(written, [1, 2, 3, 4, 5, 6], "each falls back to the host's own counter, which is trustworthy");
+});
+
+test("a supplied sequence number is kept when it is a positive integer", () => {
+  const h = harness(false);
+  const ex = h.m.execution.start({ program: "p" });
+  ex.crossing.start({ target: "t", seq: 7 }).output(1);
+  ex.complete();
+  assert.equal(h.spans()[0]?.attributes["code_mode.crossing.seq"], 7);
+});
+
+test("an end with no disposition is refused before the span is touched", () => {
+  const h = harness(false);
+  const ex = h.m.execution.start({ program: "p" });
+  assert.throws(() => ex.end({} as never), RangeError);
+  assert.equal(h.spans().length, 0, "the span is untouched, so the host can still end it correctly");
+  ex.complete();
+  assert.equal(h.spans()[0]?.attributes["code_mode.execution.disposition"], "completed");
+});
+
+test("an execution id that is not a string gets a minted one rather than a bad attribute", () => {
+  const h = harness(false);
+  h.m.execution.start({ program: "p", id: 42 as never }).complete();
+  const id = h.spans()[0]?.attributes["code_mode.execution.id"];
+  assert.equal(typeof id, "string");
+  assert.notEqual(id, "42", "a number is not silently stringified into the host's own id space");
+});
+
+test("an error field passed with a successful outcome is ignored, not written", () => {
+  const h = harness(false);
+  const ex = h.m.execution.start({ program: "p" });
+  ex.crossing.start({ target: "t" }).end({ outcome: "output", errorType: "timeout", message: "nope" } as never);
+  ex.complete();
+  const crossing = h.spans()[0];
+  assert.equal(crossing?.attributes["code_mode.crossing.outcome"], "output");
+  assert.equal("error.type" in (crossing?.attributes ?? {}), false, "the closed outcome decides, not the stray field");
+  assert.equal(crossing?.status.code, 0, "and the status stays Unset");
+});
