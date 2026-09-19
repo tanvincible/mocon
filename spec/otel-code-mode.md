@@ -109,6 +109,19 @@ is recorded. `some` claims the host mediates but records a subset, by policy or 
 `none` says the host does not mediate calls at a call boundary. The value says nothing about
 whether other paths out of the program exist.
 
+**`all` is a claim about the whole path, not about the instrumented function.** It is false if
+anything can answer the program without reaching the point the host records: a call-count cap, a
+deadline guard, a rate limiter, a cache, a permission check that refuses before dispatch. Such a
+refusal is an invocation the program made, and section 5.3 mints `refused` for exactly it, so a host
+that declares `all` either records those or is not `all`. The check is mechanical: exercise every
+refusal path and count the spans against the calls.
+
+This is worth stating because it is the most damaging error available and the easiest to make. Every
+attested field is conditional on the declaration, and a host is usually instrumented at the function
+its bridge exposes, which on many implementations sits one layer beneath the guards that answer the
+program first. In a real integration of these conventions a competent engineer declared `all` on
+such a host; four calls produced two spans, and the declaration said two was all of them.
+
 `unmediated_egress: true` says the program has a way to reach the outside that the host does not
 see: raw network access, subprocess execution, an isolation layer that can be escaped. Consumers
 use it to refuse the inference "N crossing spans, therefore N external calls".

@@ -20,16 +20,17 @@ import { codeMode } from "@mocon/trace";
 
 const observed = codeMode({
   capabilities: {
-    observes_crossings: "all",   // every call through our bridge is recorded
-    unmediated_egress: false,    // the program has no path out we cannot see
-    crossing_edge: "invocation", // spans describe what the program asked for
-    attested: ["crossing.target", "crossing.input", "crossing.output"],
+    // Start here and earn your way up. Read "Declaring honestly" below before changing it.
+    observes_crossings: "some",
+    unmediated_egress: true,
+    crossing_edge: "invocation",
+    attested: [],
   },
 });
 
 // Wrapper one: around the handler that runs the program.
 return observed.execution.run({ program: source, tool: "execute" }, (execution) => {
-  // Wrapper two: around the function the sandbox calls to reach you.
+  // Wrapper two: around the OUTERMOST function the program can reach.
   const callTool = execution.instrument(bridge.callTool);
   return runInSandbox(source, { callTool });
 });
@@ -38,12 +39,32 @@ return observed.execution.run({ program: source, tool: "execute" }, (execution) 
 That is the whole integration. You get one `execute_code` span per dispatch and one `execute_tool`
 span per call the program made, correctly parented, in whatever backend you already run.
 
-## The capability declaration
+## Declaring honestly
 
-Five attributes on every span say what your server can and cannot see. They are required because
-without them an absence of crossing spans reads two ways a consumer cannot tell apart: the program
-made no calls, or your server is blind to the calls it made. Declare the weakest values that are
-true for every dispatch. Silence is read as `none`.
+This is the part that goes wrong, and it goes wrong in the direction that does the most damage.
+Everything else on the span is conditional on this declaration, and it is the one claim this library
+cannot check for you.
+
+**`observes_crossings: "all"` means nothing answers the program before your wrapper.** Not "my
+wrapper sees every call that reaches it". Before you claim it, go and look for code that answers the
+program itself: a rate limiter, a call-count cap, a deadline guard, a cache, a permission check. If
+any of those can return to the program without passing through the function you wrapped, then some
+calls produce no span, and `"all"` is false.
+
+That mistake is easy to make and impossible to see afterwards. A real integration of this library
+declared `"all"` on a host whose sandbox refuses calls over a cap before the bridge is reached. Four
+calls, two spans, and a declaration saying two was all of them.
+
+The test, concretely: instrument, then make the program hit every refusal path you have, and count.
+If the spans do not match the calls, you are `"some"`.
+
+**Attest nothing you derive from something the program wrote.** If your error class is computed
+partly from a thrown value's name or message, a program can choose it. A host with both an observed
+path and a parsed path for the same field does not attest that field. The same integration attested
+its error class, and a program throwing a specially named error published its own choice as
+host-observed fact.
+
+Declare the weakest values true for every dispatch. Silence reads as `none`, which is safe.
 
 ## Provenance
 
@@ -77,13 +98,31 @@ Two rules that are not optional:
 - **Wrapper two must be host code, outside the sandbox.** A wrapper the program can reach or replace
   is a channel the program writes through, and a server in that position should attest nothing.
 
-## One thing to wire, which nothing will remind you about
+## Four traps, each of which has actually caught someone
 
-Register a context manager in your application, or `NodeSDK`, which does it for you. Without one the
-OpenTelemetry API's default is a no-op, so any *other* instrumentation running inside your program
-dispatch will not nest under the execution span. The spans this package emits are unaffected either
-way, because a crossing is given its parent explicitly, which is exactly why the problem is easy to
-miss: your own trace looks perfect and everything else floats.
+**1. No provider means no spans, and no error.** If your application has not registered an
+OpenTelemetry tracer provider, `trace.getTracer` returns a no-op and every call here does nothing,
+silently, with exit code zero. Registering one in a test or a demo script does not count. Grep your
+own `src/` for `NodeSDK` or `TracerProvider` and make sure you find something.
+
+**2. Omitting `kind` on a crossing is a choice, not an abstention.** It defaults to `CLIENT`, which
+says you forwarded the call to a remote target. If your host serves the call in its own code, pass
+`kind: "local"`.
+
+**3. A bridge with more than two parameters leaks host internals into the input.** The default takes
+every argument after the target, so a bridge shaped `callTool(name, params, { signal, deadline })`
+records your own abort signal and deadline as the program's arguments, and attesting
+`crossing.input` then publishes them as observed fact. Pass `input: (_name, params) => params`.
+
+**4. Rejected submissions need a span too.** An execution starts when the host first observes the
+dispatch, which includes dispatches it then refuses for a bad key, a failed lint or being at
+capacity. Start the span before your first rejection branch and use `execution.fail(cause, {
+errorType: "validation" })`, or those runs are invisible in a way that looks like no traffic.
+
+**Also worth knowing:** register a context manager, or use `NodeSDK` which does it for you.
+Without one, *other* instrumentation running inside your dispatch will not nest under the execution
+span. The spans here are unaffected, because a crossing is given its parent explicitly, which is
+exactly why it is easy to miss: your own trace looks perfect and everything else floats.
 
 ## Payload capture
 
