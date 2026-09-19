@@ -1,0 +1,92 @@
+# mocon for the OpenTelemetry Collector.
+#
+# One job, and it is one that a host cannot do for itself: stop a program's claim from being turned
+# into a metric that reads as a measured fact.
+#
+# A code-mode program is agent-written. On a host that does not observe its own call boundary, the
+# target on a crossing span is whatever the program said it called, and the emitter marks it
+# `code_mode.provenance.gen_ai.tool.name = "P"`. A span-metrics connector does not read that, so it
+# will happily produce `calls_total{gen_ai.tool.name="refund_customer"}` from a name the program
+# chose. The metric then has no provenance channel at all, and nobody downstream can tell.
+#
+# The specification forbids that and says plainly it cannot be enforced from inside a host. Here it
+# can: the trace pipeline keeps everything, and a second pipeline drops the claims before anything
+# is counted.
+#
+# Everything below is stock opentelemetry-collector-contrib. There is nothing of ours to compile in,
+# so this works with the collector you already run.
+
+receivers:
+  # Present so this file runs as-is; in a real deployment you already have a receiver. The explicit
+  # endpoints matter: since v0.104 the collector binds OTLP to localhost by default, so a collector
+  # in a container with the default is unreachable from outside it and nothing arrives.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+  # Drops a crossing whose target is a program claim. A span with no provenance label is left alone,
+  # so telemetry from anything that is not a code-mode host passes through untouched.
+  filter/observed_only:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["code_mode.provenance.gen_ai.tool.name"] == "P"'
+
+  # Optional, and off in the pipelines below. Removes the payload values a program authored, for a
+  # deployment that wants the shape of a run in its backend but not the content. The capture note
+  # stays, so a reader can still see the size and hash of what was removed.
+  transform/drop_claimed_payloads:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - delete_key(attributes, "gen_ai.tool.call.arguments") where attributes["code_mode.provenance.gen_ai.tool.call.arguments"] == "P"
+          - delete_key(attributes, "gen_ai.tool.call.result") where attributes["code_mode.provenance.gen_ai.tool.call.result"] == "P"
+          - delete_key(attributes, "code_mode.program.text") where attributes["code_mode.provenance.code_mode.program.text"] == "P"
+          - delete_key(attributes, "code_mode.error.message") where attributes["code_mode.provenance.code_mode.error.message"] == "P"
+          - delete_key(attributes, "code_mode.error.body") where attributes["code_mode.provenance.code_mode.error.body"] == "P"
+
+connectors:
+  # Dimensions chosen so every one of them is host-observed by the time a span reaches here.
+  # `code_mode.execution.disposition` is host-observed on every host, so an execution duration
+  # histogram keyed on it is always sound. `gen_ai.tool.name` only arrives here when the host
+  # attested the target, which is what the filter above guarantees.
+  spanmetrics:
+    dimensions:
+      - name: gen_ai.tool.name
+      - name: code_mode.execution.disposition
+      - name: code_mode.crossing.outcome
+      - name: error.type
+    exemplars:
+      enabled: true
+    metrics_flush_interval: 15s
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    # The trace keeps everything, claims included. A claim belongs in a trace, where it sits beside
+    # the label that says what it is, and where a human reads it in context.
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+
+    # A second pass over the same spans, feeding metrics only. This is where the claims are dropped.
+    traces/metrics:
+      receivers: [otlp]
+      processors: [filter/observed_only, batch]
+      exporters: [spanmetrics]
+
+    metrics:
+      receivers: [spanmetrics]
+      processors: [batch]
+      exporters: [debug]
