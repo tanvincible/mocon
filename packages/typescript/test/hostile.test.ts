@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import vm from "node:vm";
 import { BasicTracerProvider, InMemorySpanExporter, type ReadableSpan, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { type Capabilities, codeMode } from "../src/index.js";
 
@@ -175,4 +176,74 @@ test("a truncated program is a prefix of the program, not of its JSON literal", 
   const written = exporter.getFinishedSpans()[0]?.attributes["code_mode.program.text"] as string;
   assert.ok(program.startsWith(written), "a reader can match it against the source they hold");
   assert.equal(written.includes("\\n"), false, "and it is source, not an escaped JSON literal");
+});
+
+test("an error thrown inside a sandbox is read by shape, because it belongs to another realm", async () => {
+  const h = harness();
+  // The single most common failure a code-mode host handles. `instanceof Error` is false for this
+  // value in the host's realm, so a check written that way returns nothing exactly when it matters.
+  const thrown = ((): unknown => {
+    try {
+      vm.runInNewContext('throw new Error("boom from program")');
+    } catch (e) {
+      return e;
+    }
+  })();
+  assert.equal(thrown instanceof Error, false);
+
+  const ex = h.m.execution.start({ program: "p" });
+  ex.fail(thrown);
+  const span = h.spans()[0] as ReadableSpan;
+  assert.equal(span.attributes["code_mode.error.message"], '"boom from program"');
+  // `name` is on the prototype and `message` is own-but-not-enumerable, so a walk over enumerable
+  // keys writes `{}` and the note then attests it faithfully captured nothing.
+  assert.equal(span.attributes["code_mode.error.body"], '{"name":"Error","message":"boom from program"}');
+});
+
+test("a message is read from anything carrying one, and a hostile getter costs only the message", () => {
+  const cases: Array<[unknown, string | undefined]> = [
+    [{ code: 7, message: "disk full" }, '"disk full"'],
+    ["disk full", '"disk full"'],
+    [{ get message(): string { throw new Error("TRAP"); } }, undefined],
+    [{ message: 42 }, undefined],
+    [null, undefined],
+  ];
+  for (const [thrown, expected] of cases) {
+    const h = harness();
+    const ex = h.m.execution.start({ program: "p" });
+    ex.fail(thrown);
+    assert.equal((h.spans()[0] as ReadableSpan).attributes["code_mode.error.message"], expected);
+  }
+});
+
+test("an end hook names what it changes, so answering with one field never drops the payload", async () => {
+  const h = harness();
+  // The `Envelopes` recipe in the docs. Before the hook's answer was merged it was taken as the
+  // whole end, so this span said a call failed and carried nothing about why.
+  const bridge = async (): Promise<unknown> => ({ ok: false, error: { code: "rate_limited" } });
+  await h.m.execution.run({ program: "p" }, async (execution) => {
+    const callTool = execution.instrument(bridge, {
+      end: (answer) =>
+        !answer.threw && !(answer.value as { ok: boolean }).ok
+          ? { outcome: "error" as const, errorType: "capability_error", dispatched: true }
+          : undefined,
+    });
+    await callTool();
+  });
+  const crossing = h.spans().find((s) => s.name.startsWith("execute_tool")) as ReadableSpan;
+  assert.equal(crossing.attributes["code_mode.crossing.outcome"], "error");
+  assert.equal(crossing.attributes["error.type"], "capability_error");
+  assert.equal(crossing.attributes["code_mode.error.body"], '{"ok":false,"error":{"code":"rate_limited"}}');
+});
+
+test("a hook that only adds an attribute keeps the output it did not mention", async () => {
+  const h = harness();
+  await h.m.execution.run({ program: "p" }, async (execution) => {
+    const callTool = execution.instrument(async () => ({ rows: 3 }), { end: () => ({ dispatched: true }) });
+    await callTool();
+  });
+  const crossing = h.spans().find((s) => s.name.startsWith("execute_tool")) as ReadableSpan;
+  assert.equal(crossing.attributes["code_mode.crossing.outcome"], "output");
+  assert.equal(crossing.attributes["gen_ai.tool.call.result"], '{"rows":3}');
+  assert.equal(crossing.attributes["code_mode.crossing.dispatched"], true);
 });

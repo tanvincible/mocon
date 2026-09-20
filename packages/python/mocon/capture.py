@@ -54,10 +54,30 @@ def _default(o: Any) -> Any:
     """What ``json`` cannot encode by itself. An object's own ``__dict__`` is the nearest thing
     Python has to JavaScript's own-enumerable-properties rule; anything else is refused, and a
     refusal reads as a redaction rather than a fault."""
+    if isinstance(o, BaseException):
+        return _exception(o)
     d = getattr(o, "__dict__", None)
     if isinstance(d, dict):
         return d
     raise TypeError("mocon: not serializable")
+
+
+def _exception(e: BaseException) -> dict[str, Any]:
+    """An exception's ``__dict__`` is almost always empty, so it would serialize to ``{}`` and
+    ``code_mode.error.body`` would carry a hash of nothing while asserting it captured the error.
+    The class name and the message are what make it readable, so they lead. ``str`` on an exception
+    a program raised runs that program's ``__str__``, which is contained here rather than lost."""
+    out: dict[str, Any] = {"name": type(e).__name__}
+    try:
+        message = str(e)
+    except Exception:
+        message = ""
+    if message:
+        out["message"] = message
+    for key, value in (getattr(e, "__dict__", None) or {}).items():
+        if key not in ("name", "message"):
+            out[key] = value
+    return out
 
 
 # One encoder, shared: ``iterencode`` builds its own cycle markers per call, so it is re-entrant.
