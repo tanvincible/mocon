@@ -92,7 +92,8 @@ Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
   the open questions it has not settled.
 - `packages/trace` is `@mocon/trace`, the reference emitter, on the OpenTelemetry API only.
 - `bench/trace.mjs` measures what it costs against the SDK's own floor.
-- `collector/` and `dashboards/` are what turns arriving data into data something understands.
+- `collector/` and `dashboards/` are optional examples. Everything is ordinary OpenTelemetry, so use
+  whatever backend and dashboards you already run.
 - `docs/` is the mdBook source for the site above.
 
 Status: Development. The conventions are a draft, `code_mode.*` is a namespace this project owns and

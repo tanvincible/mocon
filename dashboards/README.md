@@ -3,6 +3,16 @@
 `code-mode.json` is a Grafana dashboard for code-mode execution. Import it, pick your datasources,
 and it works against any OTLP trace store plus the metrics from `collector/codemode.yaml`.
 
+## An example, not the product
+
+This is Grafana because that is what it was built against. Everything mocon emits is ordinary
+OpenTelemetry, so use whatever you already run: Datadog, Honeycomb, Elastic, anything. The metrics
+arrive named, united and described, and show up correctly in any metric browser with nobody teaching
+it anything.
+
+What this file is good for is telling you which views are worth having. The queries are in it, and
+the same attribute names work in any query language.
+
 ## Why this exists
 
 OpenTelemetry will render your code-mode spans without any of this. You get a waterfall, correct

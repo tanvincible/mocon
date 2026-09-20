@@ -1,37 +1,47 @@
 # Dashboard
 
-`dashboards/code-mode.json` is a Grafana dashboard for code-mode runs.
+`dashboards/code-mode.json` is **an example**, not the product. It happens to be Grafana because that
+is what it was built against. Use whatever you already run.
 
-OpenTelemetry already renders your spans without it. You get a waterfall, correct nesting and real
-durations for free. What you don't get is any of the meaning. Grafana has never heard of
-`code_mode.` and won't tell you a run was abandoned rather than finished, or that a call your server
-never saw is sitting in the trace looking just like one it did.
+## Why example
 
-## Panels
+Everything here is ordinary OpenTelemetry. The two histograms come out named, united and described,
+so they show up correctly in any metric browser without anyone teaching it anything. The spans are
+spans. The log records are log records. Datadog, Honeycomb, Grafana, Elastic and the rest all handle
+them the same way they handle everything else you send.
 
-**Can you believe there were no calls?** The [declaration](./declaring.md), aggregated. Watching
-everything with no unmediated egress is the only combination where a run showing no calls really made
-none.
+So there is nothing to build before you can look at this. There is only a choice about what you want
+on one screen, and that is yours rather than ours.
 
-**Runs by disposition** and **calls by outcome.** Span status has three values where these have four
-and three. A run you gave up on looks identical to a clean one everywhere else. These two fix that.
+## Views
 
-**Abandoned calls.** Calls still in flight when their run ended. If your targets spend money or change
-state, that number is how many things may or may not have happened.
+If you are building your own, these are the views that show something the raw trace does not.
 
-**Calls the program claimed.** These reach no metric by design, so the trace panel is the only place
-they show up at all.
+**Can you believe there were no calls?** Group runs by `code_mode.observes_crossings` and
+`code_mode.unmediated_egress`. Watching everything with no unmediated egress is the only combination
+where a run showing no calls really made none.
 
-## Why
+**Runs by disposition.** `code_mode.execution.duration` grouped by
+`code_mode.execution.disposition`. Span status has three values where this has four, so a run you
+gave up on looks identical to a clean one everywhere else.
 
-It's the part you can't hand-roll and keep. A dashboard you build for your server transfers to
-nothing. This one works on any server following the conventions, which is the actual payoff of
-standardising anything.
+**Calls by outcome.** Same idea on `code_mode.crossing.duration` and
+`code_mode.crossing.outcome`. `abandoned` and `output` are both "unset" to a trace viewer.
 
-## Setup
+**Abandoned calls.** Count of crossings with that outcome. If your targets spend money or change
+state, that is how many things may or may not have happened.
 
-You need a Prometheus-compatible datasource holding `traces_span_metrics_*` from
-[the collector](./collector.md), and a Tempo-compatible trace store. Both datasource uids are in the
-JSON and you'll need to repoint them.
+**Calls the program claimed.** Search traces for spans carrying
+`code_mode.provenance.gen_ai.tool.name`. By design these reach no metric, so a trace view is the only
+place they appear.
 
-The PromQL panels are tested. The four TraceQL panels aren't, so give them a look on first import.
+**Runs in flight.** Log records with `event.name = code_mode.execution.started` that have no matching
+`ended`. Nothing else in the model can show work still running.
+
+## Ours
+
+Import `dashboards/code-mode.json`, repoint its two datasource uids, and you get the six views above
+in Grafana. The PromQL is tested. The four trace panels are not, so give them a look.
+
+It needs the metrics, which come from your app directly, and a Tempo-compatible trace store for the
+trace panels.

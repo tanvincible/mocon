@@ -1,6 +1,7 @@
 # Collector
 
-`collector/codemode.yaml` does one job your server can't do for itself. **It stops a program's claim
+**Optional.** The two histograms now come from your app directly, so you do not need a collector to
+get metrics at all. This is for one narrower job your server genuinely cannot do for itself. **It stops a program's claim
 from turning into a metric that looks like a measured fact.**
 
 If you don't attest `crossing.target`, the tool name on a call span is whatever the program said.

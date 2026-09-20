@@ -52,6 +52,22 @@ Everything mocon writes. The [specification](./spec.md) has the normative detail
 | `mcp.method.name`, `mcp.resource.uri` | if the call went over MCP |
 | `error.type` | when it failed |
 
+## Metrics
+
+| Instrument | Unit | Keyed on |
+|---|---|---|
+| `code_mode.execution.duration` | s | `code_mode.execution.disposition`, `error.type` |
+| `code_mode.crossing.duration` | s | `gen_ai.tool.name`, `code_mode.crossing.outcome`, `error.type`, only when the target is attested |
+
+## Log records
+
+| Attribute | |
+|---|---|
+| `event.name` | `code_mode.execution.started` or `code_mode.execution.ended` |
+| `trace_id`, `span_id` | join back to the spans |
+
+Plus every attribute the run span carries.
+
 ## Values
 
 **Disposition** is `completed`, `failed`, `terminated`, `abandoned`.

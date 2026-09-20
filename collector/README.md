@@ -1,5 +1,9 @@
 # mocon for the OpenTelemetry Collector
 
+**Optional.** The emitter produces its own metrics now, so you do not need this to get them. It is
+for one narrower job a host cannot do for itself: stopping telemetry *somebody else* configured from
+turning a program's claim into a metric.
+
 `codemode.yaml` is a collector configuration, not a component you compile in. That is deliberate.
 
 A custom collector component has to be built into a distribution with the OpenTelemetry Collector
