@@ -2,7 +2,7 @@
 
 OpenTelemetry for code-mode MCP servers.
 
-A set of semantic conventions, plus emitters in TypeScript and Python that implement them.
+A specification, plus emitters in TypeScript and Python that implement it.
 
 In code mode an agent submits a program instead of calling one tool. The server runs it in a sandbox
 and the program calls the server's tools from inside. From outside, the whole run is one opaque tool

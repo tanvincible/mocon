@@ -1,4 +1,4 @@
-# Code-mode conventions
+# Code-mode specification
 
 **Status:** Development. Version 0.1.0, 2026-09-19.
 
@@ -119,7 +119,7 @@ refusal path and count the spans against the calls.
 This is worth stating because it is the most damaging error available and the easiest to make. Every
 attested field is conditional on the declaration, and a host is usually instrumented at the function
 its bridge exposes, which on many implementations sits one layer beneath the guards that answer the
-program first. In a real integration of these conventions a competent engineer declared `all` on
+program first. In a real integration of this specification a competent engineer declared `all` on
 such a host; four calls produced two spans, and the declaration said two was all of them.
 
 `unmediated_egress: true` says the program has a way to reach the outside that the host does not
@@ -535,8 +535,8 @@ An `abandoned` crossing carries no `error.type`. Nothing failed; the host stoppe
 ### 5.4 Times
 
 A span always has a start and an end, therefore always a duration. **OpenTelemetry has no
-representation for "settled, duration unknown."** This is a gap in the data model and no
-convention closes it.
+representation for "settled, duration unknown."** This is a gap in the data model and nothing at
+this layer closes it.
 
 Crossing times are optional in the model: their presence is the host's declaration that it has
 host-clock timing for the crossing. A span needs both, so the host fills what is missing and says
@@ -652,7 +652,7 @@ table of baseline classes in this document.** Chosen. It works on borrowed keys,
 model fields and this document maps them to attribute keys once. It fails safe: a field nobody
 attested is a program claim, so an emitter that forgets something under-claims rather than
 over-claims. Its vocabulary is fixed by this document and cannot drift with the emitter's
-attribute set, which is what separates it from A. And a consumer that ignores this convention
+attribute set, which is what separates it from A. And a consumer that ignores this scheme
 entirely still gets a valid, useful trace, with correct `gen_ai.*` attributes and correct
 parentage; it simply does not learn what was observed and what was claimed.
 
@@ -939,10 +939,10 @@ here.
 
 **What reads it, honestly.** No general-purpose backend does, and none will. A declaration is worth
 something to three consumers: a language model reading the trace, which increasingly is the consumer
-and which can act on it with no vendor support at all; a dashboard written against these conventions,
-which can then render a host's own fields without being rebuilt per host; and a collector deriving
-metrics, which can respect section 9 mechanically. Shipping it does not make Grafana understand your
-credit meter. It makes it possible for something to.
+and which can act on it with no vendor support at all; a dashboard written against this
+specification, which can then render a host's own fields without being rebuilt per host; and a
+collector deriving metrics, which can respect section 9 mechanically. Shipping it does not make
+Grafana understand your credit meter. It makes it possible for something to.
 
 Use UCUM for units where one exists, `By`, `ms`, `s`, and a curly-brace annotation otherwise,
 `{credit}`, `{token}`.
@@ -998,7 +998,7 @@ distribution.
 
 This is the one place a host can enforce section 9 for itself. It cannot stop a span-metrics
 connector somebody else configured from deriving a metric out of a span name, which is why the
-collector configuration shipped alongside these conventions exists.
+collector configuration shipped alongside this specification exists.
 
 Keep point attributes to low-cardinality dimensions. Never an execution id, a crossing id, a
 session id or anything per user.
@@ -1271,7 +1271,7 @@ and standard pipelines read it as fact.** The attribute beside it is now labelle
 that reads attributes can tell. The span's own name cannot be labelled, and that is what
 span-metrics connectors, service maps and span-name-keyed alerting key on. Span-metrics
 connectors, service maps, span-name-keyed alerting and trace search all key on those two values
-and none of them reads the provenance table. Section 9 blocks the metric the convention itself
+and none of them reads the provenance table. Section 9 blocks the metric the upstream convention
 recommends, which is the part a host controls. It does not and cannot block a collector-side
 connector deriving metrics from span names. This is the price of reusing `gen_ai.tool.name`
 instead of minting a private key, and the reuse is still right, because a private key buys a
@@ -1437,8 +1437,8 @@ These are the claims this specification is built on, not claims about any one im
 ## Appendix B. Two implementations
 
 This document has two independent implementations, in TypeScript and Python, and a harness that runs
-one scenario through both and diffs every attribute. That is the difference between a convention and
-a library with a document attached, and it is checkable rather than claimed.
+one scenario through both and diffs every attribute. That is the difference between a specification
+and a library with a document attached, and it is checkable rather than claimed.
 
 They agree on everything this document defines: both spans, the capability declaration, every
 provenance label, the closed vocabularies, capture and its notes, crossing timing, seq, the MCP

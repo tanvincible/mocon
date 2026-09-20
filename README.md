@@ -7,8 +7,8 @@ in a sandbox, and from inside the program the server's tools are reached through
 outside, that whole run is one opaque tool call: the calls the program made, what it passed, what
 came back, and whether the server could see any of it are all invisible.
 
-mocon is a set of OpenTelemetry semantic conventions that make it visible, and a small emitter that
-implements them. Two wrappers give you all three signals: traces for the shape of one run, metrics
+mocon is an OpenTelemetry attribute specification that makes it visible, and a small emitter that
+implements it. Two wrappers give you all three signals: traces for the shape of one run, metrics
 for questions across many, and a log record that shows work in flight. OpenTelemetry is the wire
 format rather than an export target, so there is no format here for anyone to learn and no
 destination of ours to wire.
@@ -96,12 +96,12 @@ Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
   whatever backend and dashboards you already run.
 - `docs/` is the mdBook source for the site above.
 
-Status: Development. The conventions are a draft, `code_mode.*` is a namespace this project owns and
+Status: Development. The specification is a draft, `code_mode.*` is a namespace this project owns and
 nobody else has agreed to, and the `gen_ai.*` and `mcp.*` attributes it reuses are themselves
 Development upstream with no compatibility guarantee.
 
 This project previously specified a JSON Lines record format with its own schema, conformance suite
-and viewer. It was retired in favour of these conventions; section 14 of the specification records
+and viewer. It was retired in favour of this one; section 14 of the specification records
 what that move gave up, and the history is in git.
 
 ## License

@@ -17,7 +17,7 @@ already-configured exporters receive it. See ``spec/otel-code-mode.md``.
 
 from .capture import DEFAULT_CAP, DEFAULT_MEASURE, DEFAULT_PROGRAM_CAP, CapturePolicy
 from ._core import (
-    CONVENTIONS_VERSION,
+    SPEC_VERSION,
     UNSET,
     BridgeAnswer,
     CodeMode,
@@ -43,7 +43,7 @@ __all__ = [
     "Aggregation",
     "Attestation",
     "BridgeAnswer",
-    "CONVENTIONS_VERSION",
+    "SPEC_VERSION",
     "Capabilities",
     "Cardinality",
     "CapturePolicy",

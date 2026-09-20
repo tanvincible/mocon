@@ -352,7 +352,7 @@ def test_an_execution_ends_once() -> None:
     assert h.one("execute_code").attributes["code_mode.execution.disposition"] == "completed"
 
 
-def test_a_capability_the_conventions_close_is_refused_at_construction() -> None:
+def test_a_capability_the_specification_closes_is_refused_at_construction() -> None:
     with pytest.raises(ValueError):
         CodeMode(Capabilities(observes_crossings="most", unmediated_egress=False))
     with pytest.raises(TypeError):

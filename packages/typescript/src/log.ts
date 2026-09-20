@@ -1,10 +1,10 @@
 /**
  * A tracer that writes to a logger instead of to a trace backend.
  *
- * The conventions' contribution is the vocabulary: what a host observed, what the program claimed,
- * what it was allowed to see. None of that needs a trace store. But an emitter built on the
- * OpenTelemetry API needs *a* tracer, and the only ones that ship require an SDK, an exporter, a
- * collector and somewhere for spans to land. For a team whose telemetry is structured logs, that
+ * The specification's contribution is the vocabulary: what a host observed, what the program
+ * claimed, what it was allowed to see. None of that needs a trace store. But an emitter built on
+ * the OpenTelemetry API needs *a* tracer, and the only ones that ship require an SDK, an exporter,
+ * a collector and somewhere for spans to land. For a team whose telemetry is structured logs, that
  * pipeline is the entire cost of adoption and it dwarfs the two wrappers.
  *
  * So this implements the small slice of the API the emitter actually uses, and turns each finished
@@ -38,7 +38,7 @@ export interface LogRecord {
   duration_ms: number;
   /** Only when the emitter set one; `unset` is the default and is left out. */
   status?: "error" | "ok";
-  /** The status description, which for these conventions is a closed-vocabulary value. */
+  /** The status description, which for this specification is a closed-vocabulary value. */
   status_message?: string;
   [attribute: string]: unknown;
 }
@@ -170,7 +170,7 @@ class LogSpan implements Span {
       duration_ms: Math.max(0, endMs - this.startMs),
     };
     if (this.parent !== undefined) record.parent_span_id = this.parent.spanId;
-    // The status carries load-bearing information these conventions put nowhere else: the
+    // The status carries load-bearing information this specification puts nowhere else: the
     // description is a closed-vocabulary value, and dropping it was the first mistake a
     // hand-written destination made when this was measured.
     if (this.status.code === SpanStatusCode.ERROR) record.status = "error";

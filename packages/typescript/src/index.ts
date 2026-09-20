@@ -27,7 +27,7 @@ export { type LogRecord, type LogTracerOptions, logTracer } from "./log.js";
 const NAME = "mocon";
 const VERSION = "0.1.0";
 /** The version of `spec/otel-code-mode.md` these spans are written against. */
-export const CONVENTIONS_VERSION = "0.1.0";
+export const SPEC_VERSION = "0.1.0";
 
 export type Disposition = "completed" | "failed" | "terminated" | "abandoned";
 export type Outcome = "output" | "error" | "abandoned";
