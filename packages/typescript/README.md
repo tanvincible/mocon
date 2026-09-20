@@ -15,7 +15,8 @@ run.
 
 ```sh
 git clone https://github.com/tanvincible/mocon
-npm install ./mocon/packages/typescript @opentelemetry/api
+cd mocon && npm install && npm run build && npm pack -w mocon && cd ..
+npm install ./mocon/mocon-0.1.0.tgz @opentelemetry/api
 ```
 
 Not on npm yet, so it installs from the repo.

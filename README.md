@@ -19,13 +19,15 @@ destination of ours to wire.
 
 ```sh
 git clone https://github.com/tanvincible/mocon
-npm install ./mocon/packages/typescript @opentelemetry/api
+cd mocon && npm install && npm run build && npm pack -w mocon && cd ..
+npm install ./mocon/mocon-0.1.0.tgz @opentelemetry/api
 ```
 
-The clone step is not optional. `npm install github:tanvincible/mocon` looks like it should work and
-does not: this repository is a workspace, so npm installs the workspace root under the name
-`mocon-workspace`, with nothing built, and `import "mocon"` then fails to resolve. npm cannot install
-a subdirectory of a git repository.
+Yes, that is four steps to install one package, and no, there is no shorter one until this is on
+npm. `npm install github:tanvincible/mocon` looks right and installs the workspace root under the
+name `mocon-workspace` with nothing built. Installing the package directory looks right and fails to
+build, because npm does not install a path dependency's own build tools. Packing a tarball is what
+publishing does, minus the registry.
 
 `@opentelemetry/api` is a peer dependency you install yourself. You also need an OpenTelemetry SDK
 and an exporter configured in your application, as for any OpenTelemetry instrumentation. **Without

@@ -19,7 +19,9 @@ github:tanvincible/mocon` does NOT work: this is a workspace, npm installs the r
 
 ```sh
 git clone https://github.com/tanvincible/mocon
-npm install ./mocon/packages/typescript @opentelemetry/api   # or: pip install ./mocon/packages/python
+cd mocon && npm install && npm run build && npm pack -w mocon && cd ..
+npm install ./mocon/mocon-0.1.0.tgz @opentelemetry/api
+# Python is shorter: pip install ./mocon/packages/python
 ```
 
 ```ts
