@@ -1,0 +1,475 @@
+{
+  "_": "One scenario, described once, driven through both emitters. A key that is absent is absent; an explicit null is a recorded JSON null. Times are fixed so start, end and duration are compared rather than normalised away. Two directives are expanded identically by both drivers: {\"$repeat\":{\"unit\":s,\"times\":n}} -> s*n, and {\"$number\":\"nan\"|\"inf\"|\"-inf\"} -> a non-finite float.",
+  "cases": [
+    {
+      "name": "main",
+      "_": "The required scenario: two calls where the second fails, a third left abandoned, a host attribute, capture on, a payload that gets truncated, and an unattested host so every provenance label appears.",
+      "capabilities": {
+        "observes_crossings": "all",
+        "unmediated_egress": false,
+        "crossing_edge": "invocation",
+        "attested": [],
+        "declared": {
+          "com.acme.credits_used": {
+            "agg": "sum",
+            "unit": "{credit}",
+            "card": "low",
+            "name": "Credits"
+          },
+          "com.acme.sandbox": {
+            "agg": "none",
+            "card": "high"
+          }
+        }
+      },
+      "capture": {
+        "values": true,
+        "cap": 256,
+        "program_cap": 32768,
+        "measure": 1048576
+      },
+      "execution": {
+        "program": "import json\n\nasync def main(bridge):\n    orders = await bridge(\"orders.list\", {\"status\": \"open\"})\n    for o in orders[\"items\"]:\n        await bridge(\"orders.cancel\", {\"id\": o[\"id\"], \"reason\": \"caf\u00e9 \ud83d\ude80\"})\n    return json.dumps({\"cancelled\": len(orders[\"items\"])})\n",
+        "language": "python",
+        "kind": "server",
+        "tool": "execute",
+        "tool_call_id": "call_0f3a",
+        "conversation_id": "conv_88",
+        "session_id": "mcp_sess_12",
+        "execution_id": "exec_fixed_1",
+        "attributes": {
+          "com.acme.sandbox": "sb_1",
+          "com.acme.credits_used": 12,
+          "code_mode.execution.disposition": "completed",
+          "gen_ai.tool.name": "forged",
+          "otel.status_code": "OK",
+          "mcp.resource.uri": "forged"
+        },
+        "start_ns": 1000000000000000
+      },
+      "crossings": [
+        {
+          "target": "orders.list",
+          "input": {
+            "status": "open",
+            "limit": 50
+          },
+          "call_id": "c1",
+          "tool_type": "function",
+          "kind": "client",
+          "dispatched": true,
+          "mcp_method": "tools/call",
+          "mcp_session": "mcp_sess_12",
+          "attributes": {
+            "com.acme.attempts": 1
+          },
+          "start_ns": 1000000000010000,
+          "settle": {
+            "outcome": "output",
+            "output": {
+              "items": [
+                {
+                  "id": "o-1"
+                },
+                {
+                  "id": "o-2"
+                }
+              ],
+              "note": {
+                "$repeat": {
+                  "unit": "row \"1\": caf\u00e9 \ud83d\ude80\tvalue\n",
+                  "times": 40
+                }
+              }
+            },
+            "end_ns": 1000000000042000
+          }
+        },
+        {
+          "target": "orders.cancel",
+          "input": {
+            "id": "o-1",
+            "reason": "caf\u00e9 \ud83d\ude80"
+          },
+          "call_id": "c2",
+          "tool_type": "function",
+          "kind": "client",
+          "dispatched": true,
+          "mcp_method": "tools/call",
+          "mcp_session": "mcp_sess_12",
+          "start_ns": 1000000000050000,
+          "settle": {
+            "outcome": "error",
+            "error_type": "capability_error",
+            "message": "order o-1 is already cancelled",
+            "error_body": {
+              "code": 409,
+              "detail": "already_cancelled"
+            },
+            "end_ns": 1000000000061500
+          }
+        },
+        {
+          "target": "shipping.dispatch",
+          "input": {
+            "id": "o-2"
+          },
+          "call_id": "c3",
+          "kind": "local",
+          "dispatched": false,
+          "start_ns": 1000000000070000
+        }
+      ],
+      "end": {
+        "disposition": "failed",
+        "error_type": "runtime",
+        "message": "KeyError: 'items'",
+        "result": null,
+        "outputs": {
+          "stdout": "cancelling 2 orders\n",
+          "stderr": ""
+        },
+        "error_body": {
+          "type": "KeyError",
+          "args": [
+            "items"
+          ]
+        },
+        "attributes": {
+          "com.acme.credits_used": 12,
+          "com.acme.exit_code": 1
+        },
+        "end_ns": 1000000000090000
+      }
+    },
+    {
+      "name": "program-truncation",
+      "_": "The program text itself past the cap, an attested host with named host attributes, and capture on.",
+      "capabilities": {
+        "observes_crossings": "all",
+        "unmediated_egress": true,
+        "crossing_edge": "dispatch",
+        "attested": [
+          "crossing.target",
+          "crossing.input",
+          "crossing.output",
+          "crossing.error",
+          "execution.error.class",
+          "host_attributes"
+        ],
+        "attested_attributes": [
+          "com.acme.sandbox"
+        ],
+        "relayed_attributes": [
+          "com.acme.credits_used"
+        ]
+      },
+      "capture": {
+        "values": true,
+        "cap": 128,
+        "program_cap": 200,
+        "measure": 65536
+      },
+      "execution": {
+        "program": {
+          "$repeat": {
+            "unit": "print(\"caf\u00e9 \ud83d\ude80\")\n",
+            "times": 24
+          }
+        },
+        "language": "python",
+        "tool": "execute",
+        "execution_id": "exec_fixed_2",
+        "attributes": {
+          "com.acme.sandbox": "sb_2",
+          "com.acme.credits_used": 7,
+          "com.acme.unnamed": "x"
+        },
+        "start_ns": 2000000000000000
+      },
+      "crossings": [
+        {
+          "target": "kv.get",
+          "input": "k",
+          "call_id": "k1",
+          "start_ns": 2000000000005000,
+          "settle": {
+            "outcome": "output",
+            "output": "v",
+            "end_ns": 2000000000006000
+          }
+        }
+      ],
+      "end": {
+        "disposition": "completed",
+        "result": "ok",
+        "end_ns": 2000000000010000
+      }
+    },
+    {
+      "name": "numbers",
+      "_": "Integral floats, fractional floats, a large integer and a host attribute of each numeric kind.",
+      "capabilities": {
+        "observes_crossings": "some",
+        "unmediated_egress": false,
+        "crossing_edge": "invocation"
+      },
+      "capture": {
+        "values": true,
+        "cap": 8192,
+        "program_cap": 8192,
+        "measure": 65536
+      },
+      "execution": {
+        "program": "x = 1\n",
+        "execution_id": "exec_fixed_3",
+        "attributes": {
+          "com.acme.count": 3,
+          "com.acme.ratio": 0.5,
+          "com.acme.whole": 2.0
+        },
+        "start_ns": 3000000000000000
+      },
+      "crossings": [
+        {
+          "target": "math.stats",
+          "input": {
+            "a": 1,
+            "b": 1.0,
+            "c": 1.5,
+            "d": 1e+21,
+            "e": 9007199254740993,
+            "f": -0.0
+          },
+          "call_id": "n1",
+          "start_ns": 3000000000001000,
+          "settle": {
+            "outcome": "output",
+            "output": [
+              1,
+              1.0,
+              1.5,
+              0.1
+            ],
+            "end_ns": 3000000000002000
+          }
+        }
+      ],
+      "end": {
+        "disposition": "completed",
+        "result": {
+          "mean": 2.0
+        },
+        "end_ns": 3000000000003000
+      }
+    },
+    {
+      "name": "nonfinite",
+      "_": "NaN and Infinity inside a captured payload: not JSON, and each emitter has to decide something.",
+      "capabilities": {
+        "observes_crossings": "all",
+        "unmediated_egress": false,
+        "crossing_edge": "invocation"
+      },
+      "capture": {
+        "values": true,
+        "cap": 4096,
+        "program_cap": 4096,
+        "measure": 65536
+      },
+      "execution": {
+        "program": "y = float('nan')\n",
+        "execution_id": "exec_fixed_4",
+        "start_ns": 4000000000000000
+      },
+      "crossings": [
+        {
+          "target": "sensor.read",
+          "input": {
+            "want": "all"
+          },
+          "call_id": "f1",
+          "start_ns": 4000000000001000,
+          "settle": {
+            "outcome": "output",
+            "output": {
+              "temp": {
+                "$number": "nan"
+              },
+              "max": {
+                "$number": "inf"
+              },
+              "min": {
+                "$number": "-inf"
+              }
+            },
+            "end_ns": 4000000000002000
+          }
+        }
+      ],
+      "end": {
+        "disposition": "completed",
+        "end_ns": 4000000000003000
+      }
+    },
+    {
+      "name": "unicode-hash",
+      "_": "The program hash over astral characters, a combining sequence, right-to-left text and two control characters.",
+      "capabilities": {
+        "observes_crossings": "none",
+        "unmediated_egress": true
+      },
+      "capture": {
+        "values": true,
+        "cap": 4096,
+        "program_cap": 4096,
+        "measure": 65536
+      },
+      "execution": {
+        "program": "# caf\u00e9 cafe\u0301 \ud83d\ude80\ud83c\udf0d \u4f60\u597d \u0645\u0631\u062d\u0628\u0627 \u0001\u007f\n",
+        "language": "python",
+        "execution_id": "exec_fixed_5",
+        "start_ns": 5000000000000000
+      },
+      "crossings": [],
+      "end": {
+        "disposition": "abandoned",
+        "end_ns": 5000000000001000
+      }
+    },
+    {
+      "name": "over-measure",
+      "_": "A container whose serialization runs past `measure`: read no further, so `bytes` and `hash` cannot be claimed for the whole.",
+      "capabilities": {
+        "observes_crossings": "all",
+        "unmediated_egress": false,
+        "crossing_edge": "invocation"
+      },
+      "capture": {
+        "values": true,
+        "cap": 128,
+        "program_cap": 4096,
+        "measure": 512
+      },
+      "execution": {
+        "program": "z = 1\n",
+        "execution_id": "exec_fixed_6",
+        "start_ns": 6000000000000000
+      },
+      "crossings": [
+        {
+          "target": "blob.read",
+          "call_id": "m1",
+          "start_ns": 6000000000001000,
+          "settle": {
+            "outcome": "output",
+            "output": {
+              "rows": [
+                {
+                  "$repeat": {
+                    "unit": "caf\u00e9-\ud83d\ude80-",
+                    "times": 12
+                  }
+                },
+                {
+                  "$repeat": {
+                    "unit": "caf\u00e9-\ud83d\ude80-",
+                    "times": 12
+                  }
+                },
+                {
+                  "$repeat": {
+                    "unit": "caf\u00e9-\ud83d\ude80-",
+                    "times": 12
+                  }
+                },
+                {
+                  "$repeat": {
+                    "unit": "caf\u00e9-\ud83d\ude80-",
+                    "times": 12
+                  }
+                },
+                {
+                  "$repeat": {
+                    "unit": "caf\u00e9-\ud83d\ude80-",
+                    "times": 12
+                  }
+                }
+              ]
+            },
+            "end_ns": 6000000000002000
+          }
+        }
+      ],
+      "end": {
+        "disposition": "completed",
+        "end_ns": 6000000000003000
+      }
+    },
+    {
+      "name": "huge-string",
+      "_": "One string far longer than the cap: the TypeScript encoder has a read bound past which it refuses to read the string at all.",
+      "capabilities": {
+        "observes_crossings": "all",
+        "unmediated_egress": false,
+        "crossing_edge": "invocation"
+      },
+      "capture": {
+        "values": true,
+        "cap": 64,
+        "program_cap": 4096,
+        "measure": 256
+      },
+      "execution": {
+        "program": "z = 2\n",
+        "execution_id": "exec_fixed_7",
+        "start_ns": 7000000000000000
+      },
+      "crossings": [
+        {
+          "target": "blob.dump",
+          "call_id": "h1",
+          "start_ns": 7000000000001000,
+          "settle": {
+            "outcome": "output",
+            "output": {
+              "$repeat": {
+                "unit": "0123456789",
+                "times": 2000
+              }
+            },
+            "end_ns": 7000000000002000
+          }
+        }
+      ],
+      "end": {
+        "disposition": "completed",
+        "end_ns": 7000000000003000
+      }
+    },
+    {
+      "name": "lone-surrogate",
+      "_": "A program text carrying an unpaired surrogate, which has no UTF-8 encoding. Capture is off, so only the hash is emitted.",
+      "capabilities": {
+        "observes_crossings": "none",
+        "unmediated_egress": true
+      },
+      "capture": {
+        "values": false,
+        "cap": 4096,
+        "program_cap": 4096,
+        "measure": 65536
+      },
+      "execution": {
+        "program": "a\ud800b\n",
+        "execution_id": "exec_fixed_8",
+        "start_ns": 8000000000000000
+      },
+      "crossings": [],
+      "end": {
+        "disposition": "completed",
+        "end_ns": 8000000000001000
+      }
+    }
+  ]
+}

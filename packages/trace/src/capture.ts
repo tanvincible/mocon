@@ -84,14 +84,18 @@ export class Capture {
     const { bytes, hash } = this.encoder.digest(text);
     attrs["code_mode.program.hash"] = "sha256:" + hash;
     if (!this.values) return;
-    const encoded = this.encoder.encode(text, this.programCap, false);
-    if (encoded.valueText === undefined) {
+    // `literal`, not `encode`: for a string past its cap `encode` quotes the prefix and then quotes
+    // the result again, so the attribute carried a prefix of the JSON literal rather than of the
+    // program, with escapes in it and a different encoding depending only on whether a cut happened.
+    // 7 wants a prefix of the host's serialization, and 8 keeps this attribute as raw source.
+    const cut = this.encoder.literal(text, this.programCap);
+    if (cut.text === undefined) {
       notes["code_mode.program.text"] = { redacted: true, bytes };
       return;
     }
-    attrs["code_mode.program.text"] = encoded.truncated ? (JSON.parse(encoded.valueText) as string) : text;
+    attrs["code_mode.program.text"] = cut.cut ? (JSON.parse(cut.text) as string) : text;
     const note: Record<string, unknown> = { bytes, hash: "sha256:" + hash };
-    if (encoded.truncated) note["truncated"] = true;
+    if (cut.cut) note["truncated"] = true;
     notes["code_mode.program.text"] = note;
   }
 
@@ -122,6 +126,11 @@ export class Capture {
     attrs[key] = encoded.valueText;
     const note: Record<string, unknown> = {};
     if (encoded.truncated) note["truncated"] = true;
+    // 7: `redacted` is content the host removed or replaced by policy. JSON cannot hold NaN or an
+    // infinity, so one is written as `null`, which silently turns a sensor reading into no reading.
+    // Publishing a hash of that serialization without saying so is the exact failure this note
+    // exists to prevent, and it was found by a second implementation disagreeing.
+    if (encoded.substituted) note["redacted"] = true;
     if (encoded.bytes !== undefined) note["bytes"] = encoded.bytes;
     if (encoded.hash !== undefined) note["hash"] = "sha256:" + encoded.hash;
     if (Object.keys(note).length > 0) notes[key] = note;

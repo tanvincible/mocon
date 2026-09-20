@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mocon"
+version = "0.1.0"
+description = "Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT OR Apache-2.0" }
+keywords = ["opentelemetry", "mcp", "code-mode", "observability", "semantic-conventions"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Monitoring",
+]
+
+# The API only, never the SDK: that is OpenTelemetry's own rule for instrumentation, and the reason
+# a host's spans reach the exporters the application owner already configured.
+dependencies = ["opentelemetry-api>=1.20.0,<2"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "opentelemetry-sdk>=1.20.0,<2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["mocon"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

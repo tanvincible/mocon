@@ -1,0 +1,1617 @@
+{
+  "cases": [
+    {
+      "name": "main",
+      "spans": [
+        {
+          "name": "execute_tool orders.list",
+          "kind": "CLIENT",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": 3,
+          "start_offset_ns": 10000,
+          "end_offset_ns": 42000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"gen_ai.tool.call.arguments\":{\"bytes\":28,\"hash\":\"sha256:83bb64cec20ed9f00007dd478dc0d37ca1091ffbaf7a899cc2195ad9197a1ba6\"},\"gen_ai.tool.call.result\":{\"truncated\":true,\"bytes\":1247,\"hash\":\"sha256:4ad3872f73137dde8ba15e5f35b46f07c2934f895222a8308590803dc43daf6c\"}}"
+            ],
+            "code_mode.crossing.dispatched": [
+              "bool",
+              true
+            ],
+            "code_mode.crossing.outcome": [
+              "str",
+              "output"
+            ],
+            "code_mode.crossing.seq": [
+              "int",
+              "1"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_1"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.provenance.code_mode.crossing.outcome": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.crossing.seq": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.com.acme.attempts": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.arguments": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.result": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.name": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "com.acme.attempts": [
+              "int",
+              "1"
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_tool"
+            ],
+            "gen_ai.tool.call.arguments": [
+              "str",
+              "{\"status\":\"open\",\"limit\":50}"
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "c1"
+            ],
+            "gen_ai.tool.call.result": [
+              "str",
+              "\"{\\\"items\\\":[{\\\"id\\\":\\\"o-1\\\"},{\\\"id\\\":\\\"o-2\\\"}],\\\"note\\\":\\\"row \\\\\\\"1\\\\\\\": café 🚀\\\\tvalue\\\\nrow \\\\\\\"1\\\\\\\": café 🚀\\\\tvalue\\\\nrow \\\\\\\"1\\\\\\\": café 🚀\\\\tvalue\\\\nrow \\\\\\\"1\\\\\\\": café 🚀\\\\tvalue\\\\nrow \\\\\\\"1\\\\\\\": café 🚀\\\\tvalue\\\\nrow \\\\\\\"1\\\\\\\": c\""
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "orders.list"
+            ],
+            "gen_ai.tool.type": [
+              "str",
+              "function"
+            ],
+            "mcp.method.name": [
+              "str",
+              "tools/call"
+            ],
+            "mcp.session.id": [
+              "str",
+              "mcp_sess_12"
+            ]
+          }
+        },
+        {
+          "name": "execute_tool orders.cancel",
+          "kind": "CLIENT",
+          "status": {
+            "code": "ERROR",
+            "description": "capability_error"
+          },
+          "parent": 3,
+          "start_offset_ns": 50000,
+          "end_offset_ns": 61500,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"gen_ai.tool.call.arguments\":{\"bytes\":34,\"hash\":\"sha256:18ed1b6c3dd3a31f094d88c070fb6ec73efecf4f6c6ee9ea7e05999e6e210724\"},\"code_mode.error.message\":{\"bytes\":32,\"hash\":\"sha256:baa5e92aa0f45b724d31d130de1bf49259d1daaaf0555b79bfb8d41312a63bd4\"},\"code_mode.error.body\":{\"bytes\":41,\"hash\":\"sha256:a7b036b7fc57cd4847e56606a32a3c70e74e0c3817b3a9fd033b5c3d63500a52\"}}"
+            ],
+            "code_mode.crossing.dispatched": [
+              "bool",
+              true
+            ],
+            "code_mode.crossing.outcome": [
+              "str",
+              "error"
+            ],
+            "code_mode.crossing.seq": [
+              "int",
+              "2"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.error.body": [
+              "str",
+              "{\"code\":409,\"detail\":\"already_cancelled\"}"
+            ],
+            "code_mode.error.message": [
+              "str",
+              "\"order o-1 is already cancelled\""
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_1"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.provenance.code_mode.crossing.outcome": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.crossing.seq": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.error.body": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.error.message": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.error.type": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.arguments": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.name": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "error.type": [
+              "str",
+              "capability_error"
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_tool"
+            ],
+            "gen_ai.tool.call.arguments": [
+              "str",
+              "{\"id\":\"o-1\",\"reason\":\"café 🚀\"}"
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "c2"
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "orders.cancel"
+            ],
+            "gen_ai.tool.type": [
+              "str",
+              "function"
+            ],
+            "mcp.method.name": [
+              "str",
+              "tools/call"
+            ],
+            "mcp.session.id": [
+              "str",
+              "mcp_sess_12"
+            ]
+          }
+        },
+        {
+          "name": "execute_tool shipping.dispatch",
+          "kind": "INTERNAL",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": 3,
+          "start_offset_ns": 70000,
+          "end_offset_ns": 70000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"gen_ai.tool.call.arguments\":{\"bytes\":12,\"hash\":\"sha256:6049da25685378d3c71d2760537286f60aeb0067a789041adfad823e2b3203bd\"}}"
+            ],
+            "code_mode.crossing.dispatched": [
+              "bool",
+              false
+            ],
+            "code_mode.crossing.outcome": [
+              "str",
+              "abandoned"
+            ],
+            "code_mode.crossing.seq": [
+              "int",
+              "3"
+            ],
+            "code_mode.crossing.timing": [
+              "str",
+              "start_only"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_1"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.provenance.code_mode.crossing.outcome": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.crossing.seq": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.arguments": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.name": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_tool"
+            ],
+            "gen_ai.tool.call.arguments": [
+              "str",
+              "{\"id\":\"o-2\"}"
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "c3"
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "shipping.dispatch"
+            ]
+          }
+        },
+        {
+          "name": "execute_code execute",
+          "kind": "SERVER",
+          "status": {
+            "code": "ERROR",
+            "description": "runtime"
+          },
+          "parent": "root",
+          "start_offset_ns": 0,
+          "end_offset_ns": 90000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"code_mode.program.text\":{\"bytes\":266,\"hash\":\"sha256:ed47aaf7c88a9d9d49a627fbc1c610b924b933446e0d87ea5fd92130c9d9fc9d\"},\"gen_ai.tool.call.result\":{\"bytes\":4,\"hash\":\"sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\"},\"code_mode.output.stdout\":{\"bytes\":23,\"hash\":\"sha256:ef6eb896659b970f62dc70c757bfdc52f17cd0e1924f7718f73995b4ce136dca\"},\"code_mode.output.stderr\":{\"bytes\":2,\"hash\":\"sha256:12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126\"},\"code_mode.error.body\":{\"bytes\":36,\"hash\":\"sha256:d376856f2ca9e5b477710e9518caa33f9ba9dc7e98b55d894ac1f38689956327\"},\"code_mode.error.message\":{\"bytes\":19,\"hash\":\"sha256:22d7800e36aab0fc1b00053f852fae0cd604f53eac9fd3891e2fec89ccf3e72b\"}}"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.declared": [
+              "str",
+              "{\"com.acme.credits_used\":{\"agg\":\"sum\",\"unit\":\"{credit}\",\"card\":\"low\",\"name\":\"Credits\"},\"com.acme.sandbox\":{\"agg\":\"none\",\"card\":\"high\"}}"
+            ],
+            "code_mode.error.body": [
+              "str",
+              "{\"type\":\"KeyError\",\"args\":[\"items\"]}"
+            ],
+            "code_mode.error.message": [
+              "str",
+              "\"KeyError: 'items'\""
+            ],
+            "code_mode.execution.disposition": [
+              "str",
+              "failed"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_1"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.output.stderr": [
+              "str",
+              "\"\""
+            ],
+            "code_mode.output.stdout": [
+              "str",
+              "\"cancelling 2 orders\\n\""
+            ],
+            "code_mode.program.hash": [
+              "str",
+              "sha256:ed47aaf7c88a9d9d49a627fbc1c610b924b933446e0d87ea5fd92130c9d9fc9d"
+            ],
+            "code_mode.program.language": [
+              "str",
+              "python"
+            ],
+            "code_mode.program.text": [
+              "str",
+              "import json\n\nasync def main(bridge):\n    orders = await bridge(\"orders.list\", {\"status\": \"open\"})\n    for o in orders[\"items\"]:\n        await bridge(\"orders.cancel\", {\"id\": o[\"id\"], \"reason\": \"café 🚀\"})\n    return json.dumps({\"cancelled\": len(orders[\"items\"])})\n"
+            ],
+            "code_mode.provenance.code_mode.error.body": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.error.message": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.output.stderr": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.output.stdout": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.program.language": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.program.text": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.com.acme.credits_used": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.com.acme.exit_code": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.com.acme.sandbox": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.error.type": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.result": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "com.acme.credits_used": [
+              "int",
+              "12"
+            ],
+            "com.acme.exit_code": [
+              "int",
+              "1"
+            ],
+            "com.acme.sandbox": [
+              "str",
+              "sb_1"
+            ],
+            "error.type": [
+              "str",
+              "runtime"
+            ],
+            "gen_ai.conversation.id": [
+              "str",
+              "conv_88"
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_code"
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "call_0f3a"
+            ],
+            "gen_ai.tool.call.result": [
+              "str",
+              "null"
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "execute"
+            ],
+            "mcp.session.id": [
+              "str",
+              "mcp_sess_12"
+            ]
+          }
+        }
+      ],
+      "metrics": [
+        {
+          "instrument": "code_mode.crossing.duration",
+          "unit": "s",
+          "attributes": {},
+          "count": 2,
+          "sum": 4.4e-05
+        },
+        {
+          "instrument": "code_mode.execution.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.execution.disposition": [
+              "str",
+              "failed"
+            ],
+            "error.type": [
+              "str",
+              "runtime"
+            ]
+          },
+          "count": 1,
+          "sum": 9e-05
+        }
+      ]
+    },
+    {
+      "name": "program-truncation",
+      "spans": [
+        {
+          "name": "execute_tool kv.get",
+          "kind": "CLIENT",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": 1,
+          "start_offset_ns": 5000,
+          "end_offset_ns": 6000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              [
+                [
+                  "str",
+                  "crossing.target"
+                ],
+                [
+                  "str",
+                  "crossing.input"
+                ],
+                [
+                  "str",
+                  "crossing.output"
+                ],
+                [
+                  "str",
+                  "crossing.error"
+                ],
+                [
+                  "str",
+                  "execution.error.class"
+                ],
+                [
+                  "str",
+                  "host_attributes"
+                ]
+              ]
+            ],
+            "code_mode.attested_attributes": [
+              "array",
+              [
+                [
+                  "str",
+                  "com.acme.sandbox"
+                ]
+              ]
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"gen_ai.tool.call.arguments\":{\"bytes\":3,\"hash\":\"sha256:37664d5895f78758ec8e94e440b30c9a2cfc68873c28306301b40d6a2f3fefa3\"},\"gen_ai.tool.call.result\":{\"bytes\":3,\"hash\":\"sha256:d1a4dc8b61ef51fa5f72b229df8d29b26f391b9fbbd3ec9078b7c9f66b9cc59a\"}}"
+            ],
+            "code_mode.crossing.outcome": [
+              "str",
+              "output"
+            ],
+            "code_mode.crossing.seq": [
+              "int",
+              "1"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "dispatch"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_2"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.result": [
+              "str",
+              "T"
+            ],
+            "code_mode.relayed_attributes": [
+              "array",
+              [
+                [
+                  "str",
+                  "com.acme.credits_used"
+                ]
+              ]
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              true
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_tool"
+            ],
+            "gen_ai.tool.call.arguments": [
+              "str",
+              "\"k\""
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "k1"
+            ],
+            "gen_ai.tool.call.result": [
+              "str",
+              "\"v\""
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "kv.get"
+            ]
+          }
+        },
+        {
+          "name": "execute_code execute",
+          "kind": "SERVER",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": "root",
+          "start_offset_ns": 0,
+          "end_offset_ns": 10000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              [
+                [
+                  "str",
+                  "crossing.target"
+                ],
+                [
+                  "str",
+                  "crossing.input"
+                ],
+                [
+                  "str",
+                  "crossing.output"
+                ],
+                [
+                  "str",
+                  "crossing.error"
+                ],
+                [
+                  "str",
+                  "execution.error.class"
+                ],
+                [
+                  "str",
+                  "host_attributes"
+                ]
+              ]
+            ],
+            "code_mode.attested_attributes": [
+              "array",
+              [
+                [
+                  "str",
+                  "com.acme.sandbox"
+                ]
+              ]
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"code_mode.program.text\":{\"bytes\":480,\"hash\":\"sha256:c1ba82eaa0dc43cdc40d7db0ad8aae8c24a28334295adfa7e9089999bd4e21e2\",\"truncated\":true},\"gen_ai.tool.call.result\":{\"bytes\":4,\"hash\":\"sha256:c48b5b1a9776c84602de2306d7903a7241158a5077e7a8519af75c33441b8334\"}}"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "dispatch"
+            ],
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_2"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.program.hash": [
+              "str",
+              "sha256:c1ba82eaa0dc43cdc40d7db0ad8aae8c24a28334295adfa7e9089999bd4e21e2"
+            ],
+            "code_mode.program.language": [
+              "str",
+              "python"
+            ],
+            "code_mode.program.text": [
+              "str",
+              "print(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café "
+            ],
+            "code_mode.provenance.code_mode.program.language": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.program.text": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.com.acme.credits_used": [
+              "str",
+              "T"
+            ],
+            "code_mode.provenance.com.acme.unnamed": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.result": [
+              "str",
+              "P"
+            ],
+            "code_mode.relayed_attributes": [
+              "array",
+              [
+                [
+                  "str",
+                  "com.acme.credits_used"
+                ]
+              ]
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              true
+            ],
+            "com.acme.credits_used": [
+              "int",
+              "7"
+            ],
+            "com.acme.sandbox": [
+              "str",
+              "sb_2"
+            ],
+            "com.acme.unnamed": [
+              "str",
+              "x"
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_code"
+            ],
+            "gen_ai.tool.call.result": [
+              "str",
+              "\"ok\""
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "execute"
+            ]
+          }
+        }
+      ],
+      "metrics": [
+        {
+          "instrument": "code_mode.crossing.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.crossing.outcome": [
+              "str",
+              "output"
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "kv.get"
+            ]
+          },
+          "count": 1,
+          "sum": 1e-06
+        },
+        {
+          "instrument": "code_mode.execution.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ]
+          },
+          "count": 1,
+          "sum": 1e-05
+        }
+      ]
+    },
+    {
+      "name": "numbers",
+      "spans": [
+        {
+          "name": "execute_tool math.stats",
+          "kind": "CLIENT",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": 1,
+          "start_offset_ns": 1000,
+          "end_offset_ns": 2000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"gen_ai.tool.call.arguments\":{\"bytes\":58,\"hash\":\"sha256:186338207d4485788d0e5c8bd14499f12f88b54949371a4de6a1e1e3a0f614bb\"},\"gen_ai.tool.call.result\":{\"bytes\":13,\"hash\":\"sha256:ad7ab64634b56f1d1975f9136cb7f0b2d369067bb5602a8c82b7d01a94b615d4\"}}"
+            ],
+            "code_mode.crossing.outcome": [
+              "str",
+              "output"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_3"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "some"
+            ],
+            "code_mode.provenance.code_mode.crossing.outcome": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.arguments": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.result": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.name": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_tool"
+            ],
+            "gen_ai.tool.call.arguments": [
+              "str",
+              "{\"a\":1,\"b\":1,\"c\":1.5,\"d\":1e+21,\"e\":9007199254740992,\"f\":0}"
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "n1"
+            ],
+            "gen_ai.tool.call.result": [
+              "str",
+              "[1,1,1.5,0.1]"
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "math.stats"
+            ]
+          }
+        },
+        {
+          "name": "execute_code",
+          "kind": "SERVER",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": "root",
+          "start_offset_ns": 0,
+          "end_offset_ns": 3000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"code_mode.program.text\":{\"bytes\":6,\"hash\":\"sha256:9e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f4\"},\"gen_ai.tool.call.result\":{\"bytes\":10,\"hash\":\"sha256:45a4ab7871b2c3bb2e87feb85193aecf9c8008e956847e29699a92013619a064\"}}"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_3"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "some"
+            ],
+            "code_mode.program.hash": [
+              "str",
+              "sha256:9e26bf369911c45c243c684147b23fc9e1dcfcf257d299a1c632016a6fcd33f4"
+            ],
+            "code_mode.program.text": [
+              "str",
+              "x = 1\n"
+            ],
+            "code_mode.provenance.code_mode.program.text": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.com.acme.count": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.com.acme.ratio": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.com.acme.whole": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.result": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "com.acme.count": [
+              "int",
+              "3"
+            ],
+            "com.acme.ratio": [
+              "double",
+              "0.5"
+            ],
+            "com.acme.whole": [
+              "int",
+              "2"
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_code"
+            ],
+            "gen_ai.tool.call.result": [
+              "str",
+              "{\"mean\":2}"
+            ]
+          }
+        }
+      ],
+      "metrics": [
+        {
+          "instrument": "code_mode.crossing.duration",
+          "unit": "s",
+          "attributes": {},
+          "count": 1,
+          "sum": 1e-06
+        },
+        {
+          "instrument": "code_mode.execution.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ]
+          },
+          "count": 1,
+          "sum": 3e-06
+        }
+      ]
+    },
+    {
+      "name": "nonfinite",
+      "spans": [
+        {
+          "name": "execute_tool sensor.read",
+          "kind": "CLIENT",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": 1,
+          "start_offset_ns": 1000,
+          "end_offset_ns": 2000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"gen_ai.tool.call.arguments\":{\"bytes\":14,\"hash\":\"sha256:d7dcc54015712d04e3bf128d21309a05d3a36b4d0bed6797b71842b4fb883cf4\"},\"gen_ai.tool.call.result\":{\"redacted\":true,\"bytes\":35,\"hash\":\"sha256:d7fa744eabcf4878140926f96848384ffe42a2cc2e07ce3591c1e7bd67ec615f\"}}"
+            ],
+            "code_mode.crossing.outcome": [
+              "str",
+              "output"
+            ],
+            "code_mode.crossing.seq": [
+              "int",
+              "1"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_4"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.provenance.code_mode.crossing.outcome": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.crossing.seq": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.arguments": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.result": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.name": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_tool"
+            ],
+            "gen_ai.tool.call.arguments": [
+              "str",
+              "{\"want\":\"all\"}"
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "f1"
+            ],
+            "gen_ai.tool.call.result": [
+              "str",
+              "{\"temp\":null,\"max\":null,\"min\":null}"
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "sensor.read"
+            ]
+          }
+        },
+        {
+          "name": "execute_code",
+          "kind": "SERVER",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": "root",
+          "start_offset_ns": 0,
+          "end_offset_ns": 3000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"code_mode.program.text\":{\"bytes\":17,\"hash\":\"sha256:0c3993ad3019c88c270c2f3a6fa74690c7b3b1c16a2d97be4535ff78c48c5c93\"}}"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_4"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.program.hash": [
+              "str",
+              "sha256:0c3993ad3019c88c270c2f3a6fa74690c7b3b1c16a2d97be4535ff78c48c5c93"
+            ],
+            "code_mode.program.text": [
+              "str",
+              "y = float('nan')\n"
+            ],
+            "code_mode.provenance.code_mode.program.text": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_code"
+            ]
+          }
+        }
+      ],
+      "metrics": [
+        {
+          "instrument": "code_mode.crossing.duration",
+          "unit": "s",
+          "attributes": {},
+          "count": 1,
+          "sum": 1e-06
+        },
+        {
+          "instrument": "code_mode.execution.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ]
+          },
+          "count": 1,
+          "sum": 3e-06
+        }
+      ]
+    },
+    {
+      "name": "unicode-hash",
+      "spans": [
+        {
+          "name": "execute_code",
+          "kind": "SERVER",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": "root",
+          "start_offset_ns": 0,
+          "end_offset_ns": 1000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"code_mode.program.text\":{\"bytes\":45,\"hash\":\"sha256:d68aaf911e49206e8826b5173ad7d40bfb37e899a523a2c029fd64e4e4887f06\"}}"
+            ],
+            "code_mode.execution.disposition": [
+              "str",
+              "abandoned"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_5"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "none"
+            ],
+            "code_mode.program.hash": [
+              "str",
+              "sha256:d68aaf911e49206e8826b5173ad7d40bfb37e899a523a2c029fd64e4e4887f06"
+            ],
+            "code_mode.program.language": [
+              "str",
+              "python"
+            ],
+            "code_mode.program.text": [
+              "str",
+              "# café café 🚀🌍 你好 مرحبا \u0001\n"
+            ],
+            "code_mode.provenance.code_mode.program.language": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.program.text": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              true
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_code"
+            ]
+          }
+        }
+      ],
+      "metrics": [
+        {
+          "instrument": "code_mode.execution.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.execution.disposition": [
+              "str",
+              "abandoned"
+            ]
+          },
+          "count": 1,
+          "sum": 1e-06
+        }
+      ]
+    },
+    {
+      "name": "over-measure",
+      "spans": [
+        {
+          "name": "execute_tool blob.read",
+          "kind": "CLIENT",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": 1,
+          "start_offset_ns": 1000,
+          "end_offset_ns": 2000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"gen_ai.tool.call.result\":{\"truncated\":true}}"
+            ],
+            "code_mode.crossing.outcome": [
+              "str",
+              "output"
+            ],
+            "code_mode.crossing.seq": [
+              "int",
+              "1"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_6"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.provenance.code_mode.crossing.outcome": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.crossing.seq": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.call.result": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.name": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_tool"
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "m1"
+            ],
+            "gen_ai.tool.call.result": [
+              "str",
+              "\"{\\\"rows\\\":[\\\"café-🚀-café-🚀-café-🚀-café-🚀-café-🚀-café-🚀-café-🚀-café-🚀-café-🚀-café-🚀-caf\""
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "blob.read"
+            ]
+          }
+        },
+        {
+          "name": "execute_code",
+          "kind": "SERVER",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": "root",
+          "start_offset_ns": 0,
+          "end_offset_ns": 3000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"code_mode.program.text\":{\"bytes\":6,\"hash\":\"sha256:1bc01ef3687ccfe07da22018dfe7851781c442c8b4ec7bd718d0c1f145529ad1\"}}"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_6"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.program.hash": [
+              "str",
+              "sha256:1bc01ef3687ccfe07da22018dfe7851781c442c8b4ec7bd718d0c1f145529ad1"
+            ],
+            "code_mode.program.text": [
+              "str",
+              "z = 1\n"
+            ],
+            "code_mode.provenance.code_mode.program.text": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_code"
+            ]
+          }
+        }
+      ],
+      "metrics": [
+        {
+          "instrument": "code_mode.crossing.duration",
+          "unit": "s",
+          "attributes": {},
+          "count": 1,
+          "sum": 1e-06
+        },
+        {
+          "instrument": "code_mode.execution.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ]
+          },
+          "count": 1,
+          "sum": 3e-06
+        }
+      ]
+    },
+    {
+      "name": "huge-string",
+      "spans": [
+        {
+          "name": "execute_tool blob.dump",
+          "kind": "CLIENT",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": 1,
+          "start_offset_ns": 1000,
+          "end_offset_ns": 2000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"gen_ai.tool.call.result\":{\"redacted\":true}}"
+            ],
+            "code_mode.crossing.outcome": [
+              "str",
+              "output"
+            ],
+            "code_mode.crossing.seq": [
+              "int",
+              "1"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_7"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.provenance.code_mode.crossing.outcome": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.code_mode.crossing.seq": [
+              "str",
+              "P"
+            ],
+            "code_mode.provenance.gen_ai.tool.name": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_tool"
+            ],
+            "gen_ai.tool.call.id": [
+              "str",
+              "h1"
+            ],
+            "gen_ai.tool.name": [
+              "str",
+              "blob.dump"
+            ]
+          }
+        },
+        {
+          "name": "execute_code",
+          "kind": "SERVER",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": "root",
+          "start_offset_ns": 0,
+          "end_offset_ns": 3000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.capture": [
+              "str",
+              "{\"code_mode.program.text\":{\"bytes\":6,\"hash\":\"sha256:3fd7969b503c4f04214488e96e0201aca76f2174edf7ff43d1d2c9fdd85a5bbe\"}}"
+            ],
+            "code_mode.crossing_edge": [
+              "str",
+              "invocation"
+            ],
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_7"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "all"
+            ],
+            "code_mode.program.hash": [
+              "str",
+              "sha256:3fd7969b503c4f04214488e96e0201aca76f2174edf7ff43d1d2c9fdd85a5bbe"
+            ],
+            "code_mode.program.text": [
+              "str",
+              "z = 2\n"
+            ],
+            "code_mode.provenance.code_mode.program.text": [
+              "str",
+              "P"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              false
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_code"
+            ]
+          }
+        }
+      ],
+      "metrics": [
+        {
+          "instrument": "code_mode.crossing.duration",
+          "unit": "s",
+          "attributes": {},
+          "count": 1,
+          "sum": 1e-06
+        },
+        {
+          "instrument": "code_mode.execution.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ]
+          },
+          "count": 1,
+          "sum": 3e-06
+        }
+      ]
+    },
+    {
+      "name": "lone-surrogate",
+      "spans": [
+        {
+          "name": "execute_code",
+          "kind": "SERVER",
+          "status": {
+            "code": "UNSET",
+            "description": null
+          },
+          "parent": "root",
+          "start_offset_ns": 0,
+          "end_offset_ns": 1000,
+          "events": [],
+          "attributes": {
+            "code_mode.attested": [
+              "array",
+              []
+            ],
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ],
+            "code_mode.execution.id": [
+              "str",
+              "exec_fixed_8"
+            ],
+            "code_mode.observes_crossings": [
+              "str",
+              "none"
+            ],
+            "code_mode.program.hash": [
+              "str",
+              "sha256:fbd11afb8989888bd4d2a4eb5021ade171ab8b1e0e0033da75ca967b1b0ec3fc"
+            ],
+            "code_mode.unmediated_egress": [
+              "bool",
+              true
+            ],
+            "gen_ai.operation.name": [
+              "str",
+              "execute_code"
+            ]
+          }
+        }
+      ],
+      "metrics": [
+        {
+          "instrument": "code_mode.execution.duration",
+          "unit": "s",
+          "attributes": {
+            "code_mode.execution.disposition": [
+              "str",
+              "completed"
+            ]
+          },
+          "count": 1,
+          "sum": 1e-06
+        }
+      ]
+    }
+  ]
+}

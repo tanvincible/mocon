@@ -199,6 +199,12 @@ interface Walk {
   complete: boolean;
   /** Binary was written as a base64 string somewhere in the value. */
   binary: boolean;
+  /**
+   * A value JSON cannot hold was replaced somewhere inside: `NaN`, `Infinity`, `-Infinity`. That is
+   * a change to the host's own data, so the caller must report it rather than publish a hash of a
+   * serialization the original never had.
+   */
+  substituted: boolean;
 }
 
 /** Cycles this shallow are found by scanning the open containers, not a set. */
@@ -225,12 +231,13 @@ const SLACK = 512;
 function walk(root: unknown, limit: number, readBound: number, buffer: Buffer): Walk {
   const walker = new Walker(limit, readBound, buffer);
   const size = walker.value(0, root, 0);
-  return { buffer: walker.buffer, size, complete: !walker.stopped, binary: walker.binary };
+  return { buffer: walker.buffer, size, complete: !walker.stopped, binary: walker.binary, substituted: walker.substituted };
 }
 
 class Walker {
   stopped = false;
   binary = false;
+  substituted = false;
   private readonly open: object[] = [];
   private deep: Set<object> | undefined;
   /** Object members read that serialized to nothing, and so wrote no byte. */
@@ -398,7 +405,10 @@ class Walker {
 
   /** A number as `JSON.stringify` writes it; a small integer digit by digit. */
   private number(at: number, v: number): number {
-    if (!(v >= 0 && v < 1e9 && v === Math.floor(v))) return this.ascii(at, Number.isFinite(v) ? "" + v : "null");
+    if (!(v >= 0 && v < 1e9 && v === Math.floor(v))) {
+      if (!Number.isFinite(v)) this.substituted = true;
+      return this.ascii(at, Number.isFinite(v) ? "" + v : "null");
+    }
     this.reserve(at, 9);
     const b = this.buffer;
     let end = at + 1;
@@ -457,6 +467,8 @@ export interface Encoded {
   binary: boolean;
   /** Serializes to nothing: `undefined`, a function or a symbol. */
   omitted: boolean;
+  /** A `NaN` or an infinity was replaced with `null` somewhere inside the value. */
+  substituted: boolean;
 }
 
 export interface Literal {
@@ -465,7 +477,7 @@ export interface Literal {
   cut: boolean;
 }
 
-const OMITTED: Encoded = Object.freeze({ valueText: undefined, truncated: false, bytes: undefined, hash: undefined, binary: false, omitted: true });
+const OMITTED: Encoded = Object.freeze({ valueText: undefined, truncated: false, bytes: undefined, hash: undefined, binary: false, omitted: true, substituted: false });
 
 /**
  * Serializes values under the rule in `serialize.ts`, reading each once and
@@ -496,7 +508,7 @@ export class Encoder {
       case "string":
         return this.string(v, cap, describe, preview);
       case "number":
-        return this.known(Number.isFinite(v) ? "" + v : "null", cap, describe, preview);
+        return { ...this.known(Number.isFinite(v) ? "" + v : "null", cap, describe, preview), substituted: !Number.isFinite(v) };
       case "boolean":
         return this.known(v ? "true" : "false", cap, describe, preview);
       case "bigint":
@@ -505,11 +517,11 @@ export class Encoder {
         if (v === null) return this.known("null", cap, describe, preview);
         if (v instanceof Binary) return this.binary(v, cap, describe, preview);
         const w = this.walk(v, cap, READ_FACTOR * cap);
-        const { buffer, size, binary } = w;
+        const { buffer, size, binary, substituted } = w;
         const hash = describe && w.complete ? sha256(buffer.subarray(0, size)) : undefined;
         const text = buffer.toString("utf8", 0, size);
-        if (w.complete && size <= preview) return { valueText: text, truncated: false, bytes: size, hash, binary, omitted: false };
-        return { valueText: this.literal(text, preview).text, truncated: true, bytes: hash === undefined ? undefined : size, hash, binary, omitted: false };
+        if (w.complete && size <= preview) return { valueText: text, truncated: false, bytes: size, hash, binary, omitted: false, substituted };
+        return { valueText: this.literal(text, preview).text, truncated: true, bytes: hash === undefined ? undefined : size, hash, binary, omitted: false, substituted };
       }
       default:
         return OMITTED;
@@ -540,13 +552,13 @@ export class Encoder {
       // One to three bytes per UTF-16 unit: outside that, the write stopped short unseen.
       invariant(written >= text.length && written <= text.length * 3, "bytes equals the byte length of the serialization the hash is taken over");
       const hash = describe ? sha256(buffer.subarray(0, written)) : undefined;
-      if (written <= preview) return { valueText: text, truncated: false, bytes: written, hash, binary: false, omitted: false };
-      return { valueText: this.literal(text, preview).text, truncated: true, bytes: written, hash, binary: false, omitted: false };
+      if (written <= preview) return { valueText: text, truncated: false, bytes: written, hash, binary: false, omitted: false, substituted: false };
+      return { valueText: this.literal(text, preview).text, truncated: true, bytes: written, hash, binary: false, omitted: false, substituted: false };
     }
     const valueText = this.literal(text, preview).text;
     return describe
-      ? { valueText, truncated: true, bytes: Buffer.byteLength(text), hash: sha256(text), binary: false, omitted: false }
-      : { valueText, truncated: true, bytes: undefined, hash: undefined, binary: false, omitted: false };
+      ? { valueText, truncated: true, bytes: Buffer.byteLength(text), hash: sha256(text), binary: false, omitted: false, substituted: false }
+      : { valueText, truncated: true, bytes: undefined, hash: undefined, binary: false, omitted: false, substituted: false };
   }
 
   /**
@@ -577,7 +589,7 @@ export class Encoder {
   private string(s: string, cap: number, describe: boolean, preview: number): Encoded {
     if (s.length <= cap) return this.known(quote(s), cap, describe, preview);
     const valueText = s.length > READ_FACTOR * cap ? undefined : this.literal(quote(s.slice(0, cutAt(s, preview))), preview).text;
-    return { valueText, truncated: true, bytes: undefined, hash: undefined, binary: false, omitted: false };
+    return { valueText, truncated: true, bytes: undefined, hash: undefined, binary: false, omitted: false, substituted: false };
   }
 
   /** Binary: base64, with `bytes` and `hash` over the raw bytes (core.md 5.4). */
@@ -587,11 +599,11 @@ export class Encoder {
     // The raw length is known without reading the bytes, so a cut binary value keeps it; the hash needs the bytes.
     const bytes = describe ? size : undefined;
     const hash = describe && written <= cap ? sha256(b.view(size)) : undefined;
-    if (written <= preview) return { valueText: '"' + b.base64(size) + '"', truncated: false, bytes, hash, binary: true, omitted: false };
+    if (written <= preview) return { valueText: '"' + b.base64(size) + '"', truncated: false, bytes, hash, binary: true, omitted: false, substituted: false };
     // A prefix `"<base64>` travels as `"\"<base64>"`: four bytes around whole groups.
     const groups = Math.floor((preview - 4) / 4);
     const valueText = groups < 0 ? undefined : '"\\"' + b.base64(groups * 3) + '"';
-    return { valueText, truncated: true, bytes, hash, binary: true, omitted: false };
+    return { valueText, truncated: true, bytes, hash, binary: true, omitted: false, substituted: false };
   }
 
   /** How many UTF-16 units of `s`, whole code points, fit in `bytes` bytes of UTF-8. */

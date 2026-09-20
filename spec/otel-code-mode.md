@@ -1403,3 +1403,42 @@ These are the claims this specification is built on, not claims about any one im
 - **X3. Environment is not fixed.** The callable surface can change during an execution. Core does not record it.
 - **X4. No universal output channel.** Non-crossing outputs such as standard output are optional, per channel.
 - **X5. Meaning is declared, identity is fixed.** A host declares what its own attributes mean, so a consumer that has never heard of it can read them. No declaration reaches identity: not what an execution or a crossing is, not the closed dispositions and outcomes, not the reading of any attribute this document defines. This specification fixes the spine; everything above it is the host's to declare.
+
+## Appendix B. What two implementations must agree on
+
+A second implementation, in another language, was written against this document and diffed against
+the first over one scenario. Every attribute the conventions are actually about came out identical:
+both spans, the declaration, every provenance label, the closed vocabularies, crossing timing, seq,
+the MCP attributes, and both metric instruments with their section 9 gate. That is the result, and it
+is what makes this a convention rather than a library with a document attached.
+
+Four things diverged, and every one is a place this document is silent rather than a place either
+implementation is wrong. They are listed because a third implementation will hit all four.
+
+**Which cap bounds a truncated program.** Section 7 says the value is a prefix of the host's
+serialization. One implementation read that as the serialized size, so the raw prefix is shorter by
+the cost of quoting and escaping; the other cut at the raw size. Both write raw source and both report
+the same `bytes` and `hash` of the whole. This document should say which.
+
+**What happens to the readable part of an unserializable value.** A payload holding `NaN` cannot be
+represented in JSON. One implementation writes the rest and flags `redacted`, keeping the readings it
+could serialize; the other drops the value entirely and flags `redacted`. Both are honest under
+section 7, and they disagree on how much survives.
+
+**A single value far larger than the cap.** One implementation refuses to read it at all past a
+multiple of the cap, which is a deliberate guard against a program that makes the host serialize
+something enormous, and reports `redacted`. The other cuts it and reports `truncated`. A consumer
+cannot reconcile "the host withheld this" with "here are the first sixty-four bytes" for the same
+payload, and the guard is worth having, so this document should require the bound and name the flag.
+
+**A program text containing an unpaired surrogate.** Section 4.2 says the hash is over the UTF-8
+bytes, and an unpaired surrogate has no UTF-8 encoding. One implementation substitutes the
+replacement character, the other writes WTF-8. The hashes agree for every well-formed program: ASCII,
+Latin-1, astral pairs, combining sequences, CJK, right-to-left text and control characters. This
+document should say which substitution is required, because the hash is the cross-host matching key.
+
+**And one thing that can never agree**, which this document already half says. `code_mode.capture`
+carries `bytes` and `hash` of the host's own serialization, and section 7 calls them comparable only
+within one host. Two languages do not format numbers identically: an integral float, a negative zero
+and an integer past 2^53 all serialize differently. So that hash is a within-host key and never a
+cross-host one, and the sentence saying so should be somewhere a reader will meet it.

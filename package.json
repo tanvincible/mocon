@@ -14,7 +14,7 @@
     "build": "tsc -b packages/trace",
     "test": "npm run build && npm run test --workspaces --if-present",
     "bench": "npm run build && node bench/trace.mjs",
-    "docs": "mdbook build docs",
+    "docs": "mdbook build docs && cp docs/src/llms.txt docs/book/llms.txt",
     "docs:serve": "mdbook serve docs --open"
   },
   "devDependencies": {

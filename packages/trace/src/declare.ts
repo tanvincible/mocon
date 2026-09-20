@@ -52,13 +52,44 @@ export interface Dimension {
 }
 
 export interface Capabilities {
-  /** `all` and `some` claim the host mediates; `none` says it does not observe a call boundary. */
+  /**
+   * `all`, `some` or `none`.
+   *
+   * **`all` means nothing can answer the program before the instrumented function.** Not "my wrapper
+   * sees every call that reaches it". Check for a call cap, a deadline guard, a rate limiter, a
+   * cache, or a permission check that refuses before dispatch: if any of those can return to the
+   * program without passing through the wrapped function, some calls produce no span and this is
+   * `some`.
+   *
+   * The check is mechanical. Instrument, run a program that hits every refusal path, and count the
+   * spans against the calls. If they do not match, it is `some`.
+   *
+   * Everything else on the span is conditional on this being honest, and it is the one claim this
+   * library cannot check. Over-claiming here is the most damaging mistake available.
+   */
   observes_crossings: Observes;
-  /** True when the program has a path out the host does not see. It blocks "N spans, N calls". */
+  /**
+   * True when the program has a path out the host does not see: raw network, a subprocess, an
+   * escapable isolate. It blocks the inference "N spans, therefore N external calls".
+   *
+   * If you are not certain your sandbox is airtight, `true` is the honest answer.
+   */
   unmediated_egress: boolean;
-  /** Which edge a crossing span describes: what the program asked for, or what the host sent. */
+  /**
+   * Which edge a crossing span describes. `invocation` is what the program asked for, `dispatch` is
+   * what the host actually sent after retries and rewrites. Wrapping the bridge the program calls is
+   * `invocation`, which is almost always the case.
+   */
   crossing_edge?: CrossingEdge;
-  /** What the host observed rather than took from the program. Omitted means it attests nothing. */
+  /**
+   * What the host observed rather than took from the program. Omitting it attests nothing, which is
+   * safe: every field then reads as a program claim.
+   *
+   * Attest something only if it is true for **every** span emitted; there is no per-call opt-out.
+   * Do not attest a field derived from anything the program wrote. If an error class is computed
+   * partly by matching a thrown value's name or message, the program can choose it, and a host with
+   * both an observed path and a parsed path for one field does not attest that field.
+   */
   attested?: readonly Attestation[];
   /** Requires `host_attributes`: the keys in the host's own namespace that the host itself observed. */
   attested_attributes?: readonly string[];

@@ -139,3 +139,36 @@ test("an error field passed with a successful outcome is ignored, not written", 
   assert.equal("error.type" in (crossing?.attributes ?? {}), false, "the closed outcome decides, not the stray field");
   assert.equal(crossing?.status.code, 0, "and the status stays Unset");
 });
+
+/**
+ * Both of these were found by a second implementation in another language disagreeing with this one,
+ * which is the only way either would have been noticed.
+ */
+
+test("a value JSON cannot hold is replaced, and the note says so instead of hiding it", () => {
+  const h = harness();
+  h.m.execution.start({ program: "p" }).complete({ result: { temp: NaN, max: Infinity, ok: 1 } });
+  const span = h.spans()[0] as ReadableSpan;
+  // The readable parts survive, which is better than dropping the lot, but a reading became a
+  // non-reading and a consumer must not be told nothing happened to it.
+  assert.equal(span.attributes["gen_ai.tool.call.result"], '{"temp":null,"max":null,"ok":1}');
+  assert.equal(note(span)["gen_ai.tool.call.result"]?.["redacted"], true);
+});
+
+test("a finite payload carries no redaction flag, so the flag means something", () => {
+  const h = harness();
+  h.m.execution.start({ program: "p" }).complete({ result: { temp: 21.5, ok: 1 } });
+  assert.equal("redacted" in (note(h.spans()[0] as ReadableSpan)["gen_ai.tool.call.result"] ?? {}), false);
+});
+
+test("a truncated program is a prefix of the program, not of its JSON literal", () => {
+  const exporter = new InMemorySpanExporter();
+  const provider = new BasicTracerProvider();
+  provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+  const m = codeMode({ capabilities: CAPS, capture: { values: true, programCap: 200 }, tracer: provider.getTracer("t") });
+  const program = "const x = 1;\n".repeat(40);
+  m.execution.start({ program }).complete();
+  const written = exporter.getFinishedSpans()[0]?.attributes["code_mode.program.text"] as string;
+  assert.ok(program.startsWith(written), "a reader can match it against the source they hold");
+  assert.equal(written.includes("\\n"), false, "and it is source, not an escaped JSON literal");
+});
