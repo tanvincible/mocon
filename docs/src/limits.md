@@ -58,6 +58,17 @@ happened. Use a parent-based sampler.
 **Attribute length limits** in the SDK cut values after mocon has already recorded what it did, so
 something captured whole can arrive shortened with nothing saying so. Set your own cap lower.
 
+## Runtime
+
+The TypeScript package needs Node 20 or later. It uses `Buffer`, `node:crypto` and `node:util`, so it
+won't run on Workers, Deno, or in a browser. If your sandbox lives on one of those, that package
+isn't an option today.
+
+The attributes themselves don't care. They're plain OpenTelemetry, the
+[reference](./attributes-reference.md) lists every one, and the
+[specification](./spec.md) says exactly what each means. Emitting them yourself from whatever
+runtime you're on gets you the same spans, and a second implementation already does exactly that.
+
 ## Not standard
 
 `code_mode.*` is this project's own namespace and nobody else has agreed to it. The `gen_ai.*` and

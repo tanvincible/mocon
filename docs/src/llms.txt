@@ -24,6 +24,22 @@ return observed.execution.run({ program: source, tool: "execute" }, (execution) 
 
 Python is the same shape with a context manager: `with observed.execution(program=src, tool="execute") as ex:`.
 
+No function to wrap, because the sandbox is out of process, behind a queue, or only readable from a
+log afterwards? Record the calls directly. `instrument` is built on this and the spans are identical.
+
+```ts
+const crossing = execution.crossing.start({ target: "orders.list", input: params, seq: 2 });
+crossing.output(result);  // or crossing.error(failure)
+```
+
+They may settle out of order or never: anything still open when the execution ends is closed as
+`abandoned`. Pass `id` to `execution.start` to record calls from a different process than the one
+that started the run, since every crossing carries the execution id.
+
+Runtime: the TypeScript package needs Node 20 or later. It uses `Buffer`, `node:crypto` and
+`node:util`, so it does not run on Workers, Deno or a browser. The attributes are plain
+OpenTelemetry, so emitting them directly from such a host is the way in.
+
 ## Output
 
 Three OpenTelemetry signals from those two wrappers, each inert if the application configured no

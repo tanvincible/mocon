@@ -48,6 +48,9 @@ can answer the program produces no span at all.
 is just another thing the program controls. If yours is reachable from inside, your telemetry says
 whatever the program wants.
 
+**No function to wrap?** If your sandbox runs somewhere else and reports back, see
+[No bridge](./no-bridge.md). You record the calls yourself and get the same spans.
+
 ### Envelopes
 
 Lots of bridges return `{ ok: false, error }` instead of throwing. mocon reads a normal return as
