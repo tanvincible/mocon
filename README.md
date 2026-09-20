@@ -1,6 +1,10 @@
-# mocon
+<p align="center">
+  <img src="./docs/src/assets/logo.svg" width="76" height="76" alt="mocon">
+</p>
 
-**OpenTelemetry for code-mode MCP servers.**
+<h1 align="center">mocon</h1>
+
+<p align="center"><strong>OpenTelemetry for code-mode MCP servers.</strong></p>
 
 In code mode the agent doesn't call your tools. It sends you a **program**, you run it in a sandbox,
 and the program calls your tools from inside. From the outside that whole run is one opaque tool
