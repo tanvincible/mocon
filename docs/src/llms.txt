@@ -23,7 +23,7 @@ return observed.execution.run({ program: source, tool: "execute" }, (execution) 
 
 Python is the same shape with a context manager: `with observed.execution(program=src, tool="execute") as ex:`.
 
-## What comes out
+## Output
 
 Three OpenTelemetry signals from those two wrappers, each inert if the application configured no
 provider for it.
@@ -35,7 +35,7 @@ provider for it.
 No OpenTelemetry at all: pass `logTracer(record => logger.info(record))` and each span becomes a flat
 record in an existing logger.
 
-## The four things that go wrong
+## Mistakes
 
 1. **No tracer provider registered.** The API silently does nothing. No spans, no error, exit zero.
 2. **Claiming `observes_crossings: "all"` when something answers the program first.** A call cap, a
@@ -46,7 +46,7 @@ record in an existing logger.
 4. **Starting the run span after rejection checks.** Runs refused for auth, lint or capacity then
    produce no span and look like no traffic.
 
-## Provenance, which is the part nothing else does
+## Provenance
 
 The program is AI-written and can say anything. Any value the host did not observe carries a label
 beside it: `code_mode.provenance.<key>` is `P` for a program claim or `T` for a target's report, and
@@ -56,7 +56,7 @@ over-claims.
 `T` does not mean the target saw the call. A refusal the host produced itself is also `T`. Read
 `code_mode.crossing.dispatched` to tell them apart.
 
-## Vocabularies, closed
+## Vocabularies
 
 - `code_mode.execution.disposition`: `completed`, `failed`, `terminated`, `abandoned`.
 - `code_mode.crossing.outcome`: `output`, `error`, `abandoned`.
@@ -64,7 +64,7 @@ over-claims.
 Span status has three values and cannot carry these, so read the attributes. `abandoned` is neither
 success nor failure: the host stopped watching before it knew.
 
-## Limits worth knowing
+## Limits
 
 - A run still in progress is not in the trace, because a span exports only when it ends. The started
   log record is the only thing that shows work in flight.
