@@ -204,8 +204,8 @@ function errorShape(v: object): object | undefined {
   return out;
 }
 
-/** One shape per error, so the walker's identity check sees a cycle through an error as a cycle. */
-const shapes = new WeakMap<object, object>();
+/** One shape per error FOR ONE WALK, so the walker's identity check sees a cycle as a cycle. */
+let shapes = new WeakMap<object, object>();
 
 /** One property of a value the program may have authored: a throwing getter costs the field. */
 function quiet(v: object, key: string): unknown {
@@ -283,6 +283,24 @@ function walk(root: unknown, limit: number, readBound: number, buffer: Buffer): 
   const walker = new Walker(limit, readBound, buffer);
   const size = walker.value(0, root, 0);
   return { buffer: walker.buffer, size, complete: !walker.stopped, binary: walker.binary, substituted: walker.substituted };
+}
+
+/**
+ * Runs one capture with its own error shapes. They exist so the walker's identity scan sees a cycle
+ * through an error, which needs them stable across ONE capture and never beyond it: an error is
+ * mutable, a host annotates one on its way out, and a shape kept afterwards republishes the first
+ * capture's content on every later one, under a hash asserting it was read whole. The boundary is
+ * here rather than in `walk` because `settle` resolves the top-level value before the walk starts.
+ * Saved and restored rather than cleared, since a capture can re-enter through a getter.
+ */
+function scoped<T>(run: () => T): T {
+  const outer = shapes;
+  shapes = new WeakMap<object, object>();
+  try {
+    return run();
+  } finally {
+    shapes = outer;
+  }
 }
 
 class Walker {
@@ -554,6 +572,10 @@ export class Encoder {
    * `bytes` and `hash` of the whole.
    */
   encode(value: unknown, cap: number, describe: boolean, preview: number = cap): Encoded {
+    return scoped(() => this.encodeIn(value, cap, describe, preview));
+  }
+
+  private encodeIn(value: unknown, cap: number, describe: boolean, preview: number): Encoded {
     const v = settle(value, "");
     switch (typeof v) {
       case "string":
@@ -581,8 +603,10 @@ export class Encoder {
 
   /** The whole serialization, as `hash-only` reads it; `undefined` past `WHOLE_LIMIT`. */
   whole(v: unknown): Uint8Array | undefined {
-    const w = this.walk(v, WHOLE_LIMIT, 0);
-    return w.complete && w.size <= WHOLE_LIMIT ? w.buffer.subarray(0, w.size) : undefined;
+    return scoped(() => {
+      const w = this.walk(v, WHOLE_LIMIT, 0);
+      return w.complete && w.size <= WHOLE_LIMIT ? w.buffer.subarray(0, w.size) : undefined;
+    });
   }
 
   private walk(v: unknown, limit: number, readBound: number): Walk {

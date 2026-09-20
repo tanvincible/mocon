@@ -167,7 +167,7 @@ class LogSpan implements Span {
       kind: KINDS[this.kind] ?? "internal",
       trace_id: this.ctx.traceId,
       span_id: this.ctx.spanId,
-      start: new Date(this.startMs).toISOString(),
+      start: iso(this.startMs),
       duration_ms: Math.max(0, endMs - this.startMs),
     };
     if (this.parent !== undefined) record.parent_span_id = this.parent.spanId;
@@ -199,6 +199,15 @@ function decode(text: string): unknown {
 }
 
 const { isDate } = types;
+
+/** A time outside the Date range has no ISO form, and losing the record over it is the worse loss. */
+function iso(ms: number): string {
+  try {
+    return new Date(ms).toISOString();
+  } catch {
+    return new Date(0).toISOString();
+  }
+}
 
 function millis(time: TimeInput | undefined): number | undefined {
   if (time === undefined) return undefined;

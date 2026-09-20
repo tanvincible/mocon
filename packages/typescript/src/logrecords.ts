@@ -64,9 +64,12 @@ export class Records {
 
   private emit(event: string, body: string, attributes: Attributes, traceId: string, spanId: string): void {
     if (!this.enabled) return;
-    const log = get();
-    if (log === undefined) return;
     try {
+      // `get` is inside the guard too: it calls the provider's own `getLogger`, and a provider that
+      // throws there would otherwise raise out of `execution.complete()`, which ends the span before
+      // this runs. The dispatch would fail after its own telemetry said it succeeded.
+      const log = get();
+      if (log === undefined) return;
       log.emit({
         severityNumber: INFO,
         severityText: "INFO",

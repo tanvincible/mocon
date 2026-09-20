@@ -302,3 +302,62 @@ test("a time from another realm is read as a time, not as NaN", () => {
   const seconds = span.duration[0] + span.duration[1] / 1e9;
   assert.ok(seconds > 4 && seconds < 7, `duration was ${seconds}s`);
 });
+
+test("a re-captured error reports what it is now, not what it was the first time", () => {
+  // The shape memo exists only to make a cycle terminate within one capture. Kept beyond that, it
+  // republished the first capture's content under a hash asserting the value was read whole, which
+  // is the spec's second-worst outcome: telemetry that is false rather than absent.
+  const e = new Error("attempt 1 failed") as Error & Record<string, unknown>;
+  e["attempt"] = 1;
+
+  const first = harness();
+  first.m.execution.start({ program: "p" }).fail(e);
+  assert.equal((first.spans()[0] as ReadableSpan).attributes["code_mode.error.body"], '{"name":"Error","message":"attempt 1 failed","attempt":1}');
+
+  e.message = "attempt 2 failed";
+  e["attempt"] = 2;
+  const second = harness();
+  second.m.execution.start({ program: "p" }).fail(e);
+  assert.equal((second.spans()[0] as ReadableSpan).attributes["code_mode.error.body"], '{"name":"Error","message":"attempt 2 failed","attempt":2}');
+});
+
+test("an error that stops being cyclic stops being redacted", () => {
+  const e = new Error("boom") as Error & Record<string, unknown>;
+  e["self"] = e;
+  const cyclic = harness();
+  cyclic.m.execution.start({ program: "p" }).fail(e);
+  assert.deepEqual(note(cyclic.spans()[0] as ReadableSpan)["code_mode.error.body"], { redacted: true });
+
+  delete e["self"];
+  const plain = harness();
+  plain.m.execution.start({ program: "p" }).fail(e);
+  assert.equal((plain.spans()[0] as ReadableSpan).attributes["code_mode.error.body"], '{"name":"Error","message":"boom"}');
+});
+
+test("no time a caller can supply reaches the caller as a throw", () => {
+  const times: Array<[string, unknown]> = [
+    ["a throwing valueOf", { valueOf() { throw new Error("TRAP"); }, toString() { throw new Error("TRAP"); } }],
+    ["NaN", NaN],
+    ["an invalid Date", new Date(NaN)],
+    ["past the Date range", 1e300],
+    ["a pair with a throwing element", [{ valueOf() { throw new Error("TRAP"); } }, 0]],
+    ["a pair of the wrong length", [5]],
+    ["a symbol", Symbol("t")],
+  ];
+  for (const [what, time] of times) {
+    const h = harness();
+    const ex = h.m.execution.start({ program: "p", startTime: time as never });
+    ex.complete({ endTime: time as never });
+    const span = h.spans()[0] as ReadableSpan;
+    // Not merely contained: the span still has a usable time rather than a NaN one.
+    assert.ok(Number.isFinite(span.duration[0] + span.duration[1] / 1e9), `${what} left a span with no readable duration`);
+  }
+});
+
+test("a host cannot set the dimension the duration histograms are split by", () => {
+  const h = harness();
+  h.m.execution.start({ program: "p", attributes: { "error.type": "anything-at-all", team: "billing" } }).complete();
+  const span = h.spans()[0] as ReadableSpan;
+  assert.equal(span.attributes["error.type"], undefined);
+  assert.equal(span.attributes["team"], "billing");
+});

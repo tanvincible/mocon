@@ -48,6 +48,16 @@ interface HostClasses {
 const RESERVED = ["code_mode.", "gen_ai.", "mcp.", "otel."];
 
 /**
+ * A key the emitter owns. `error.type` is not in a namespace but is just as much the emitter's: it
+ * is the dimension both duration histograms are split by, so a host that sets it from anything the
+ * program influenced turns a bounded facet into unbounded cardinality, which is how an observability
+ * bill becomes an outage.
+ */
+function reserved(key: string): boolean {
+  return key === "error.type" || RESERVED.some((prefix) => key.startsWith(prefix));
+}
+
+/**
  * A host's own attributes, with any key inside a reserved namespace dropped. Section 8 states the
  * rule; enforcing it here is what keeps a host attribute from overwriting the declaration or the
  * disposition, which on a host whose attributes are built from the program's own output would be a
@@ -62,7 +72,7 @@ const RESERVED = ["code_mode.", "gen_ai.", "mcp.", "otel."];
 function mark(attrs: Attributes, map: Labels["execution"], host: HostClasses): void {
   label(attrs as Record<string, unknown>, map);
   for (const key of Object.keys(attrs)) {
-    if (RESERVED.some((prefix) => key.startsWith(prefix)) || key === "error.type") continue;
+    if (reserved(key)) continue;
     if (host.observed.has(key)) continue;
     attrs["code_mode.provenance." + key] = host.relayed.has(key) ? "T" : "P";
   }
@@ -73,7 +83,7 @@ function hostAttributes(given: Attributes | undefined): Attributes {
   if (given === undefined) return out;
   try {
     for (const key of Object.keys(given)) {
-      if (!RESERVED.some((prefix) => key.startsWith(prefix))) out[key] = given[key];
+      if (!reserved(key)) out[key] = given[key];
     }
   } catch {
     // A throwing getter or `ownKeys` trap costs the attributes it hid and nothing else. Whatever was
@@ -558,6 +568,9 @@ class CrossingSpan implements CrossingHandle {
       close = this.start;
       attrs["code_mode.crossing.timing"] = "start_only";
     }
+    // Converted ONCE. The span and the histogram read the same instant, so a time the host cannot
+    // read is one fallback rather than two different ones.
+    const closedAt = close === undefined ? hrNow() : toHrTime(close);
     if (outcome === "output" && output !== undefined) this.capture.value("gen_ai.tool.call.result", output, attrs, this.notes);
     if (outcome === "error") {
       const type = errorType ?? OTHER;
@@ -569,11 +582,11 @@ class CrossingSpan implements CrossingHandle {
     writeNotes(attrs, this.notes);
     mark(attrs, this.marks.crossing, this.host);
     this.span.setAttributes(attrs);
-    this.span.end(close);
+    this.span.end(closedAt);
     // An abandoned crossing is closed at its own start, so its duration is zero and means nothing.
     // Recording it would put a fictional zero in the distribution.
     if (outcome !== "abandoned") {
-      this.meters?.recordCrossing(elapsed(this.start, close === undefined ? hrNow() : toHrTime(close)), this.target, outcome as string, attrs["error.type"] as string | undefined);
+      this.meters?.recordCrossing(elapsed(this.start, closedAt), this.target, outcome as string, attrs["error.type"] as string | undefined);
     }
   }
 }
@@ -711,12 +724,25 @@ function elapsed(from: HrTime, to: HrTime): number {
 }
 
 function toHrTime(time: TimeInput): HrTime {
-  if (Array.isArray(time)) return time;
-  // `isDate` rather than `instanceof Date`, for the same reason the error check is by shape: a Date
-  // made inside a sandbox belongs to that realm. Read as a number it becomes NaN, and the span then
-  // disagrees with the duration histogram by the whole interval.
-  const ms = isDate(time) ? time.getTime() : Number(time);
-  if (!Number.isFinite(ms)) return hrNow();
+  // A pair only counts as one when both halves are finite numbers: `[{valueOf(){throw}}, 0]` and a
+  // pair of the wrong length both arrive here, and either would make every later reading NaN.
+  if (Array.isArray(time)) {
+    const [seconds, nanos] = time as [unknown, unknown];
+    return typeof seconds === "number" && typeof nanos === "number" && Number.isFinite(seconds) && Number.isFinite(nanos) ? [seconds, nanos] : hrNow();
+  }
+  let ms: number;
+  try {
+    // `isDate` rather than `instanceof Date`, for the same reason the error check is by shape: a
+    // Date made inside a sandbox belongs to that realm. And `Number` runs `valueOf` and `toString`,
+    // which on a value the host did not author is program code on the request path, so the
+    // coercion is contained here rather than at each of the five callers.
+    ms = isDate(time) ? time.getTime() : Number(time);
+  } catch {
+    return hrNow();
+  }
+  // Finite is not enough: past the Date range there is no ISO form, and a reader that formats the
+  // time throws on it. 8.64e15 ms is that range, and it is ±273790 years, so nothing real is lost.
+  if (!Number.isFinite(ms) || Math.abs(ms) > 8.64e15) return hrNow();
   const seconds = Math.trunc(ms / 1000);
   return [seconds, Math.round((ms - seconds * 1000) * 1e6)];
 }

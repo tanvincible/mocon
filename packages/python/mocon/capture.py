@@ -13,11 +13,17 @@ stream can raise costs that one value and never the call.
 
 from __future__ import annotations
 
+from asyncio import CancelledError
+
 import hashlib
 import re
 import json
 from dataclasses import dataclass
 from typing import Any, MutableMapping
+
+#: See ``_core._INTERRUPT``: a real interrupt is this process being stopped, not a program
+#: describing itself, so it is re-raised rather than contained.
+_INTERRUPT = (KeyboardInterrupt, SystemExit, CancelledError)
 
 #: Bytes of JSON kept per value. Under every SDK, collector and backend limit we know of.
 DEFAULT_CAP = 1 << 13
@@ -69,6 +75,8 @@ def _exception(e: BaseException) -> dict[str, Any]:
     a program raised runs that program's ``__str__``, which is contained here rather than lost."""
     try:
         members = dict(getattr(e, "__dict__", None) or {})
+    except _INTERRUPT:
+        raise
     except BaseException:
         members = {}
     # An own `name` or `message` wins over the class and `str`, matching the TypeScript emitter,
@@ -81,6 +89,8 @@ def _exception(e: BaseException) -> dict[str, Any]:
     if not (isinstance(message, str) and message):
         try:
             message = str(e)
+        except _INTERRUPT:
+            raise
         except BaseException:
             # `str` on an exception a program raised runs that program's `__str__`, and BaseException
             # rather than Exception because that is the guard a hostile program steps around.
@@ -162,6 +172,8 @@ class Capture:
             return
         try:
             encoded = self._encode(value)
+        except _INTERRUPT:
+            raise
         except BaseException:
             # Serializing runs program-authored code: a property, a __getattr__, a __dict__ that
             # lies, and a cycle raises by design. 7 calls a value the host could not serialize one

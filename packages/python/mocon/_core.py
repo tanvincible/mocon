@@ -10,6 +10,10 @@ application owner's already-configured exporters receive it, with no new destina
 
 from __future__ import annotations
 
+import inspect
+
+from asyncio import CancelledError
+
 import functools
 import inspect
 import secrets
@@ -82,7 +86,9 @@ def _host_attributes(given: Mapping[str, Any] | None) -> dict[str, Any]:
         for key, value in given.items():
             if not isinstance(key, str) or not key.startswith(_RESERVED):
                 out[key] = value
-    except Exception:
+    except _INTERRUPT:
+        raise
+    except BaseException:
         # A property that raises, or a mapping that lies about its own keys, costs the attributes it
         # hid and nothing else. Whatever was read before the throw is kept.
         pass
@@ -114,7 +120,9 @@ def _read_channels(outputs: Mapping[str, Any]) -> list[tuple[str, Any]]:
     try:
         for channel, value in outputs.items():
             pairs.append((channel, value))
-    except Exception:
+    except _INTERRUPT:
+        raise
+    except BaseException:
         # Whatever was read before the throw still counts.
         pass
     return pairs
@@ -620,6 +628,10 @@ class Crossing:
             emitter._meters.record_crossing(_elapsed(self._start, close), self._target, outcome, attrs.get("error.type"))
 
 
+#: What ``Crossing.end`` accepts, so a hook's unknown key costs that key and not the whole answer.
+_END_PARAMS = frozenset(inspect.signature(Crossing.end).parameters) - {"self", "outcome"}
+
+
 def _settle(crossing: Crossing, end: Callable[[BridgeAnswer], Any] | None, answer: BridgeAnswer) -> None:
     """The crossing's end, from the bridge's own answer when the hook supplied one and from the
     default otherwise. A hook that raises, returns nothing, or returns a shape ``end`` refuses costs
@@ -632,14 +644,23 @@ def _settle(crossing: Crossing, end: Callable[[BridgeAnswer], Any] | None, answe
                 # leaves out is filled from the answer. A bridge answering `{"ok": False}` needs
                 # only the outcome overridden and still wants the envelope recorded as the reason.
                 payload = answer.error if answer.threw else answer.value
-                outcome = given.get("outcome") or ("error" if answer.threw else "output")
-                rest = {k: v for k, v in given.items() if k != "outcome"}
+                # `is None` rather than falsy: an outcome of "" is a hook bug, and letting it fall
+                # through to the default would record the call as working and say nothing.
+                outcome = given.get("outcome")
+                if outcome is None:
+                    outcome = "error" if answer.threw else "output"
+                # Unknown keys are dropped rather than splatted. One key `end` does not take raises
+                # TypeError from the call, which the guard below turns into the DEFAULT outcome, so a
+                # failed call would be recorded as a success over a typo in a hook.
+                rest = {k: v for k, v in given.items() if k != "outcome" and k in _END_PARAMS}
                 if outcome == "error":
                     rest = {"error_type": "capability_error", "message": _message_of(payload), "error_body": payload, **rest}
                 elif outcome == "output":
                     rest = {"output": payload, **rest}
                 crossing.end(outcome, **rest)
                 return
+        except _INTERRUPT:
+            raise
         except BaseException:
             # `end` validates before it touches the span, so the crossing is still open below.
             pass
@@ -668,7 +689,9 @@ def _target_from(target: str | Callable[..., str] | None, args: tuple[Any, ...],
     if callable(target):
         try:
             value = target(*args, **kwargs)
-        except Exception:
+        except _INTERRUPT:
+            raise
+        except BaseException:
             # The target function could not read these arguments; the first argument names the call.
             pass
     return _name_of(value)
@@ -678,14 +701,21 @@ def _name_of(value: Any) -> str:
     """A target's name, never by running the value's own ``__str__``. The arguments a bridge is
     called with are chosen by the program, so ``str(value)`` on one of them is program code on the
     host's request path, and a hostile ``__str__`` would fail the call rather than the label."""
-    if isinstance(value, str):
-        return value
-    if value is None:
-        return "None"
-    if type(value) in (bool, int, float):
-        return str(value)
-    if callable(value):
-        return "[function]"
+    try:
+        if isinstance(value, str):
+            return value
+        if value is None:
+            return "None"
+        if type(value) in (bool, int, float):
+            return str(value)
+        if callable(value):
+            return "[function]"
+    except _INTERRUPT:
+        raise
+    except BaseException:
+        # `isinstance` and `callable` both read attributes off a value the program chose, and a
+        # raising `__class__` escapes any guard placed deeper than the whole function.
+        pass
     return "[object]"
 
 
@@ -693,7 +723,9 @@ def _input_from(input: Callable[..., Any] | None, target_took_first: bool, args:
     if input is not None:
         try:
             return input(*args, **kwargs)
-        except Exception:
+        except _INTERRUPT:
+            raise
+        except BaseException:
             return UNSET
     rest: list[Any] = list(args[1:] if target_took_first else args)
     if kwargs:
@@ -701,6 +733,14 @@ def _input_from(input: Callable[..., Any] | None, target_took_first: bool, args:
     if len(rest) == 1:
         return rest[0]
     return UNSET if not rest else rest
+
+
+#: Raised to stop this process, never by a program describing itself. Containing these is what made
+#: the host uninterruptible: a real SIGINT or SIGTERM arriving while the emitter held a
+#: program-authored value was swallowed, and the program chooses how long it holds it. They are
+#: re-raised, and the cost is that a program raising one of them can fail its own call, which it
+#: could do anyway. ``CancelledError`` is here for the same reason: a cancelled task must cancel.
+_INTERRUPT = (KeyboardInterrupt, SystemExit, CancelledError)
 
 
 def _message_of(cause: Any) -> str | None:
@@ -714,6 +754,8 @@ def _message_of(cause: Any) -> str | None:
             return str(cause) or None
         message = getattr(cause, "message", None)
         return message if isinstance(message, str) and message else None
+    except _INTERRUPT:
+        raise
     except BaseException:
         # Every line above runs program-authored code, `isinstance` included: it reads __class__,
         # and CPython suppresses only AttributeError from that read, so a raising __class__ property

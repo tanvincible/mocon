@@ -11,6 +11,8 @@ from typing import Any, Iterator, Mapping
 
 import pytest
 
+from asyncio import CancelledError
+
 from mocon import capture
 from conftest import harness, note
 
@@ -389,9 +391,12 @@ def test_a_str_raising_a_base_exception_is_contained() -> None:
     """``except Exception`` is the guard a hostile program steps around, so every guard on a path
     that runs program-authored code catches ``BaseException``."""
 
+    class Trap(BaseException):
+        pass
+
     class StrBase(Exception):
         def __str__(self) -> str:
-            raise KeyboardInterrupt("TRAP")
+            raise Trap("TRAP")
 
     cap = capture.CapturePolicy(values=True)
     h = harness(capture=cap)
@@ -403,6 +408,24 @@ def test_a_str_raising_a_base_exception_is_contained() -> None:
     ex = h.m.execution(program="p")
     ex.instrument(lambda: StrBase())()  # a bridge that RETURNS the hostile value
     ex.complete()
+
+
+def test_a_real_interrupt_is_not_contained_so_the_host_stays_killable() -> None:
+    """The one exception to the rule above, and the reason it exists. Containing every
+    ``BaseException`` swallowed real SIGINT and SIGTERM delivered while the emitter held a
+    program-authored value, and the program chooses how long it holds one. A program can now fail
+    its own call by raising these, which it could do anyway."""
+    cap = capture.CapturePolicy(values=True)
+    for interrupt in (KeyboardInterrupt, SystemExit, CancelledError):
+
+        class Raises(Exception):
+            def __str__(self) -> str:
+                raise interrupt()
+
+        h = harness(capture=cap)
+        ex = h.m.execution(program="p")
+        with pytest.raises(interrupt):
+            ex.fail(Raises())
 
 
 def test_an_own_name_or_message_wins_over_the_class_and_str() -> None:
@@ -450,3 +473,37 @@ def test_an_end_hook_names_what_it_changes_here_too() -> None:
     assert crossing.attributes["code_mode.crossing.outcome"] == "output"
     assert crossing.attributes["gen_ai.tool.call.result"] == '{"rows":3}'
     assert crossing.attributes["code_mode.crossing.dispatched"] is True
+
+
+def test_a_raising_dunder_class_in_a_target_costs_the_label_not_the_call() -> None:
+    """``_name_of`` had the same unguarded ``isinstance`` as ``_message_of``: it reads ``__class__``,
+    and a raising one escaped. The tool call itself never happened."""
+
+    class ClassRaises:
+        @property
+        def __class__(self) -> type:  # type: ignore[override]
+            raise RuntimeError("TRAP")
+
+    h = harness()
+    ex = h.m.execution(program="p")
+    calls = []
+    ex.instrument(lambda arg: calls.append(arg))(ClassRaises())
+    ex.complete()
+    assert len(calls) == 1, "the bridge was never reached"
+    assert h.one("execute_tool").attributes["gen_ai.tool.name"] == "[object]"
+
+
+def test_a_hook_key_end_does_not_take_costs_that_key_and_not_the_answer() -> None:
+    """Splatting the whole return meant one typo raised TypeError, which the guard turned into the
+    DEFAULT outcome: a failed call recorded as a success, over a misspelled key."""
+    h = harness(capture=capture.CapturePolicy(values=True))
+    ex = h.m.execution(program="p")
+    ex.instrument(
+        lambda: {"ok": False},
+        end=lambda a: {"outcome": "error", "error_type": "capability_error", "nonsense_key": 1},
+    )()
+    ex.complete()
+    crossing = h.one("execute_tool")
+    assert crossing.attributes["code_mode.crossing.outcome"] == "error"
+    assert crossing.attributes["error.type"] == "capability_error"
+    assert crossing.attributes["code_mode.error.body"] == '{"ok":false}'
