@@ -13,7 +13,8 @@ mocon is the missing vocabulary, plus a small emitter for it in TypeScript and P
   <img src="./docs/src/assets/demo.svg" alt="A code-mode run: one execute_code span with four execute_tool spans under it, one of them failed" width="840">
 </p>
 
-That's `node examples/demo.mjs`, and it needs no SDK, no collector and no backend to produce.
+That's a real run, not a mockup: `examples/server.mjs` is a whole code-mode server, sandbox and all,
+and the durations are what its tools actually took. It needs no SDK, no collector and no backend.
 
 ## Install
 
@@ -119,7 +120,7 @@ Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
 | `packages/typescript` | `mocon`, on the OpenTelemetry API only |
 | `packages/python` | `pymocon`, the same conventions, imported as `mocon` |
 | `packages/python/parity` | runs one scenario through both and diffs every attribute |
-| `examples/demo.mjs` | the run in the picture above |
+| `examples/server.mjs` | a working code-mode server with mocon in it, and the run pictured above |
 | `bench/trace.mjs` | what it costs against the SDK's own floor |
 | `collector/`, `dashboards/` | optional examples; it is ordinary OpenTelemetry, so use what you have |
 
