@@ -64,7 +64,7 @@ return observed.execution.run({ program: source, tool: "execute" }, (execution) 
 You get one `execute_code` span per dispatch and one `execute_tool` span per call the program made,
 correctly parented, in whatever backend you already run.
 
-## What it contributes
+## Contribution
 
 OpenTelemetry already models spans, parentage and duration. Three things it has no answer for, and
 they are why this exists.

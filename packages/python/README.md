@@ -20,7 +20,7 @@ It depends on `opentelemetry-api` and never the SDK, which is OpenTelemetry's ow
 instrumentation and the reason this is worth doing: the spans reach whatever exporters the
 application owner already configured. If nothing is configured, every call is a no-op.
 
-## The whole integration
+## Integration
 
 ```python
 from mocon import Capabilities, CapturePolicy, CodeMode
@@ -64,7 +64,7 @@ with ex.crossing("orders.cancel", input={"id": "rec_50"}) as crossing:
     crossing.output(result)
 ```
 
-## What it emits
+## Output
 
 | | |
 |---|---|
@@ -72,7 +72,7 @@ with ex.crossing("orders.cancel", input={"id": "rec_50"}) as crossing:
 | Metrics | `code_mode.execution.duration`, and `code_mode.crossing.duration` whose dimensions are dropped unless the host attested `crossing.target` (section 9) |
 | Logs | `code_mode.execution.started` / `.ended`, carrying `trace_id` and `span_id`, because a span says nothing until it ends |
 
-## Two rules worth knowing
+## Rules
 
 **No emitter fault raises into the caller.** Serializing a payload runs program-authored code: a
 property that raises, a `__dict__` that lies, a cycle, a `__str__` that throws. Each costs that one

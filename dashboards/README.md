@@ -3,7 +3,7 @@
 `code-mode.json` is a Grafana dashboard for code-mode execution. Import it, pick your datasources,
 and it works against any OTLP trace store plus the metrics from `collector/codemode.yaml`.
 
-## An example, not the product
+## Example
 
 This is Grafana because that is what it was built against. Everything mocon emits is ordinary
 OpenTelemetry, so use whatever you already run: Datadog, Honeycomb, Elastic, anything. The metrics
@@ -13,7 +13,7 @@ it anything.
 What this file is good for is telling you which views are worth having. The queries are in it, and
 the same attribute names work in any query language.
 
-## Why this exists
+## Why
 
 OpenTelemetry will render your code-mode spans without any of this. You get a waterfall, correct
 parentage and real durations, for free, the moment you emit.
@@ -27,7 +27,7 @@ This is also the part a team cannot hand-roll and keep. A hand-rolled dashboard 
 one server and transfers to nothing. This one works on any host that follows the conventions, which
 is the only real return on standardising anything.
 
-## The panels worth knowing about
+## Panels
 
 - **Can an absence of calls be believed?** The declaration, aggregated. `all` with no unmediated
   egress is the only combination where an execution showing no crossings really made no calls.
@@ -39,7 +39,7 @@ is the only real return on standardising anything.
 - **Calls the program claimed, not calls the host saw.** These reach no metric by design, so this is
   the only place they appear. Nothing else in your stack will tell you they are different.
 
-## What is validated, and what is not
+## Validation
 
 The PromQL was run against a live Prometheus-compatible datasource, including a deliberately broken
 control to confirm that a syntax error actually surfaces rather than returning empty.

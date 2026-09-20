@@ -1,4 +1,4 @@
-# mocon for the OpenTelemetry Collector
+# Collector
 
 **Optional.** The emitter produces its own metrics now, so you do not need this to get them. It is
 for one narrower job a host cannot do for itself: stopping telemetry *somebody else* configured from
@@ -11,7 +11,7 @@ Builder, which means everyone adopting it has to rebuild and redeploy their coll
 anything at all. Everything here is stock `opentelemetry-collector-contrib`, so it works with the
 collector you already run.
 
-## What it does
+## Purpose
 
 It stops a program's claim from becoming a metric that reads as a measured fact.
 
@@ -61,7 +61,7 @@ boundary, one from a host that did not. Run it and read the collector's log.
 
 That is the whole point, and it takes about a minute to check.
 
-## What it does not do
+## Limits
 
 It cannot recover provenance a host never declared. If a host attests nothing, every crossing is a
 claim and every crossing is dropped from the metrics pipeline, which is correct and also means that

@@ -1,4 +1,4 @@
-# Semantic conventions for code-mode execution
+# Code-mode conventions
 
 **Status:** Development. Version 0.1.0, 2026-09-19.
 
@@ -85,7 +85,7 @@ These come from profiling nineteen code-mode implementations and adversarially t
 candidate rule against them. The surviving invariants are numbered C1 to C15 and X1 to X5 in
 Appendix A, and each new attribute below names the one it carries.
 
-## 3. The capability declaration
+## 3. Declaration
 
 Five attributes say what the host can and cannot see. Without them an absence of crossing spans
 has two readings a consumer cannot distinguish: the program made no calls, or the host cannot
@@ -138,7 +138,7 @@ as `none`, `unmediated_egress` as unknown and treats it as `true`, `crossing_edg
 and `attested` as empty. These are the weakest readings, and they are what a host gets for
 saying nothing.
 
-### 3.1 The repetition rule
+### 3.1 Repetition
 
 Every execution span and every crossing span carries the declaration. It is repeated per span,
 not stored once.
@@ -164,7 +164,7 @@ crossing span defined here carries at most fifteen attributes, so the repetition
 free: an execution with a thousand crossings pays for the declaration a thousand times, and no
 attribute interning is guaranteed on the wire.
 
-### 3.2 Why not the Resource
+### 3.2 Not Resource
 
 An earlier draft put the declaration on the Resource. Two independent facts killed it, and
 either one alone is enough.
@@ -231,7 +231,7 @@ leaves `gen_ai.operation.name` and the span name as MCP sets them. A consumer fi
 by the disposition attribute, not by the name. Section 17 records that two shapes is one too
 many.
 
-### 4.1 Status, and what it loses
+### 4.1 Status
 
 | `code_mode.execution.disposition` | Span status |
 |---|---|
@@ -345,7 +345,7 @@ gets a different answer per run of the same host. Because the attribute is Opt-I
 binds only when the application owner has turned it on; when it is off, nothing is emitted and
 nothing is claimed.
 
-### 4.3 `error.type` on an execution
+### 4.3 Error type
 
 `error.type` is Stable, low cardinality, with a well-known fallback value of `_OTHER`. Set it
 only when the status is `Error`. Recommended values, each a low-cardinality identifier:
@@ -365,7 +365,7 @@ one most backends facet on.
 Read section 6 before trusting this attribute. On most hosts the class is derived from something
 the program wrote.
 
-### 4.4 The states a span cannot hold
+### 4.4 Missing states
 
 A span is exported when it ends. A dispatch the host never closed is not in the trace at all, and
 is indistinguishable from one that never happened. The running state and the unresolved state
@@ -519,7 +519,7 @@ instead of content.
 emits one span with the final outcome; the attempt count goes in the host's own namespace, per
 section 8.
 
-### 5.3 `error.type` on a crossing
+### 5.3 Error type
 
 Recommended values: `capability_error` when the target returned an error for this call or the host
 cannot say more; `validation` when the input was rejected as malformed; `refused` when the host
@@ -532,7 +532,7 @@ Where the crossing was an MCP tool call that returned `CallToolResult` with `isE
 
 An `abandoned` crossing carries no `error.type`. Nothing failed; the host stopped watching.
 
-### 5.4 Times, and the crossing that settled without one
+### 5.4 Times
 
 A span always has a start and an end, therefore always a duration. **OpenTelemetry has no
 representation for "settled, duration unknown."** This is a gap in the data model and no
@@ -564,7 +564,7 @@ consumer MUST NOT treat an unresolved crossing as evidence the call is still in 
 `abandoned` crossing as evidence the target never responded. Both say only that the host stopped
 observing.
 
-### 5.5 A crossing that went over MCP
+### 5.5 Over MCP
 
 The MCP convention says: "If the MCP instrumentation can reliably detect that outer GenAI
 instrumentation is already tracing the tool execution, it SHOULD NOT create a separate span.
@@ -628,7 +628,7 @@ a real trace at a console, not by reading this table.
 Whether a program is adversarial is a deployment question. These labels are about fidelity, not
 intent.
 
-### 6.3 The design, and the three that lose
+### 6.3 The design
 
 **A. A per-span attribute listing which attribute keys on this span are program-determined.**
 Rejected. It fails open: an emitter that adds an attribute and forgets to add it to the list
@@ -774,7 +774,7 @@ subject.** The program is by definition what the agent submitted. The hash is H 
 computed it, over content that is P. A host-observed hash of program-determined content is
 exactly what it sounds like, and it is still the right way to match two executions.
 
-### 6.6 Rules a consumer applies, and one a host must
+### 6.6 Rules
 
 For any attribute whose effective class is P:
 
@@ -804,7 +804,7 @@ on any span, including the ones this document marks H. Context flows into the sa
 of it. A host that gives the program its own tracer has made every span it emits
 program-determined, and must attest nothing.
 
-## 7. Capture: truncation, redaction and size
+## 7. Capture
 
 OpenTelemetry has no way to say that a value on a record was shortened or removed. The SDK's own
 attribute value length limit truncates silently. `dropped_attributes_count` says an attribute was
@@ -856,7 +856,7 @@ small. It has one entry per value slot, so on the spans defined here it never ex
 
 Section 16 records the two limits this does not close.
 
-## 8. The host's own attributes
+## 8. Host attributes
 
 A host has values of its own: credits spent, a sandbox id, a subprocess exit code, an attempt
 count, a cache result, a model name. These go in the host's own namespace, formed from its
@@ -948,7 +948,7 @@ the program's claim, and the rule applies unchanged.
 the five declaration attributes are H on every host. A duration histogram over executions, keyed on
 disposition, is therefore always sound.
 
-### 9.1 The instruments
+### 9.1 Instruments
 
 Two, both histograms, both in seconds.
 
@@ -975,7 +975,7 @@ session id or anything per user.
 
 Section 16 records the part of this rule that cannot be enforced from inside a host.
 
-## 10. Integration shape
+## 10. Integration
 
 Two wrappers. That is the whole integration, and it is what both blind integrations converged on.
 
@@ -1006,7 +1006,7 @@ Both wrappers write the declaration attributes from section 3 onto every span th
 wrapper needs an SDK. Both use the API only, so the application owner's configured exporters
 receive the spans, which is the entire reason this is worth doing.
 
-## 11. Relationship to open work upstream
+## 11. Upstream
 
 State of `open-telemetry/semantic-conventions-genai` at 2026-09-19. Everything below is open, and
 everything below is Development.
@@ -1028,7 +1028,7 @@ sandbox span. The MCP conventions model MCP at the JSON-RPC method level only. N
 models a submitted program, an execution, mediation, or the host-observed versus
 program-determined distinction.
 
-## 12. What a consumer may rely on, and what it must not
+## 12. Consumer rules
 
 A consumer MAY rely on:
 
@@ -1081,7 +1081,7 @@ A consumer MUST NOT:
 - **Assume the declaring host is trustworthy.** Host-observed means observed by that host,
   relative to its own isolation.
 
-## 13. Attribute index
+## 13. Attributes
 
 Twenty-one keys, one new enum value and one span event. Each names the invariant it carries.
 Everything else in this document reuses an attribute that already exists.
@@ -1121,7 +1121,7 @@ Reused without change: `gen_ai.operation.name`, `gen_ai.tool.name`, `gen_ai.tool
 `gen_ai.conversation.id`, `mcp.session.id`, `mcp.method.name`, `mcp.resource.uri`, `error.type`,
 and the whole trace data model: parentage, span links, span events and Status.
 
-## 14. What the move away from a record format dropped
+## 14. Dropped
 
 For a reader who knew the retired JSON Lines format.
 
@@ -1142,7 +1142,7 @@ For a reader who knew the retired JSON Lines format.
 What did not drop: the model, the closed vocabularies, provenance, the capability declaration, and
 the two-wrapper integration shape.
 
-## 15. Worked example
+## 15. Example
 
 One execution, two crossings, the second abandoned. Every value below comes from a fixture this
 project has carried since before the move, and the emitter reproduces all of them.
@@ -1383,7 +1383,7 @@ event name, a body shape and a severity, which is a second document.
 
 These are the claims this specification is built on, not claims about any one implementation. They hold for a host as section 1 scopes one: a party that holds the program text it dispatched and can attribute the crossings it records to its own executions. Each attribute above cites the one it carries. They were derived by profiling nineteen implementations and adversarially testing every candidate against them, and they outlived the record format they were first written for.
 
-- **C1. One program per execution.** One execution is one dispatch of one program, never the session that contains it. The host holds that program text in full at dispatch. It is not guaranteed to be what an agent submitted for that dispatch — a reactive runtime re-runs a dependent cell, a scheduler resumes a checkpoint, and the text is then the host's own — nor everything that ran, nor what the runtime parsed.
+- **C1. One program per execution.** One execution is one dispatch of one program, never the session that contains it. The host holds that program text in full at dispatch. It is not guaranteed to be what an agent submitted for that dispatch, since a reactive runtime re-runs a dependent cell and a scheduler resumes a checkpoint, in which case the text is the host's own. Nor is it everything that ran, nor what the runtime parsed.
 - **C2. Language is a hint.** A host may not know the language it runs. The label exists for display and routing only.
 - **C3. Identity and disposition.** Every execution has an id unique within its host and a host-observed start. If it ends, it ends with exactly one of `completed`, `failed`, `terminated`, `abandoned`. It may never end.
 - **C4. Completed or not.** When an end exists, the host can tell `completed` from every other disposition. Error detail is optional.
@@ -1404,7 +1404,7 @@ These are the claims this specification is built on, not claims about any one im
 - **X4. No universal output channel.** Non-crossing outputs such as standard output are optional, per channel.
 - **X5. Meaning is declared, identity is fixed.** A host declares what its own attributes mean, so a consumer that has never heard of it can read them. No declaration reaches identity: not what an execution or a crossing is, not the closed dispositions and outcomes, not the reading of any attribute this document defines. This specification fixes the spine; everything above it is the host's to declare.
 
-## Appendix B. What two implementations must agree on
+## Appendix B. Agreement
 
 A second implementation, in another language, was written against this document and diffed against
 the first over one scenario. Every attribute the conventions are actually about came out identical:
