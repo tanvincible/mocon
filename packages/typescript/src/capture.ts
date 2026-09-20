@@ -84,18 +84,13 @@ export class Capture {
     const { bytes, hash } = this.encoder.digest(text);
     attrs["code_mode.program.hash"] = "sha256:" + hash;
     if (!this.values) return;
-    // `literal`, not `encode`: for a string past its cap `encode` quotes the prefix and then quotes
-    // the result again, so the attribute carried a prefix of the JSON literal rather than of the
-    // program, with escapes in it and a different encoding depending only on whether a cut happened.
-    // 7 wants a prefix of the host's serialization, and 8 keeps this attribute as raw source.
-    const cut = this.encoder.literal(text, this.programCap);
-    if (cut.text === undefined) {
-      notes["code_mode.program.text"] = { redacted: true, bytes };
-      return;
-    }
-    attrs["code_mode.program.text"] = cut.cut ? (JSON.parse(cut.text) as string) : text;
+    // The cap bounds the RAW bytes of what lands on the span. This attribute is source rather than
+    // a JSON payload, so its cost on the wire is its UTF-8 length; bounding the length of a literal
+    // it never becomes would silently spend a third of the allowance on escaping.
+    const prefix = cutToBytes(text, this.programCap);
+    attrs["code_mode.program.text"] = prefix;
     const note: Record<string, unknown> = { bytes, hash: "sha256:" + hash };
-    if (cut.cut) note["truncated"] = true;
+    if (prefix.length !== text.length) note["truncated"] = true;
     notes["code_mode.program.text"] = note;
   }
 
@@ -123,14 +118,17 @@ export class Capture {
       notes[key] = { redacted: true, ...(encoded.bytes === undefined ? {} : { bytes: encoded.bytes }) };
       return;
     }
+    if (encoded.substituted) {
+      // JSON holds no NaN and no infinity. Writing `null` in its place turns a reading into a
+      // reading of nothing, which a reader who misses the flag takes at face value, so the payload
+      // is dropped whole instead. No `bytes` and no `hash`: both are defined over an original that
+      // could not be serialized. 7 calls this redacted, content the host removed by its own policy.
+      this.redacted(key, notes);
+      return;
+    }
     attrs[key] = encoded.valueText;
     const note: Record<string, unknown> = {};
     if (encoded.truncated) note["truncated"] = true;
-    // 7: `redacted` is content the host removed or replaced by policy. JSON cannot hold NaN or an
-    // infinity, so one is written as `null`, which silently turns a sensor reading into no reading.
-    // Publishing a hash of that serialization without saying so is the exact failure this note
-    // exists to prevent, and it was found by a second implementation disagreeing.
-    if (encoded.substituted) note["redacted"] = true;
     if (encoded.bytes !== undefined) note["bytes"] = encoded.bytes;
     if (encoded.hash !== undefined) note["hash"] = "sha256:" + encoded.hash;
     if (Object.keys(note).length > 0) notes[key] = note;
@@ -145,6 +143,16 @@ export class Capture {
 /** Writes the note onto the span, if the host has anything to say about what it captured. */
 export function writeNotes(attrs: Attributes, notes: Notes): void {
   if (Object.keys(notes).length > 0) attrs["code_mode.capture"] = JSON.stringify(notes);
+}
+
+/** The longest prefix of `s` that fits in `max` UTF-8 bytes, never splitting a code point. */
+function cutToBytes(s: string, max: number): string {
+  if (Buffer.byteLength(s) <= max) return s;
+  const buf = Buffer.from(s, "utf8");
+  let end = max;
+  // Walk back off a continuation byte, so the cut lands on a character rather than inside one.
+  while (end > 0 && ((buf[end] as number) & 0xc0) === 0x80) end--;
+  return buf.subarray(0, end).toString("utf8");
 }
 
 function positive(given: unknown, fallback: number, name: string): number {

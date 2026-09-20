@@ -61,6 +61,14 @@ code_mode.capture  {"gen_ai.tool.call.result":{"redacted":true}}
 That matters more here than in most libraries, because the values come from AI-written code. Whatever
 the program returns, capturing it can cost you the value and never the call.
 
+Two more things land here. A `NaN` or an infinity anywhere in a value redacts the whole value, since
+JSON has no way to write either and putting `null` there would turn a reading into a reading of
+nothing. And a single value far past your cap is refused rather than read, because serializing
+something enormous is work a program can ask for without limit.
+
+A redacted note carries no `bytes` and no `hash`. Both describe an original the host never managed to
+serialize, so there is no honest number to report.
+
 ## Redacted
 
 **Absent** means you never captured that thing. It says nothing.

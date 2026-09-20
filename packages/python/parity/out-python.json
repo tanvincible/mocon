@@ -1411,7 +1411,7 @@
             ],
             "code_mode.capture": [
               "str",
-              "{\"gen_ai.tool.call.result\":{\"truncated\":true}}"
+              "{\"gen_ai.tool.call.result\":{\"redacted\":true}}"
             ],
             "code_mode.crossing.outcome": [
               "str",
@@ -1441,10 +1441,6 @@
               "str",
               "P"
             ],
-            "code_mode.provenance.gen_ai.tool.call.result": [
-              "str",
-              "P"
-            ],
             "code_mode.provenance.gen_ai.tool.name": [
               "str",
               "P"
@@ -1460,10 +1456,6 @@
             "gen_ai.tool.call.id": [
               "str",
               "h1"
-            ],
-            "gen_ai.tool.call.result": [
-              "str",
-              "\"\\\"012345678901234567890123456789012345678901234567890123456789\""
             ],
             "gen_ai.tool.name": [
               "str",
@@ -1585,7 +1577,7 @@
             ],
             "code_mode.program.hash": [
               "str",
-              "sha256:de1c34ac7ca676f23881e7c2ca88310e9a2a511fe6cefd6ea35ddc19466b53c9"
+              "sha256:fbd11afb8989888bd4d2a4eb5021ade171ab8b1e0e0033da75ca967b1b0ec3fc"
             ],
             "code_mode.unmediated_egress": [
               "bool",

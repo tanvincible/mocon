@@ -698,7 +698,7 @@
             ],
             "code_mode.program.text": [
               "str",
-              "print(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café "
+              "print(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\nprint(\"café 🚀\")\n"
             ],
             "code_mode.provenance.code_mode.program.language": [
               "str",
@@ -1006,7 +1006,7 @@
             ],
             "code_mode.capture": [
               "str",
-              "{\"gen_ai.tool.call.arguments\":{\"bytes\":14,\"hash\":\"sha256:d7dcc54015712d04e3bf128d21309a05d3a36b4d0bed6797b71842b4fb883cf4\"},\"gen_ai.tool.call.result\":{\"redacted\":true,\"bytes\":35,\"hash\":\"sha256:d7fa744eabcf4878140926f96848384ffe42a2cc2e07ce3591c1e7bd67ec615f\"}}"
+              "{\"gen_ai.tool.call.arguments\":{\"bytes\":14,\"hash\":\"sha256:d7dcc54015712d04e3bf128d21309a05d3a36b4d0bed6797b71842b4fb883cf4\"},\"gen_ai.tool.call.result\":{\"redacted\":true}}"
             ],
             "code_mode.crossing.outcome": [
               "str",
@@ -1040,10 +1040,6 @@
               "str",
               "P"
             ],
-            "code_mode.provenance.gen_ai.tool.call.result": [
-              "str",
-              "P"
-            ],
             "code_mode.provenance.gen_ai.tool.name": [
               "str",
               "P"
@@ -1063,10 +1059,6 @@
             "gen_ai.tool.call.id": [
               "str",
               "f1"
-            ],
-            "gen_ai.tool.call.result": [
-              "str",
-              "{\"temp\":null,\"max\":null,\"min\":null}"
             ],
             "gen_ai.tool.name": [
               "str",

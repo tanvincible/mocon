@@ -145,14 +145,18 @@ test("an error field passed with a successful outcome is ignored, not written", 
  * which is the only way either would have been noticed.
  */
 
-test("a value JSON cannot hold is replaced, and the note says so instead of hiding it", () => {
+test("a value JSON cannot hold is dropped whole, with no size and no hash", () => {
   const h = harness();
   h.m.execution.start({ program: "p" }).complete({ result: { temp: NaN, max: Infinity, ok: 1 } });
   const span = h.spans()[0] as ReadableSpan;
-  // The readable parts survive, which is better than dropping the lot, but a reading became a
-  // non-reading and a consumer must not be told nothing happened to it.
-  assert.equal(span.attributes["gen_ai.tool.call.result"], '{"temp":null,"max":null,"ok":1}');
-  assert.equal(note(span)["gen_ai.tool.call.result"]?.["redacted"], true);
+  // Writing null in place of NaN turns a reading into a reading of nothing, and a reader who misses
+  // the flag takes that at face value. And bytes and hash describe the original, which is precisely
+  // what could not be serialized.
+  assert.equal("gen_ai.tool.call.result" in span.attributes, false);
+  const n = note(span)["gen_ai.tool.call.result"] as Record<string, unknown>;
+  assert.equal(n["redacted"], true);
+  assert.equal("bytes" in n, false);
+  assert.equal("hash" in n, false);
 });
 
 test("a finite payload carries no redaction flag, so the flag means something", () => {

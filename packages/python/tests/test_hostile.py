@@ -11,6 +11,7 @@ from typing import Any, Iterator, Mapping
 
 import pytest
 
+from mocon import capture
 from conftest import harness, note
 
 
@@ -311,3 +312,18 @@ def test_instrumenting_something_that_is_not_a_function_still_works_or_is_refuse
         ex.instrument("not a callable")
     ex.complete()
     assert h.one("execute_tool").attributes["gen_ai.tool.name"] == "search"
+
+
+def test_a_string_far_past_the_cap_is_refused_rather_than_read() -> None:
+    """The refusal is its own path, not a fault caught on the way out: an exception here would be
+    swallowed by the same handler that catches a program's throwing getter, so a defect in it would
+    report the right note for the wrong reason and stay invisible."""
+    cap = capture.CapturePolicy(values=True, cap=64)
+    encoded = capture.Capture(cap)._encode("x" * (64 * 64 + 1))
+    assert encoded.text is None
+
+    h = harness(capture=cap)
+    ex = h.m.execution(program="p")
+    ex.crossing("orders.list").output("x" * (64 * 64 + 1))
+    ex.complete()
+    assert note(h.one("execute_tool"))["gen_ai.tool.call.result"] == {"redacted": True}

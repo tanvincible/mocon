@@ -851,6 +851,36 @@ truncation, rather than letting the SDK's value length limit cut it silently dow
 UTF-8 code point boundary. Set the cap below every downstream limit the host knows of, in the
 SDK, the collector and the backend.
 
+### 7.1 Four rules
+
+Each of these was a place two independent implementations of this document diverged, because it did
+not say. Each is now normative, and both agree.
+
+**A cap bounds the bytes that land on the span.** For a payload written as JSON text that is the
+serialization; for `code_mode.program.text`, which is raw source, it is the raw UTF-8. Bounding the
+length of a JSON literal that attribute never becomes would spend a third of the allowance on escapes
+that are never written.
+
+**A value that cannot be serialized is redacted whole.** JSON holds no `NaN` and no infinity. Writing
+`null` in their place turns a reading into a reading of nothing, which a reader who misses the flag
+takes at face value, so the emitter MUST drop the value rather than substitute. Such an entry carries
+neither `bytes` nor `hash`: both are defined over an original that could not be serialized.
+
+**A single value far past the cap is not read at all.** An emitter MUST bound how much of one value
+it will read, and SHOULD set that bound at a small multiple of the cap. Serializing an enormous value
+is work a program can ask for without limit. A value refused this way is `redacted`, not `truncated`,
+because the emitter never produced a prefix of it.
+
+**An unpaired surrogate in the program text is replaced with U+FFFD, one per surrogate**, before the
+hash is taken. Section 4.2 defines that hash over UTF-8 bytes and an unpaired surrogate has no UTF-8
+encoding. This digest is the only key matching one dispatch to another across hosts, so it has to be
+the same number in every language.
+
+**And one thing that can never agree.** `bytes` and `hash` are over the host's own serialization, and
+two languages do not format numbers alike: an integral float, a negative zero and an integer past
+2^53 all serialize differently. So these are a within-host key and never a cross-host one. Only
+`code_mode.program.hash`, which is over text rather than over a serialization, matches across hosts.
+
 `code_mode.capture` is itself an attribute and is itself subject to those limits, so keep it
 small. It has one entry per value slot, so on the spans defined here it never exceeds a handful.
 
@@ -1404,41 +1434,21 @@ These are the claims this specification is built on, not claims about any one im
 - **X4. No universal output channel.** Non-crossing outputs such as standard output are optional, per channel.
 - **X5. Meaning is declared, identity is fixed.** A host declares what its own attributes mean, so a consumer that has never heard of it can read them. No declaration reaches identity: not what an execution or a crossing is, not the closed dispositions and outcomes, not the reading of any attribute this document defines. This specification fixes the spine; everything above it is the host's to declare.
 
-## Appendix B. Agreement
+## Appendix B. Two implementations
 
-A second implementation, in another language, was written against this document and diffed against
-the first over one scenario. Every attribute the conventions are actually about came out identical:
-both spans, the declaration, every provenance label, the closed vocabularies, crossing timing, seq,
-the MCP attributes, and both metric instruments with their section 9 gate. That is the result, and it
-is what makes this a convention rather than a library with a document attached.
+This document has two independent implementations, in TypeScript and Python, and a harness that runs
+one scenario through both and diffs every attribute. That is the difference between a convention and
+a library with a document attached, and it is checkable rather than claimed.
 
-Four things diverged, and every one is a place this document is silent rather than a place either
-implementation is wrong. They are listed because a third implementation will hit all four.
+They agree on everything this document defines: both spans, the capability declaration, every
+provenance label, the closed vocabularies, capture and its notes, crossing timing, seq, the MCP
+attributes, and both metric instruments with their section 9 gate.
 
-**Which cap bounds a truncated program.** Section 7 says the value is a prefix of the host's
-serialization. One implementation read that as the serialized size, so the raw prefix is shorter by
-the cost of quoting and escaping; the other cut at the raw size. Both write raw source and both report
-the same `bytes` and `hash` of the whole. This document should say which.
+Four things diverged when the harness was first run, in every case because this document was silent
+rather than because either implementation was wrong. All four are now stated in section 7.1 and both
+implementations follow them.
 
-**What happens to the readable part of an unserializable value.** A payload holding `NaN` cannot be
-represented in JSON. One implementation writes the rest and flags `redacted`, keeping the readings it
-could serialize; the other drops the value entirely and flags `redacted`. Both are honest under
-section 7, and they disagree on how much survives.
-
-**A single value far larger than the cap.** One implementation refuses to read it at all past a
-multiple of the cap, which is a deliberate guard against a program that makes the host serialize
-something enormous, and reports `redacted`. The other cuts it and reports `truncated`. A consumer
-cannot reconcile "the host withheld this" with "here are the first sixty-four bytes" for the same
-payload, and the guard is worth having, so this document should require the bound and name the flag.
-
-**A program text containing an unpaired surrogate.** Section 4.2 says the hash is over the UTF-8
-bytes, and an unpaired surrogate has no UTF-8 encoding. One implementation substitutes the
-replacement character, the other writes WTF-8. The hashes agree for every well-formed program: ASCII,
-Latin-1, astral pairs, combining sequences, CJK, right-to-left text and control characters. This
-document should say which substitution is required, because the hash is the cross-host matching key.
-
-**And one thing that can never agree**, which this document already half says. `code_mode.capture`
-carries `bytes` and `hash` of the host's own serialization, and section 7 calls them comparable only
-within one host. Two languages do not format numbers identically: an integral float, a negative zero
-and an integer past 2^53 all serialize differently. So that hash is a within-host key and never a
-cross-host one, and the sentence saying so should be somewhere a reader will meet it.
+What remains is one language difference that no rule can close. JavaScript has a single number type,
+so `1.0` serializes as `1` where Python writes `1.0`. Any `bytes` or `hash` over a payload therefore
+differs between the two, which is why section 7.1 marks them a within-host key. The program hash,
+taken over text rather than over a serialization, agrees.

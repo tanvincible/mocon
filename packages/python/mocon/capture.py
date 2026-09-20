@@ -14,6 +14,7 @@ stream can raise costs that one value and never the call.
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 from dataclasses import dataclass
 from typing import Any, MutableMapping
@@ -22,6 +23,13 @@ from typing import Any, MutableMapping
 DEFAULT_CAP = 1 << 13
 #: The program is the host's own record of what it ran, and a reader wants more of it whole.
 DEFAULT_PROGRAM_CAP = 1 << 15
+#: A string longer than this many times the cap is not read at all. The same bound the TypeScript
+#: implementation uses, so the two agree on which oversized values are refused.
+_READ_FACTOR = 64
+
+#: Unpaired surrogates, which have no UTF-8 encoding. See ``Capture.program``.
+_SURROGATE = re.compile("[\ud800-\udfff]")
+
 #: Bytes read to measure and hash the whole value, well above what is written. ``bytes`` and
 #: ``hash`` are reported only for a value read whole, and they describe the original, so reading no
 #: further than the write cap would drop them exactly where a truncated value needs them most.
@@ -53,8 +61,11 @@ def _default(o: Any) -> Any:
 
 
 # One encoder, shared: ``iterencode`` builds its own cycle markers per call, so it is re-entrant.
-# ``allow_nan`` is off because NaN and Infinity are not JSON and a consumer would meet them as a
-# parse error rather than as a value; such a payload is redacted instead.
+# ``allow_nan`` is off. NaN and Infinity are not JSON, and the two ways to keep going are both worse
+# than stopping: Python would write a bare ``NaN`` token that no consumer can parse, and replacing it
+# with ``null`` turns a reading into a reading of nothing, which a reader who misses the flag takes
+# at face value. So such a payload is redacted whole, with no ``bytes`` and no ``hash``, since both
+# are defined over an original that could not be serialized.
 _ENCODER = json.JSONEncoder(
     ensure_ascii=False,
     allow_nan=False,
@@ -66,7 +77,8 @@ _ENCODER = json.JSONEncoder(
 
 @dataclass(frozen=True, slots=True)
 class _Encoded:
-    text: str
+    #: ``None`` when the value was refused rather than read, which the caller reports as redacted.
+    text: str | None
     truncated: bool
     #: Byte length of the whole serialization, when the encoder read it whole.
     size: int | None
@@ -93,9 +105,12 @@ class Capture:
         """The program. Its hash is written whatever the policy says: 4.2 makes it Recommended
         because it is how two dispatches of one text are matched and the only thing left when the
         text is withheld."""
-        # surrogatepass rather than strict: a hash is owed for every program, including one whose
-        # text a runtime handed over with a lone surrogate in it.
-        raw = text.encode("utf-8", "surrogatepass")
+        # 4.2 defines the hash over UTF-8 bytes, and an unpaired surrogate has no UTF-8 encoding, so
+        # each one is replaced with U+FFFD before encoding. Not errors="replace", which substitutes
+        # "?" when encoding, and not a surrogatepass round trip, which yields one U+FFFD per byte
+        # rather than per character. This digest is the only key matching one dispatch to another
+        # across hosts, so it has to be the same number in every language.
+        raw = _SURROGATE.sub("\ufffd", text).encode("utf-8")
         digest = "sha256:" + hashlib.sha256(raw).hexdigest()
         attrs["code_mode.program.hash"] = digest
         if not self.values:
@@ -124,6 +139,9 @@ class Capture:
             # has made observability an outage.
             self.redacted(key, notes)
             return
+        if encoded.text is None:
+            self.redacted(key, notes)
+            return
         attrs[key] = encoded.text
         note: dict[str, Any] = {}
         if encoded.truncated:
@@ -141,15 +159,16 @@ class Capture:
         notes[key] = {"redacted": True} if size is None else {"redacted": True, "bytes": size}
 
     def _encode(self, value: Any) -> _Encoded:
-        # ponytail: one string is escaped whole before it can be cut, because `json` emits a string
-        # as a single chunk. The value is already in the host's memory, so the cost is a constant
-        # factor rather than an amplification, and containers stream and stop at `measure`. Upgrade
-        # path if a host meets multi-megabyte single strings: a bounded string encoder passed to
-        # `json.encoder._make_iterencode`, which must also mark the value incomplete so `bytes` and
-        # `hash` are not claimed for something the encoder never read.
         """Streams the serialization: the first ``cap`` bytes are kept, the whole is measured and
         hashed up to ``measure``, and nothing past that is read at all. The value is never
         materialized as one string first, which is what a program would use to exhaust the host."""
+        # A single string far past the cap is refused rather than read: `json` escapes a string as
+        # one chunk, so escaping it first is work a program can ask for without limit, and there is
+        # nothing useful to report about a value that was never read. ponytail: this catches the
+        # value itself, not one buried in an object, where the loop below stops only after the chunk
+        # is built; bounding that needs an encoder that escapes incrementally.
+        if isinstance(value, str) and len(value) > _READ_FACTOR * self._cap:
+            return _Encoded(text=None, truncated=True, size=None, digest=None)
         digest = hashlib.sha256()
         kept: list[str] = []
         room = self._cap
