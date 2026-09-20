@@ -60,10 +60,10 @@ const HASH = /^sha256:[0-9a-f]{64}$/;
 
 const objectProto = Object.prototype;
 const hasOwnProperty = Object.prototype.hasOwnProperty;
-const { getPrototypeOf } = Object;
+const { getPrototypeOf, getOwnPropertyDescriptors, defineProperties } = Object;
 const { isArray } = Array;
 const { isView } = ArrayBuffer;
-const { isAnyArrayBuffer, isSharedArrayBuffer, isTypedArray, isBoxedPrimitive, isNumberObject, isStringObject, isBooleanObject, isBigIntObject } = types;
+const { isAnyArrayBuffer, isSharedArrayBuffer, isTypedArray, isBoxedPrimitive, isNumberObject, isStringObject, isBooleanObject, isBigIntObject, isNativeError } = types;
 const isRawJSON = (JSON as { isRawJSON?: (v: unknown) => boolean }).isRawJSON;
 const booleanValue = Boolean.prototype.valueOf;
 
@@ -162,7 +162,48 @@ function resolve(v: object | bigint, key: string | number): unknown {
     if (out === null || typeof out !== "object" || isPlain(out)) return out;
     return marker(out) ?? keyed(unbox(out));
   }
+  if (!plain) {
+    const e = errorShape(v as object);
+    if (e !== undefined) return new Keyed(e);
+  }
   return plain ? v : keyed(unbox(v as object));
+}
+
+/**
+ * An error's `name` and `message` live on the prototype, so its own enumerable properties are
+ * usually none and it serializes to `{}`. `code_mode.error.body` then carries a hash of `{}` and
+ * asserts it faithfully captured nothing, which is worse than being absent. `isNativeError` rather
+ * than `instanceof`: an error thrown inside a sandbox belongs to that realm, and `instanceof Error`
+ * is false for it in the host's.
+ */
+function errorShape(v: object): object | undefined {
+  if (!isNativeError(v)) return undefined;
+  const out: Record<string, unknown> = {};
+  // These two lead, and they are the whole point: on a V8 error `message` is an OWN NON-ENUMERABLE
+  // property and `name` lives on the prototype, so neither is written by a walk over enumerable
+  // keys. Reading them here runs a getter a program may have authored, which `quiet` contains.
+  const name = quiet(v, "name");
+  const message = quiet(v, "message");
+  if (typeof name === "string" && name !== "") out.name = name;
+  if (typeof message === "string" && message !== "") out.message = message;
+  // Then whatever else the error carries, as descriptors rather than reads, so a getter among them
+  // runs later inside the walker's own guard. `name` and `message` are dropped from this copy or it
+  // would put them straight back to non-enumerable. `stack` stays non-enumerable, as it is on the
+  // error itself, so host paths never reach a span.
+  const own = getOwnPropertyDescriptors(v) as Record<string, PropertyDescriptor>;
+  delete own["name"];
+  delete own["message"];
+  defineProperties(out, own);
+  return out;
+}
+
+/** One property of a value the program may have authored: a throwing getter costs the field. */
+function quiet(v: object, key: string): unknown {
+  try {
+    return (v as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
 }
 
 function unbox(v: object): unknown {

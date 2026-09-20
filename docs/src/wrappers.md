@@ -52,7 +52,8 @@ whatever the program wants.
 
 Lots of bridges return `{ ok: false, error }` instead of throwing. mocon reads a normal return as
 success, so on a bridge like that every failure gets quietly recorded as working. One option fixes
-it:
+it. Return only what you want changed: everything you leave out is filled in from what the bridge
+actually answered, so the envelope still lands on the span as the reason.
 
 ```ts
 const callTool = execution.instrument(bridge.callTool, {

@@ -695,15 +695,21 @@ def _input_from(input: Callable[..., Any] | None, target_took_first: bool, args:
 
 
 def _message_of(cause: Any) -> str | None:
+    """The message by shape, matching the TypeScript emitter: anything carrying a non-empty string
+    ``message`` has one, not only an exception. Reading it runs program-authored code, so every
+    path here is guarded and a hostile ``__str__`` costs the message rather than the call."""
     if isinstance(cause, str):
-        return cause
+        return cause or None
     if isinstance(cause, BaseException):
         try:
-            return str(cause)
+            return str(cause) or None
         except Exception:
-            # An exception raised by program code can carry a hostile __str__.
             return None
-    return None
+    try:
+        message = getattr(cause, "message", None)
+    except Exception:
+        return None
+    return message if isinstance(message, str) and message else None
 
 
 def _put(attrs: MutableMapping[str, Any], key: str, value: Any) -> None:

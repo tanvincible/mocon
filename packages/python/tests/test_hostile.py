@@ -327,3 +327,44 @@ def test_a_string_far_past_the_cap_is_refused_rather_than_read() -> None:
     ex.crossing("orders.list").output("x" * (64 * 64 + 1))
     ex.complete()
     assert note(h.one("execute_tool"))["gen_ai.tool.call.result"] == {"redacted": True}
+
+
+def test_an_exception_body_carries_the_name_and_message_rather_than_an_empty_object() -> None:
+    """An exception's ``__dict__`` is almost always empty, so the body would serialize to ``{}`` and
+    the capture note would attest a hash of nothing. The class and the message are what a reader
+    needs, and a hostile ``__str__`` costs the message rather than the call."""
+
+    class HttpError(Exception):
+        def __init__(self, message: str, code: int) -> None:
+            super().__init__(message)
+            self.code = code
+
+    class Hostile(Exception):
+        def __str__(self) -> str:
+            raise RuntimeError("TRAP")
+
+    cap = capture.CapturePolicy(values=True)
+    for raised, expected in [
+        (ValueError("disk full"), '{"name":"ValueError","message":"disk full"}'),
+        (HttpError("gone", 410), '{"name":"HttpError","message":"gone","code":410}'),
+        (Hostile(), '{"name":"Hostile"}'),
+    ]:
+        h = harness(capture=cap)
+        ex = h.m.execution(program="p")
+        ex.fail(raised)
+        assert h.one("execute_code").attributes["code_mode.error.body"] == expected
+
+
+def test_a_message_is_read_from_anything_carrying_one() -> None:
+    """Matching the TypeScript emitter, which reads by shape because an error raised inside a
+    sandbox fails an identity check against the host's own error type."""
+
+    class Envelope:
+        message = "disk full"
+
+    cap = capture.CapturePolicy(values=True)
+    for raised, expected in [(Envelope(), '"disk full"'), ("disk full", '"disk full"'), (object(), None)]:
+        h = harness(capture=cap)
+        ex = h.m.execution(program="p")
+        ex.fail(raised)
+        assert h.one("execute_code").attributes.get("code_mode.error.message") == expected

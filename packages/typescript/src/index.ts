@@ -293,7 +293,11 @@ export function codeMode(options: CodeModeOptions): CodeMode {
         try {
           const given = o.end(value);
           if (given !== null && typeof given === "object") {
-            execution.end(given);
+            // As on a crossing: the hook names what it changes and the rest is filled in beneath
+            // it, so a handler that answers `{ ok: false }` rather than throwing needs only
+            // `disposition` and still gets the envelope recorded as the reason.
+            if (ERRORED.has(given.disposition)) execution.end({ result: value, message: messageOf(value), errorBody: value, ...given });
+            else execution.end({ result: value, ...given });
             return;
           }
         } catch {
@@ -584,11 +588,21 @@ function settleCrossing<A extends unknown[]>(crossing: CrossingHandle, end: Inst
     try {
       const given = end(answer);
       if (given !== null && typeof given === "object") {
-        crossing.end(given);
+        // The hook says what it wants CHANGED, not what the whole end is. A bridge that answers
+        // `{ ok: false, error }` needs `outcome` overridden and still wants the envelope recorded,
+        // so whatever the hook leaves out is filled from the answer. Reading the return as the
+        // entire end instead means adding one field silently drops the payload, and the span then
+        // says a call failed while carrying nothing about why.
+        const payload = answer.threw ? answer.error : answer.value;
+        const outcome = given.outcome ?? (answer.threw ? "error" : "output");
+        if (outcome === "error") crossing.end({ message: messageOf(payload), errorBody: payload, ...given, outcome });
+        else if (outcome === "output") crossing.end({ output: payload, ...given, outcome });
+        else crossing.end(given);
         return;
       }
     } catch {
-      // `end` validates before it touches the span, so the crossing is still open for the default.
+      // The hook threw, or answered with a shape the span refuses. Both validate before touching
+      // anything, so the crossing is still open for the default.
     }
   }
   if (answer.threw) crossing.error(answer.error);
@@ -667,9 +681,22 @@ function inputFrom<A extends unknown[]>(input: InstrumentOptions<A>["input"], ta
   return rest.length === 1 ? rest[0] : rest.length === 0 ? undefined : rest;
 }
 
+/**
+ * The message by shape rather than by `instanceof`. An Error thrown inside a sandbox belongs to that
+ * sandbox's realm and fails `instanceof Error` in the host's, and that is the single most common
+ * error a code-mode host handles, so the check that reads naturally here is the one that returns
+ * nothing exactly when it matters. Reading the property runs program-authored code, so it is
+ * guarded: a hostile getter costs the message, never the call.
+ */
 function messageOf(cause: unknown): string | undefined {
-  if (cause instanceof Error) return cause.message;
-  return typeof cause === "string" ? cause : undefined;
+  if (typeof cause === "string") return cause === "" ? undefined : cause;
+  if (cause === null || (typeof cause !== "object" && typeof cause !== "function")) return undefined;
+  try {
+    const message = (cause as { message?: unknown }).message;
+    return typeof message === "string" && message !== "" ? message : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function put(attrs: Attributes, key: string, value: string | undefined): void {

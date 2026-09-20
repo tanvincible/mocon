@@ -48,14 +48,24 @@ makes through that function.
 
 ## 4. Provider
 
-In your real entrypoint, not in a test:
+mocon emits through the OpenTelemetry API and nothing else, so until something registers a provider
+your spans go to a no-op and you see nothing. That is the usual reason a first run looks silent.
+
+If you already register one somewhere, you are done, skip this. If you don't, the SDK is a separate
+install:
+
+```sh
+npm install @opentelemetry/sdk-node
+```
+
+Then in your real entrypoint, before anything else loads:
 
 ```ts
 import { NodeSDK } from "@opentelemetry/sdk-node";
 new NodeSDK({ /* your exporter */ }).start();
 ```
 
-Or if you'd rather not run tracing at all, use [your logger](./logs.md).
+Or skip the SDK entirely and write to [your logger](./logs.md), which needs no extra install.
 
 ## 5. Run it
 
