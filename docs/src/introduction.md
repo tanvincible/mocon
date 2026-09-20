@@ -41,15 +41,17 @@ nothing in between.
 
 ## The fix
 
-You add two wrappers to your server. For every run you get:
+You add two wrappers to your server. From those you get all three OpenTelemetry signals:
 
-- **One span for the program.** How long it took, how it ended.
-- **One span per call the program made**, nested under it, with the target, the duration and what
-  happened.
+- **Traces.** One span for the program, one per call it made, nested underneath, with durations and
+  outcomes. Any trace viewer draws it as a waterfall you can read.
+- **Metrics.** Duration histograms for runs and for calls, so you can ask questions across many runs
+  rather than one.
+- **Logs.** A record when a run starts, which is the only thing that shows work in flight, because a
+  span doesn't appear until it finishes.
 
-They're ordinary OpenTelemetry spans. They go wherever your telemetry already goes, and any trace
-viewer draws them as a waterfall you can read. No trace backend? You can
-[send them to your logger instead](./logs.md) and get the same thing as flat records.
+Each one goes wherever that signal already goes in your setup, and each costs nothing if you don't
+run it. No OpenTelemetry at all? You can [send everything to your logger](./logs.md) instead.
 
 ## Versus logging
 

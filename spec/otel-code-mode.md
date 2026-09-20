@@ -376,10 +376,20 @@ the trace, and it is the host's job, never the consumer's. A consumer MUST NOT s
 ending for a span it never received, and MUST NOT read the duration of an `abandoned` execution
 span as how long the program ran: the span ends when the host gave up.
 
-A host that needs the running state visible MAY emit a log record for it, carrying the same
-attributes and the trace id and span id of the execution span so a query joins the two. This
-document defines no event name, no body shape and no severity for such a record, and a consumer
-MUST NOT depend on one existing. It is an escape hatch, not a second model.
+**A host SHOULD emit a log record when a dispatch starts**, and MAY emit one when it ends. This is
+the only thing in the model that says a run is in flight right now, so it is what makes the running
+state visible at all.
+
+| | |
+|---|---|
+| `event.name` | `code_mode.execution.started`, or `code_mode.execution.ended` |
+| Severity | INFO. A dispatch merely running is not something to page anyone about |
+| Attributes | the execution span's attributes, plus `trace_id` and `span_id` |
+
+The two ids are what make this a view of the trace rather than a second model. A consumer joins the
+records to the spans on them, and nothing here duplicates what a span already carries once the run
+has finished. A consumer MUST NOT depend on these records existing, because a host with no logging
+pipeline emits none.
 
 ## 5. Crossing span
 
@@ -935,9 +945,30 @@ the program's claim, and the rule applies unchanged.
 8).
 
 **What is always legal.** The execution span's own times, `code_mode.execution.disposition` and
-the five declaration attributes are H on every host. A duration histogram over executions, keyed
-on disposition, is therefore always sound. This document does not define one; section 17 asks
-whether it should.
+the five declaration attributes are H on every host. A duration histogram over executions, keyed on
+disposition, is therefore always sound.
+
+### 9.1 The instruments
+
+Two, both histograms, both in seconds.
+
+| Instrument | Dimensions |
+|---|---|
+| `code_mode.execution.duration` | `code_mode.execution.disposition`, and `error.type` when present |
+| `code_mode.crossing.duration` | `gen_ai.tool.name`, `code_mode.crossing.outcome` and `error.type`, **only when the host attests `crossing.target`** |
+
+The condition on the second is the rule above, enforced rather than stated. On a host that did not
+attest the target, all three of those dimensions follow the target and are therefore the program's
+words, so an emitter MUST drop them. What remains is an undimensioned duration distribution, which
+is worth little and is not a lie.
+
+An emitter records nothing for a crossing that settled `abandoned`. Such a crossing is closed at its
+own start, so its duration is zero by construction, and recording it would put a fiction in the
+distribution.
+
+This is the one place a host can enforce section 9 for itself. It cannot stop a span-metrics
+connector somebody else configured from deriving a metric out of a span name, which is why the
+collector configuration shipped alongside these conventions exists.
 
 Keep point attributes to low-cardinality dimensions. Never an execution id, a crossing id, a
 session id or anything per user.
@@ -1221,10 +1252,12 @@ An abandoned crossing, or any crossing on a host that does not record crossing t
 zero-duration span that renders as a tick. `code_mode.crossing.timing` says so in an attribute,
 and no trace viewer reads it.
 
-**L5. A running or never-closed execution is not in the trace.** It is indistinguishable from a
-dispatch that never happened. The only fix is the host closing it `abandoned` at a later
-reconciliation, which is work inside the host, or a log record (section 4.4), which this document
-does not define.
+**L5. A running or never-closed execution is not in the TRACE.** It is indistinguishable there from
+a dispatch that never happened, because a span exports only when it ends. Section 4.4's log record
+now covers it, so a host emitting all three signals can see work in flight. What remains is that the
+trace alone cannot, that a consumer reading only spans learns nothing, and that a host with no
+logging pipeline is back where it started. Closing a past-deadline execution `abandoned` at a later
+reconciliation is still the only way to put it in the trace itself.
 
 **L6. The SDK's attribute value length limit truncates after the emitter has written its capture
 note.** A value the host recorded whole can arrive shortened with nothing saying so. The default

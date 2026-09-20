@@ -13,12 +13,15 @@ import { randomBytes } from "node:crypto";
 import { types } from "node:util";
 import { Capture, type CapturePolicy, writeNotes, type Notes } from "./capture.js";
 import { type Capabilities, declaration } from "./declare.js";
+import { Records } from "./logrecords.js";
+import { Meters } from "./metrics.js";
 import { type Labels, label, labels } from "./provenance.js";
 import type { Attestation } from "./declare.js";
 import { type Attributes, type Context, context as activeContext, type HrTime, type Span, SpanKind, SpanStatusCode, type TimeInput, type Tracer, trace } from "@opentelemetry/api";
 
 export type { Attestation, Capabilities, CrossingEdge, Observes } from "./declare.js";
 export type { CapturePolicy } from "./capture.js";
+export type { Aggregation, Cardinality, Dimension } from "./declare.js";
 export { type LogRecord, type LogTracerOptions, logTracer } from "./log.js";
 
 const NAME = "@mocon/trace";
@@ -111,8 +114,17 @@ function hrNow(): HrTime {
   return [seconds, nanos];
 }
 
+/** Each signal is on by default and costs nothing when the application configured no provider. */
+export interface Signals {
+  metrics?: boolean;
+  /** Needs the optional `@opentelemetry/api-logs`; silently off when it is not installed. */
+  logs?: boolean;
+}
+
 export interface CodeModeOptions {
   capabilities: Capabilities;
+  /** Traces, metrics and log records all come from the same two wrappers. */
+  signals?: Signals;
   /** Default: this package's own tracer. Pass one to name your own instrumentation scope. */
   tracer?: Tracer;
   capture?: CapturePolicy;
@@ -262,14 +274,17 @@ export function codeMode(options: CodeModeOptions): CodeMode {
   const ordered = declared["code_mode.observes_crossings"] === "all";
   // Read back from the frozen declaration, never from the caller's object a second time: a getter
   // that answered the closed-set check with one value could otherwise answer this with another.
-  const marks = labels((declared["code_mode.attested"] ?? []) as Attestation[]);
+  const attested = (declared["code_mode.attested"] ?? []) as Attestation[];
+  const marks = labels(attested);
+  const meters = options.signals?.metrics === false ? undefined : new Meters(attested);
+  const records = new Records(options.signals?.logs !== false);
   const host: HostClasses = {
     observed: new Set((declared["code_mode.attested_attributes"] ?? []) as string[]),
     relayed: new Set((declared["code_mode.relayed_attributes"] ?? []) as string[]),
   };
 
   const start = (o: ExecutionStartOptions): ExecutionHandle =>
-    new ExecutionSpan(tracer, declared, capture, ordered, marks, host, o);
+    new ExecutionSpan(tracer, declared, capture, ordered, marks, host, meters, records, o);
 
   const run = <T>(o: RunOptions, body: (execution: ExecutionHandle) => T): T => {
     const execution = start(o);
@@ -315,6 +330,7 @@ class ExecutionSpan implements ExecutionHandle {
   /** Repeated onto every crossing: parentage carries a span id, never the id in the host's logs. */
   private readonly ownId: string;
   private readonly notes: Notes = {};
+  private readonly startedAt: HrTime;
   private seq = 0;
   private ended = false;
 
@@ -325,6 +341,8 @@ class ExecutionSpan implements ExecutionHandle {
     private readonly ordered: boolean,
     private readonly marks: Labels,
     private readonly host: HostClasses,
+    private readonly meters: Meters | undefined,
+    private readonly records: Records,
     o: ExecutionStartOptions,
   ) {
     const program = o.program;
@@ -342,6 +360,7 @@ class ExecutionSpan implements ExecutionHandle {
     put(attributes, "gen_ai.conversation.id", o.conversationId);
     put(attributes, "mcp.session.id", o.sessionId);
     mark(attributes, this.marks.execution, this.host);
+    this.startedAt = o.startTime === undefined ? hrNow() : toHrTime(o.startTime);
     const parent = o.parent ?? activeContext.active();
     this.span = this.tracer.startSpan(
       o.tool === undefined ? "execute_code" : "execute_code " + o.tool,
@@ -350,6 +369,10 @@ class ExecutionSpan implements ExecutionHandle {
     );
     this.context = trace.setSpan(parent, this.span);
     this.crossing = { start: (options) => this.startCrossing(options) };
+    // Written before anything else can happen, because the only thing this record is for is saying
+    // that a dispatch is in flight right now, which no span can say until it has finished.
+    const ctx = this.span.spanContext();
+    this.records.started(attributes, ctx.traceId, ctx.spanId);
   }
 
   complete(options?: Omit<ExecutionEndOptions, "disposition">): void {
@@ -393,7 +416,11 @@ class ExecutionSpan implements ExecutionHandle {
     writeNotes(attrs, this.notes);
     mark(attrs, this.marks.execution, this.host);
     this.span.setAttributes(attrs);
-    this.span.end(endTime);
+    const closedAt = endTime === undefined ? hrNow() : toHrTime(endTime);
+    this.span.end(closedAt);
+    this.meters?.recordExecution(elapsed(this.startedAt, closedAt), disposition as string, attrs["error.type"] as string | undefined);
+    const ctx = this.span.spanContext();
+    this.records.ended({ ...this.declared, ...attrs }, ctx.traceId, ctx.spanId);
   }
 
   instrument<F extends (...args: any[]) => unknown>(fn: F, options?: InstrumentOptions<Parameters<F>>): F {
@@ -443,7 +470,7 @@ class ExecutionSpan implements ExecutionHandle {
     const given = o.seq;
     const usable = typeof given === "number" && Number.isInteger(given) && given > 0;
     const seq = usable ? given : this.ordered ? ++this.seq : undefined;
-    const crossing = new CrossingSpan(this.tracer, this.declared, this.capture, this.context, this, target, seq, this.ownId, this.marks, this.host, o);
+    const crossing = new CrossingSpan(this.tracer, this.declared, this.capture, this.context, this, target, seq, this.ownId, this.marks, this.host, this.meters, o);
     if (!this.ended) this.open.add(crossing);
     return crossing;
   }
@@ -461,11 +488,12 @@ class CrossingSpan implements CrossingHandle {
     private readonly capture: Capture,
     parent: Context,
     private readonly execution: ExecutionSpan,
-    target: string,
+    private readonly target: string,
     seq: number | undefined,
     executionId: string,
     private readonly marks: Labels,
     private readonly host: HostClasses,
+    private readonly meters: Meters | undefined,
     o: CrossingStartOptions,
   ) {
     const attributes: Attributes = {
@@ -538,6 +566,11 @@ class CrossingSpan implements CrossingHandle {
     mark(attrs, this.marks.crossing, this.host);
     this.span.setAttributes(attrs);
     this.span.end(close);
+    // An abandoned crossing is closed at its own start, so its duration is zero and means nothing.
+    // Recording it would put a fictional zero in the distribution.
+    if (outcome !== "abandoned") {
+      this.meters?.recordCrossing(elapsed(this.start, close === undefined ? hrNow() : toHrTime(close)), this.target, outcome as string, attrs["error.type"] as string | undefined);
+    }
   }
 }
 
@@ -641,6 +674,11 @@ function messageOf(cause: unknown): string | undefined {
 
 function put(attrs: Attributes, key: string, value: string | undefined): void {
   if (typeof value === "string" && value !== "") attrs[key] = value;
+}
+
+/** Seconds between two readings, which is the unit both histograms use. */
+function elapsed(from: HrTime, to: HrTime): number {
+  return Math.max(0, to[0] - from[0] + (to[1] - from[1]) / 1e9);
 }
 
 function toHrTime(time: TimeInput): HrTime {

@@ -8,8 +8,10 @@ outside, that whole run is one opaque tool call: the calls the program made, wha
 came back, and whether the server could see any of it are all invisible.
 
 mocon is a set of OpenTelemetry semantic conventions that make it visible, and a small emitter that
-implements them. OpenTelemetry is the wire format rather than an export target, so there is no
-format here for anyone to learn and no destination of ours to wire.
+implements them. Two wrappers give you all three signals: traces for the shape of one run, metrics
+for questions across many, and a log record that shows work in flight. OpenTelemetry is the wire
+format rather than an export target, so there is no format here for anyone to learn and no
+destination of ours to wire.
 
 ## Install
 

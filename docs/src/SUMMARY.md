@@ -7,6 +7,7 @@
 - [Install](./install.md)
 - [Quick start](./quickstart.md)
 - [Output](./output.md)
+- [Signals](./signals.md)
 
 # Guide
 

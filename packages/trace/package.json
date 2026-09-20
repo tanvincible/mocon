@@ -1,7 +1,7 @@
 {
   "name": "@mocon/trace",
   "version": "0.1.0",
-  "description": "Makes a code-mode MCP server's executions visible in OpenTelemetry. Depends on the OpenTelemetry API only.",
+  "description": "Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API.",
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -29,6 +29,12 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "peerDependencies": {
-    "@opentelemetry/api": ">=1.3.0 <2"
+    "@opentelemetry/api": ">=1.3.0 <2",
+    "@opentelemetry/api-logs": ">=0.50.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api-logs": {
+      "optional": true
+    }
   }
 }
