@@ -15,8 +15,8 @@ run.
 
 ```sh
 git clone https://github.com/tanvincible/mocon
-cd mocon && npm install && npm run build && npm pack -w mocon && cd ..
-npm install ./mocon/mocon-0.1.0.tgz @opentelemetry/api
+cd mocon && npm install && npm run build && npm pack -w @mocon/core && cd ..
+npm install ./mocon/mocon-core-0.1.0.tgz @opentelemetry/api
 ```
 
 Not on npm yet, so it installs from the repo.
@@ -24,7 +24,7 @@ Not on npm yet, so it installs from the repo.
 ## Use
 
 ```ts
-import { codeMode } from "mocon";
+import { codeMode } from "@mocon/core";
 
 const observed = codeMode({
   capabilities: {

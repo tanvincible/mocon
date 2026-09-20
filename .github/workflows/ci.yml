@@ -37,18 +37,18 @@ jobs:
           cd "$GITHUB_WORKSPACE/source"
           npm install
           npm run build
-          npm pack -w mocon --pack-destination "$RUNNER_TEMP"
+          npm pack -w @mocon/core --pack-destination "$RUNNER_TEMP"
       - name: Install the tarball from outside the repository
         run: |
           mkdir -p "$RUNNER_TEMP/stranger"
           cd "$RUNNER_TEMP/stranger"
           npm init -y
-          npm install "$RUNNER_TEMP"/mocon-*.tgz @opentelemetry/api
+          npm install "$RUNNER_TEMP"/mocon-core-*.tgz @opentelemetry/api
       - name: Import it by name and emit a span
         run: |
           cd "$RUNNER_TEMP/stranger"
           node --input-type=module -e '
-            import { codeMode, logTracer } from "mocon";
+            import { codeMode, logTracer } from "@mocon/core";
             const out = [];
             const m = codeMode({
               capabilities: { observes_crossings: "some", unmediated_egress: true, crossing_edge: "invocation", attested: [] },
