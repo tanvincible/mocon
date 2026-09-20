@@ -1,5 +1,5 @@
 /**
- * What `@mocon/otel` costs on a request path, against the floor of the OpenTelemetry SDK producing
+ * What `mocon` costs on a request path, against the floor of the OpenTelemetry SDK producing
  * the same spans with no emitter at all. The difference between the two is what this package adds;
  * the floor itself is what any OpenTelemetry instrumentation pays and is not ours to reduce.
  *

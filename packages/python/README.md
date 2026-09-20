@@ -2,7 +2,7 @@
 
 Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API.
 The conventions are in [`spec/otel-code-mode.md`](../../spec/otel-code-mode.md); this is the Python
-emitter, a port of [`@mocon/otel`](../typescript) that writes the same attribute names and values.
+emitter, a port of [`mocon`](../typescript) that writes the same attribute names and values.
 
 In code mode an agent submits a *program* instead of calling one tool. The host runs it in a
 sandbox, and from inside, the program reaches the host's tools through a bridge. From outside, the
@@ -13,8 +13,11 @@ observe and a per-field label separating what the host saw from what the program
 ## Install
 
 ```
-pip install mocon
+pip install moconpy
 ```
+
+The distribution is `moconpy` and the import is `mocon`, because `mocon` on PyPI is an unrelated
+project. On npm the package is just `mocon`.
 
 It depends on `opentelemetry-api` and never the SDK, which is OpenTelemetry's own rule for
 instrumentation and the reason this is worth doing: the spans reach whatever exporters the

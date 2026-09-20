@@ -28,7 +28,7 @@ test("a host that passes no tracer reaches the exporter the application owner al
 
     const spans = owner.getFinishedSpans();
     assert.deepEqual(spans.map((s) => s.name), ["execute_tool search", "execute_code execute"]);
-    assert.equal(spans[1]?.instrumentationLibrary.name, "@mocon/otel", "the scope names the instrumentation");
+    assert.equal(spans[1]?.instrumentationLibrary.name, "mocon", "the scope names the instrumentation");
     assert.equal(spans[0]?.parentSpanId, spans[1]?.spanContext().spanId);
     assert.equal(spans[1]?.attributes["code_mode.execution.disposition"], "completed");
   } finally {

@@ -1,5 +1,5 @@
 /**
- * @mocon/otel: the two wrappers of `spec/otel-code-mode.md`, on the OpenTelemetry API.
+ * mocon: the two wrappers of `spec/otel-code-mode.md`, on the OpenTelemetry API.
  *
  * Wrapper one goes around the handler that runs a program, wrapper two around the function the
  * sandbox calls to reach the host. Both write the capability declaration on every span they start.
@@ -24,7 +24,7 @@ export type { CapturePolicy } from "./capture.js";
 export type { Aggregation, Cardinality, Dimension } from "./declare.js";
 export { type LogRecord, type LogTracerOptions, logTracer } from "./log.js";
 
-const NAME = "@mocon/otel";
+const NAME = "mocon";
 const VERSION = "0.1.0";
 /** The version of `spec/otel-code-mode.md` these spans are written against. */
 export const CONVENTIONS_VERSION = "0.1.0";
@@ -89,7 +89,7 @@ function hostAttributes(given: Attributes | undefined): Attributes {
  * while the span is still untouched.
  */
 function readChannels(outputs: Record<string, unknown>): Array<[string, unknown]> {
-  if (outputs === null || typeof outputs !== "object") throw new TypeError("@mocon/otel: outputs must be an object");
+  if (outputs === null || typeof outputs !== "object") throw new TypeError("mocon: outputs must be an object");
   const pairs: Array<[string, unknown]> = [];
   try {
     for (const channel of Object.keys(outputs)) pairs.push([channel, outputs[channel]]);
@@ -267,7 +267,7 @@ export interface InstrumentOptions<A extends unknown[]> {
 }
 
 export function codeMode(options: CodeModeOptions): CodeMode {
-  if (options === null || typeof options !== "object") throw new TypeError("@mocon/otel: options are required");
+  if (options === null || typeof options !== "object") throw new TypeError("mocon: options are required");
   const declared = declaration(options.capabilities);
   const capture = new Capture(options.capture);
   const tracer = options.tracer ?? trace.getTracer(NAME, VERSION);
@@ -346,7 +346,7 @@ class ExecutionSpan implements ExecutionHandle {
     o: ExecutionStartOptions,
   ) {
     const program = o.program;
-    if (typeof program !== "string") throw new TypeError("@mocon/otel: program must be a string");
+    if (typeof program !== "string") throw new TypeError("mocon: program must be a string");
     // 4.2: Required, so one is minted when the host has none. A minted id still answers "the
     // crossings of this execution", which is the query that silently returned nothing without it.
     // It cannot match a host log line, which is why a host that has an id should pass it.
@@ -391,7 +391,7 @@ class ExecutionSpan implements ExecutionHandle {
 
   end(options: ExecutionEndOptions): void {
     const { disposition, errorType, message, result, outputs, errorBody, attributes, endTime } = options;
-    if (!DISPOSITIONS.has(disposition)) throw new RangeError(`@mocon/otel: unknown disposition ${JSON.stringify(disposition)}`);
+    if (!DISPOSITIONS.has(disposition)) throw new RangeError(`mocon: unknown disposition ${JSON.stringify(disposition)}`);
     // Read before any state changes, so a refusal leaves the span exactly as it was.
     const channels = outputs === undefined ? undefined : readChannels(outputs);
     if (this.ended) return;
@@ -424,7 +424,7 @@ class ExecutionSpan implements ExecutionHandle {
   }
 
   instrument<F extends (...args: any[]) => unknown>(fn: F, options?: InstrumentOptions<Parameters<F>>): F {
-    if (typeof fn !== "function") throw new TypeError("@mocon/otel: instrument() takes a function");
+    if (typeof fn !== "function") throw new TypeError("mocon: instrument() takes a function");
     const { target, input, end, toolType, attributes } = readInstrument(options);
     const execution = this;
     const wrapped = function (this: unknown, ...args: Parameters<F>): unknown {
@@ -461,7 +461,7 @@ class ExecutionSpan implements ExecutionHandle {
 
   private startCrossing(o: CrossingStartOptions): CrossingHandle {
     const target = o.target;
-    if (typeof target !== "string") throw new TypeError("@mocon/otel: crossing target must be a string");
+    if (typeof target !== "string") throw new TypeError("mocon: crossing target must be a string");
     // `seq` is auto-assigned only under `all`, which is the declaration that says the host mediates
     // every call and therefore has an initiation order to report. A supplied value that is not a
     // positive integer is refused rather than written: it carries C10, so a consumer orders crossings
@@ -541,7 +541,7 @@ class CrossingSpan implements CrossingHandle {
 
   end(options: CrossingEndOptions): void {
     const { outcome, output, errorType, message, errorBody, attributes, endTime } = options;
-    if (!OUTCOMES.has(outcome)) throw new RangeError(`@mocon/otel: unknown outcome ${JSON.stringify(outcome)}`);
+    if (!OUTCOMES.has(outcome)) throw new RangeError(`mocon: unknown outcome ${JSON.stringify(outcome)}`);
     if (this.ended) return;
     this.ended = true;
     this.execution.release(this);
@@ -622,11 +622,11 @@ function follow<T>(result: T, onValue: (value: unknown) => void, onError: (error
 
 function readInstrument<A extends unknown[]>(options: InstrumentOptions<A> | undefined): InstrumentOptions<A> {
   if (options === undefined) return {};
-  if (options === null || typeof options !== "object") throw new TypeError("@mocon/otel: instrument() options must be an object");
+  if (options === null || typeof options !== "object") throw new TypeError("mocon: instrument() options must be an object");
   const { target, input, end, toolType, attributes } = options;
-  if (target !== undefined && typeof target !== "string" && typeof target !== "function") throw new TypeError("@mocon/otel: instrument() target must be a string or a function");
-  if (input !== undefined && typeof input !== "function") throw new TypeError("@mocon/otel: instrument() input must be a function");
-  if (end !== undefined && typeof end !== "function") throw new TypeError("@mocon/otel: instrument() end must be a function");
+  if (target !== undefined && typeof target !== "string" && typeof target !== "function") throw new TypeError("mocon: instrument() target must be a string or a function");
+  if (input !== undefined && typeof input !== "function") throw new TypeError("mocon: instrument() input must be a function");
+  if (end !== undefined && typeof end !== "function") throw new TypeError("mocon: instrument() end must be a function");
   return { target, input, end, toolType, attributes };
 }
 

@@ -114,7 +114,7 @@ export interface Capabilities {
  * a span that never passed a check.
  */
 export function declaration(capabilities: Capabilities): Readonly<Attributes> {
-  if (capabilities === null || typeof capabilities !== "object") throw new TypeError("@mocon/otel: capabilities are required");
+  if (capabilities === null || typeof capabilities !== "object") throw new TypeError("mocon: capabilities are required");
   const {
     observes_crossings: observes,
     unmediated_egress: egress,
@@ -125,22 +125,22 @@ export function declaration(capabilities: Capabilities): Readonly<Attributes> {
     declared,
   } = capabilities;
 
-  if (!OBSERVES.has(observes)) throw new RangeError('@mocon/otel: observes_crossings must be "all", "some" or "none"');
-  if (typeof egress !== "boolean") throw new TypeError("@mocon/otel: unmediated_egress must be a boolean");
+  if (!OBSERVES.has(observes)) throw new RangeError('mocon: observes_crossings must be "all", "some" or "none"');
+  if (typeof egress !== "boolean") throw new TypeError("mocon: unmediated_egress must be a boolean");
 
   const out: Attributes = { "code_mode.observes_crossings": observes, "code_mode.unmediated_egress": egress };
 
   if (edge === undefined) {
     // 3: Conditionally Required when the host mediates. A host that claims an edge it cannot name
     // has not said which side its crossing spans describe, and the two do not agree on cardinality.
-    if (observes !== "none") throw new RangeError('@mocon/otel: crossing_edge is required unless observes_crossings is "none"');
+    if (observes !== "none") throw new RangeError('mocon: crossing_edge is required unless observes_crossings is "none"');
   } else {
-    if (!EDGES.has(edge)) throw new RangeError('@mocon/otel: crossing_edge must be "invocation" or "dispatch"');
+    if (!EDGES.has(edge)) throw new RangeError('mocon: crossing_edge must be "invocation" or "dispatch"');
     out["code_mode.crossing_edge"] = edge;
   }
 
   const entries = attested === undefined ? [] : [...attested];
-  for (const entry of entries) if (!ATTESTED.has(entry)) throw new RangeError(`@mocon/otel: unknown attested entry ${JSON.stringify(entry)}`);
+  for (const entry of entries) if (!ATTESTED.has(entry)) throw new RangeError(`mocon: unknown attested entry ${JSON.stringify(entry)}`);
   // Written even when empty: 3 makes it Required, and an absent list is read as empty anyway, so
   // emitting it is what distinguishes a host that attests nothing from one that never declared.
   out["code_mode.attested"] = entries;
@@ -149,15 +149,15 @@ export function declaration(capabilities: Capabilities): Readonly<Attributes> {
     const observed = names(attestedKeys, "attested_attributes");
     const relayed = names(relayedKeys, "relayed_attributes");
     if (observed.length === 0 && relayed.length === 0) {
-      throw new RangeError('@mocon/otel: "host_attributes" is attested but no attribute is named, so it claims nothing');
+      throw new RangeError('mocon: "host_attributes" is attested but no attribute is named, so it claims nothing');
     }
     // A key cannot be both measured by the host and passed through from a target, and a host that
     // says both has not decided which claim it is making.
-    for (const key of relayed) if (observed.includes(key)) throw new RangeError(`@mocon/otel: ${JSON.stringify(key)} is in both attested_attributes and relayed_attributes`);
+    for (const key of relayed) if (observed.includes(key)) throw new RangeError(`mocon: ${JSON.stringify(key)} is in both attested_attributes and relayed_attributes`);
     if (observed.length > 0) out["code_mode.attested_attributes"] = observed;
     if (relayed.length > 0) out["code_mode.relayed_attributes"] = relayed;
   } else if (attestedKeys !== undefined || relayedKeys !== undefined) {
-    throw new RangeError('@mocon/otel: naming host attributes needs "host_attributes" in attested, which is the gate a consumer reads');
+    throw new RangeError('mocon: naming host attributes needs "host_attributes" in attested, which is the gate a consumer reads');
   }
 
   const dimensions = checkDeclared(declared);
@@ -173,24 +173,24 @@ export function declaration(capabilities: Capabilities): Readonly<Attributes> {
  */
 function checkDeclared(given: Capabilities["declared"]): string | undefined {
   if (given === undefined) return undefined;
-  if (given === null || typeof given !== "object") throw new TypeError("@mocon/otel: declared must be an object");
+  if (given === null || typeof given !== "object") throw new TypeError("mocon: declared must be an object");
   const out: Record<string, Dimension> = {};
   for (const key of Object.keys(given)) {
     const d = given[key];
-    if (d === null || typeof d !== "object") throw new TypeError(`@mocon/otel: declared[${JSON.stringify(key)}] must be an object`);
+    if (d === null || typeof d !== "object") throw new TypeError(`mocon: declared[${JSON.stringify(key)}] must be an object`);
     const { agg, unit, card, name } = d;
-    if (!AGG.has(agg)) throw new RangeError(`@mocon/otel: declared[${JSON.stringify(key)}].agg must be "sum", "last" or "none"`);
+    if (!AGG.has(agg)) throw new RangeError(`mocon: declared[${JSON.stringify(key)}].agg must be "sum", "last" or "none"`);
     const entry: Dimension = { agg };
     if (unit !== undefined) {
-      if (typeof unit !== "string" || unit === "") throw new TypeError(`@mocon/otel: declared[${JSON.stringify(key)}].unit must be a non-empty string`);
+      if (typeof unit !== "string" || unit === "") throw new TypeError(`mocon: declared[${JSON.stringify(key)}].unit must be a non-empty string`);
       entry.unit = unit;
     }
     if (card !== undefined) {
-      if (!CARD.has(card)) throw new RangeError(`@mocon/otel: declared[${JSON.stringify(key)}].card must be "low" or "high"`);
+      if (!CARD.has(card)) throw new RangeError(`mocon: declared[${JSON.stringify(key)}].card must be "low" or "high"`);
       entry.card = card;
     }
     if (name !== undefined) {
-      if (typeof name !== "string" || name === "") throw new TypeError(`@mocon/otel: declared[${JSON.stringify(key)}].name must be a non-empty string`);
+      if (typeof name !== "string" || name === "") throw new TypeError(`mocon: declared[${JSON.stringify(key)}].name must be a non-empty string`);
       entry.name = name;
     }
     out[key] = entry;
@@ -200,8 +200,8 @@ function checkDeclared(given: Capabilities["declared"]): string | undefined {
 
 function names(given: readonly string[] | undefined, field: string): string[] {
   if (given === undefined) return [];
-  if (!Array.isArray(given)) throw new TypeError(`@mocon/otel: ${field} must be an array`);
+  if (!Array.isArray(given)) throw new TypeError(`mocon: ${field} must be an array`);
   const keys = [...given];
-  for (const key of keys) if (typeof key !== "string" || key === "") throw new TypeError(`@mocon/otel: ${field} entries must be non-empty strings`);
+  for (const key of keys) if (typeof key !== "string" || key === "") throw new TypeError(`mocon: ${field} entries must be non-empty strings`);
   return keys;
 }

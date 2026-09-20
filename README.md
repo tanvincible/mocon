@@ -42,7 +42,7 @@ day you merge worse than the day before: destination first, code last.
 Two wrappers. That is the whole integration.
 
 ```ts
-import { codeMode } from "@mocon/otel";
+import { codeMode } from "mocon";
 
 const observed = codeMode({
   capabilities: {
@@ -90,7 +90,7 @@ Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
 
 - `spec/otel-code-mode.md` is the specification. It ends with the fifteen things it cannot do and
   the open questions it has not settled.
-- `packages/typescript` is `@mocon/otel`, the reference emitter, on the OpenTelemetry API only.
+- `packages/typescript` is `mocon`, the reference emitter, on the OpenTelemetry API only.
 - `bench/trace.mjs` measures what it costs against the SDK's own floor.
 - `collector/` and `dashboards/` are optional examples. Everything is ordinary OpenTelemetry, so use
   whatever backend and dashboards you already run.

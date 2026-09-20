@@ -13,7 +13,7 @@ Two wrappers. One around the handler that runs the program, one around the outer
 program can reach.
 
 ```ts
-import { codeMode } from "@mocon/otel";
+import { codeMode } from "mocon";
 const observed = codeMode({ capabilities: { observes_crossings: "some", unmediated_egress: true, crossing_edge: "invocation", attested: [] } });
 return observed.execution.run({ program: source, tool: "execute" }, (execution) => {
   const callTool = execution.instrument(bridge.callTool);

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mocon-otel"
+name = "moconpy"
 version = "0.1.0"
 description = "Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API."
 readme = "README.md"

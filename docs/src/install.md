@@ -5,7 +5,7 @@ npm install github:tanvincible/mocon
 npm install @opentelemetry/api
 ```
 
-`@mocon/otel` isn't on npm yet, so it comes from the repo. `@opentelemetry/api` is a peer dependency,
+`mocon` isn't on npm yet, so it comes from the repo. `@opentelemetry/api` is a peer dependency,
 so you install it yourself and pick the version.
 
 ## Destination

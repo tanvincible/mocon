@@ -16,7 +16,7 @@
 import { createRequire } from "node:module";
 import type { Attributes } from "@opentelemetry/api";
 
-const NAME = "@mocon/otel";
+const NAME = "mocon";
 const VERSION = "0.1.0";
 
 interface LoggerLike {
