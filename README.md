@@ -10,11 +10,20 @@ failed: none of it is recorded, and nothing in OpenTelemetry describes it.
 mocon is the missing vocabulary, plus a small emitter for it in TypeScript and Python.
 
 <p align="center">
-  <img src="./docs/src/assets/demo.svg" alt="A code-mode run: one execute_code span with four execute_tool spans under it, one of them failed" width="840">
+  <img src="./docs/src/assets/demo.svg" alt="A code-mode run traced: an execute_code span, four execute_tool spans with their arguments and results, a 16kB result truncated with its real size and hash, and a declined payment" width="880">
 </p>
 
-That's a real run, not a mockup: `examples/server.mjs` is a whole code-mode server, sandbox and all,
-and the durations are what its tools actually took. It needs no SDK, no collector and no backend.
+An order failed and the trace says why, without anyone adding a log line. You can see the arguments
+the agent's program chose, what each tool gave back, and the error that stopped it. The 16 kB search
+result did not fit on a span, so it was cut at 96 bytes and the note carries its real size and a
+hash of the whole thing: it is still identifiable, and nothing silently vanished.
+
+That is a real run of `examples/server.mjs`, a whole code-mode server, sandbox and all. The durations
+are what its tools actually took and the byte counts are what the values actually weighed. It needs
+no SDK, no collector and no backend.
+
+**Payloads are opt-in and off by default**, because they are agent-written arguments and target data.
+The example turns them on with `capture: { values: true, cap: 96 }`. Decide that one deliberately.
 
 ## Install
 

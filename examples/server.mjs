@@ -17,9 +17,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- the server
 
+/** Big enough that a search result genuinely does not fit on a span, because in production it won't. */
 const CATALOG = [
-  { sku: "APX-9", name: "aluminium bracket", price: 12.5, onHand: 240 },
-  { sku: "APX-14", name: "steel bracket", price: 18.0, onHand: 0 },
+  { sku: "APX-9", name: "aluminium bracket", price: 12.5, onHand: 240, warehouse: "LEE-2", lead_days: 3 },
+  { sku: "APX-14", name: "steel bracket", price: 18.0, onHand: 0, warehouse: "LEE-2", lead_days: 21 },
+  ...Array.from({ length: 140 }, (_, i) => ({
+    sku: `BRK-${100 + i}`,
+    name: `bracket, ${["galvanised", "powder-coated", "stainless", "mild steel"][i % 4]}, ${40 + i}mm`,
+    price: 9.25 + i * 0.4,
+    onHand: (i * 37) % 300,
+    warehouse: ["LEE-2", "DER-1", "STO-4"][i % 3],
+    lead_days: (i % 14) + 1,
+  })),
 ];
 
 /** Latency is real, not printed: these are the numbers the spans below actually measure. */
@@ -65,6 +74,9 @@ const observed = codeMode({
     crossing_edge: "invocation", // spans describe what the program asked for
     attested: ["crossing.target", "crossing.input", "crossing.output"],
   },
+  // Opt-in, and off by default: these are agent-written arguments and target data. A cap keeps a
+  // 40 kB search result off the span, and the note below says the value was cut and how big it was.
+  capture: { values: true, cap: 96 },
   tracer: logTracer({ write: (record) => records.push(record) }),
 });
 
@@ -109,21 +121,36 @@ function draw() {
     .filter((r) => r.name.startsWith("execute_tool"))
     .sort((a, b) => a["code_mode.crossing.seq"] - b["code_mode.crossing.seq"]);
 
-  const state = execution["code_mode.execution.disposition"];
-  const colour = execution.status === "error" ? C.red : C.green;
-  console.log(`${C.bold}${C.cyan}${execution.name}${C.off}  ${colour}${state}${C.off}  ${dim(ms(execution))}`);
-  console.log(dim(`│  ${execution["code_mode.program.hash"].slice(0, 21)}…  observes_crossings=${execution["code_mode.observes_crossings"]}  unmediated_egress=${execution["code_mode.unmediated_egress"]}`));
-  console.log(dim("│"));
+  const failed = execution.status === "error";
+  console.log(`${C.bold}${C.cyan}${execution.name}${C.off}  ${failed ? C.red : C.green}${execution["code_mode.execution.disposition"]}${C.off}  ${dim(ms(execution))}`);
+  console.log(dim(`│  ${execution["code_mode.program.hash"].slice(0, 20)}…  observes_crossings=${execution["code_mode.observes_crossings"]}  unmediated_egress=${execution["code_mode.unmediated_egress"]}`));
 
   const width = Math.max(...crossings.map((c) => c.name.length)) - "execute_tool ".length;
   crossings.forEach((c, i) => {
     const last = i === crossings.length - 1;
-    const outcome = c["code_mode.crossing.outcome"];
+    const bar = last ? " " : "│";
     const tint = c.status === "error" ? C.red : C.green;
     const target = c.name.replace("execute_tool ", "").padEnd(width);
-    const reason = c["error.type"] ? dim("  error.type=") + c["error.type"] : "";
-    console.log(`${dim(last ? "└─" : "├─")} ${C.cyan}${target}${C.off}  ${tint}${outcome.padEnd(8)}${C.off}${dim(ms(c).padStart(8) + "   seq=" + c["code_mode.crossing.seq"])}${reason}`);
+    const why = c["error.type"] ? "  " + dim(c["error.type"]) : "";
+    console.log(dim("│"));
+    console.log(`${dim(last ? "└─" : "├─")} ${C.cyan}${target}${C.off}  ${tint}${c["code_mode.crossing.outcome"].padEnd(7)}${C.off}${dim(ms(c).padStart(8))}${why}`);
+
+    const note = c["code_mode.capture"] ?? {};
+    payload(bar, "args  ", c["gen_ai.tool.call.arguments"], note["gen_ai.tool.call.arguments"]);
+    if (c["code_mode.crossing.outcome"] === "error") payload(bar, "error ", c["code_mode.error.body"], note["code_mode.error.body"], C.red);
+    else payload(bar, "result", c["gen_ai.tool.call.result"], note["gen_ai.tool.call.result"]);
   });
+}
+
+/** One captured value, and what the host had to do to it to fit it on a span. */
+function payload(bar, label, value, note, tint = "") {
+  if (value === undefined) return;
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  console.log(`${dim(bar + "    " + label)}  ${tint}${text}${tint ? C.off : ""}`);
+  if (note?.truncated) {
+    const kept = Buffer.byteLength(text);
+    console.log(dim(`${bar}            ↳ kept ${kept} B of ${note.bytes.toLocaleString()} · ${note.hash.slice(0, 17)}… over the whole value`));
+  }
 }
 
 function ms(r) {
