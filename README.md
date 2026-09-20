@@ -6,6 +6,12 @@
 
 <p align="center"><strong>OpenTelemetry for code-mode MCP servers.</strong></p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/@tanvincible/mocon"><img src="https://img.shields.io/npm/v/@tanvincible/mocon?color=0891b2&label=npm" alt="npm"></a>
+  <a href="https://tanvincible.github.io/mocon"><img src="https://img.shields.io/badge/docs-tanvincible.github.io%2Fmocon-0891b2" alt="Documentation"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-0891b2" alt="MIT OR Apache-2.0"></a>
+</p>
+
 In code mode the agent doesn't call your tools. It sends you a **program**, you run it in a sandbox,
 and the program calls your tools from inside. From the outside that whole run is one opaque tool
 call. Which tools it used, what it passed, what came back, how long each took, whether any of it
@@ -31,24 +37,20 @@ The example turns them on with `capture: { values: true, cap: 96 }`. Decide that
 
 ## Install
 
-Not on npm or PyPI yet. Until then:
+```sh
+npm install @tanvincible/mocon @opentelemetry/api
+```
+
+`@opentelemetry/api` is a peer dependency, so you pick the version.
+
+Python isn't on PyPI yet, so it comes from a clone:
 
 ```sh
 git clone https://github.com/tanvincible/mocon
-cd mocon && npm install && npm run build && npm pack -w @tanvincible/mocon && cd ..
-npm install ./mocon/tanvincible-mocon-0.1.0.tgz @opentelemetry/api
-```
-
-Python is shorter, because pip builds a path install properly:
-
-```sh
 pip install ./mocon/packages/python
 ```
 
-Four steps for npm is four too many, and there's no shorter one that works. `npm install
-github:tanvincible/mocon` installs the workspace root with nothing built. Installing the package
-directory fails, because npm won't install a path dependency's own build tools. Packing a tarball is
-what publishing does, minus the registry.
+The distribution will be `pymocon` and the import is `mocon` either way.
 
 ## Use
 
@@ -144,9 +146,12 @@ private and carries no version.
 
 ## Status
 
-Development. The specification is a draft. `code_mode.*` is a namespace this project owns and nobody
-else has agreed to, and the `gen_ai.*` and `mcp.*` attributes it reuses are themselves Development
-upstream with no compatibility guarantee.
+Development, and `0.1.0` means it. The specification is a draft, `code_mode.*` is a namespace this
+project owns and nobody else has agreed to, and the `gen_ai.*` and `mcp.*` attributes it reuses are
+themselves Development upstream with no compatibility guarantee.
+
+The npm package is `@tanvincible/mocon` rather than `mocon`, because npm rejects that name as too
+close to `mocha` and `motion`.
 
 ## License
 

@@ -14,9 +14,7 @@ run.
 ## Install
 
 ```sh
-git clone https://github.com/tanvincible/mocon
-cd mocon && npm install && npm run build && npm pack -w @tanvincible/mocon && cd ..
-npm install ./mocon/tanvincible-mocon-0.1.0.tgz @opentelemetry/api
+npm install @tanvincible/mocon @opentelemetry/api
 ```
 
 Not on npm yet, so it installs from the repo.

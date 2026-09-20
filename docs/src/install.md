@@ -1,27 +1,21 @@
 # Install
 
 ```sh
-git clone https://github.com/tanvincible/mocon
-cd mocon && npm install && npm run build && npm pack -w @tanvincible/mocon && cd ..
-npm install ./mocon/tanvincible-mocon-0.1.0.tgz @opentelemetry/api
+npm install @tanvincible/mocon @opentelemetry/api
 ```
 
-Yes, that is four steps to install one package, and no, there is no shorter one until this is on
-npm. `npm install github:tanvincible/mocon` looks right and installs the workspace root under the
-name `mocon-workspace` with nothing built. Installing the package directory looks right and fails to
-build, because npm does not install a path dependency's own build tools. Packing a tarball is what
-publishing does, minus the registry.
+`@opentelemetry/api` is a peer dependency, so you pick the version and mocon uses whichever one your
+application already has.
 
-`@opentelemetry/api` is a peer dependency, so you pick the version.
-
-Python is shorter, because pip builds a path install properly:
+Python isn't published yet, so it comes from a clone:
 
 ```sh
 git clone https://github.com/tanvincible/mocon
 pip install ./mocon/packages/python
 ```
 
-The distribution will be `pymocon` and the import is `mocon`. Not on PyPI yet either.
+The distribution will be `pymocon`, because `mocon` on PyPI is an unrelated project. The import is
+`mocon` either way.
 
 ## Destination
 
