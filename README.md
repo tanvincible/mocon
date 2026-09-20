@@ -121,6 +121,7 @@ Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
 | `packages/python` | `pymocon`, the same conventions, imported as `mocon` |
 | `packages/python/parity` | runs one scenario through both and diffs every attribute |
 | `examples/server.mjs` | a working code-mode server with mocon in it, and the run pictured above |
+| `examples/record.mjs` | regenerates that picture from a real run, so it cannot drift |
 | `bench/trace.mjs` | what it costs against the SDK's own floor |
 | `collector/`, `dashboards/` | optional examples; it is ordinary OpenTelemetry, so use what you have |
 
