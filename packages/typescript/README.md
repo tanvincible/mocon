@@ -14,7 +14,8 @@ run.
 ## Install
 
 ```sh
-npm install github:tanvincible/mocon @opentelemetry/api
+git clone https://github.com/tanvincible/mocon
+npm install ./mocon/packages/typescript @opentelemetry/api
 ```
 
 Not on npm yet, so it installs from the repo.

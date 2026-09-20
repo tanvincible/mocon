@@ -12,11 +12,14 @@ observe and a per-field label separating what the host saw from what the program
 
 ## Install
 
-```
-pip install pymocon
+**Not published to PyPI yet.** Clone it and install the package directory:
+
+```sh
+git clone https://github.com/tanvincible/mocon
+pip install ./mocon/packages/python
 ```
 
-The distribution is `pymocon` and the import is `mocon`, because `mocon` on PyPI is an unrelated
+The distribution will be `pymocon` and the import is `mocon`, because `mocon` on PyPI is an unrelated
 project. On npm the package is just `mocon`.
 
 It depends on `opentelemetry-api` and never the SDK, which is OpenTelemetry's own rule for

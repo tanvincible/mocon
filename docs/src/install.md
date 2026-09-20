@@ -1,12 +1,25 @@
 # Install
 
 ```sh
-npm install github:tanvincible/mocon
-npm install @opentelemetry/api
+git clone https://github.com/tanvincible/mocon
+npm install ./mocon/packages/typescript @opentelemetry/api
 ```
 
-`mocon` isn't on npm yet, so it comes from the repo. `@opentelemetry/api` is a peer dependency,
-so you install it yourself and pick the version.
+`mocon` isn't on npm yet, so it comes from a clone. `@opentelemetry/api` is a peer dependency, so you
+install it yourself and pick the version.
+
+Don't use `npm install github:tanvincible/mocon`. It looks right and fails: this repo is a workspace,
+so npm installs the root as `mocon-workspace` with nothing built, and the import doesn't resolve. npm
+has no way to install one subdirectory of a git repo.
+
+Python is the same shape:
+
+```sh
+git clone https://github.com/tanvincible/mocon
+pip install ./mocon/packages/python
+```
+
+The distribution is `pymocon` and the import is `mocon`. It isn't on PyPI yet either.
 
 ## Destination
 

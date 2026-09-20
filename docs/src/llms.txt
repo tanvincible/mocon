@@ -13,6 +13,15 @@ call, so nothing about what the program did is recorded.
 Two wrappers. One around the handler that runs the program, one around the outermost function the
 program can reach.
 
+Install: not on npm or PyPI yet, so clone and install the package directory. `npm install
+github:tanvincible/mocon` does NOT work: this is a workspace, npm installs the root as
+`mocon-workspace` with nothing built, and npm cannot install a subdirectory of a git repo.
+
+```sh
+git clone https://github.com/tanvincible/mocon
+npm install ./mocon/packages/typescript @opentelemetry/api   # or: pip install ./mocon/packages/python
+```
+
 ```ts
 import { codeMode } from "mocon";
 const observed = codeMode({ capabilities: { observes_crossings: "some", unmediated_egress: true, crossing_edge: "invocation", attested: [] } });

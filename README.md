@@ -15,12 +15,17 @@ destination of ours to wire.
 
 ## Install
 
-**Not published to npm yet.** Today you install from this repository, with a git or `file:` path:
+**Not published to npm yet.** Clone it and install the package directory:
 
 ```sh
-npm install github:tanvincible/mocon
-npm install @opentelemetry/api
+git clone https://github.com/tanvincible/mocon
+npm install ./mocon/packages/typescript @opentelemetry/api
 ```
+
+The clone step is not optional. `npm install github:tanvincible/mocon` looks like it should work and
+does not: this repository is a workspace, so npm installs the workspace root under the name
+`mocon-workspace`, with nothing built, and `import "mocon"` then fails to resolve. npm cannot install
+a subdirectory of a git repository.
 
 `@opentelemetry/api` is a peer dependency you install yourself. You also need an OpenTelemetry SDK
 and an exporter configured in your application, as for any OpenTelemetry instrumentation. **Without
