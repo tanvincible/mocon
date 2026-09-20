@@ -15,6 +15,8 @@
     "test": "npm run build && npm run test --workspaces --if-present",
     "bench": "npm run build && node bench/trace.mjs",
     "demo": "npm run build && node examples/server.mjs",
+    "release:npm": "npm run build && npm publish -w @tanvincible/mocon",
+    "release:pypi": "cd packages/python && python -m build && python -m twine upload dist/*",
     "docs": "mdbook build docs && cp docs/src/llms.txt docs/book/llms.txt",
     "docs:serve": "mdbook serve docs --open"
   },

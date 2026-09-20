@@ -138,6 +138,10 @@ Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
 | `bench/trace.mjs` | what it costs against the SDK's own floor |
 | `collector/`, `dashboards/` | optional examples; it is ordinary OpenTelemetry, so use what you have |
 
+Releasing is `npm run release:npm`, which builds first and targets the package rather than the
+workspace root. Plain `npm publish` at the root fails with a confusing error, because the root is
+private and carries no version.
+
 ## Status
 
 Development. The specification is a draft. `code_mode.*` is a namespace this project owns and nobody
