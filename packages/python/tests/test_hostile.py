@@ -11,8 +11,6 @@ from typing import Any, Iterator, Mapping
 
 import pytest
 
-from asyncio import CancelledError
-
 from mocon import capture
 from conftest import harness, note
 
@@ -411,21 +409,21 @@ def test_a_str_raising_a_base_exception_is_contained() -> None:
 
 
 def test_a_real_interrupt_is_not_contained_so_the_host_stays_killable() -> None:
-    """The one exception to the rule above, and the reason it exists. Containing every
-    ``BaseException`` swallowed real SIGINT and SIGTERM delivered while the emitter held a
-    program-authored value, and the program chooses how long it holds one. A program can now fail
-    its own call by raising these, which it could do anyway."""
+    """The one exception to the rule above, and the reason it exists. Containing ``KeyboardInterrupt``
+    swallowed a real SIGINT delivered while the emitter held a program-authored value, and the
+    program chooses how long it holds one. A program can now fail its own call by raising one, which
+    it could do anyway. ``SystemExit`` and ``CancelledError`` are NOT in that set: see
+    ``test_a_program_cannot_exit_the_host_or_fake_a_cancellation``."""
     cap = capture.CapturePolicy(values=True)
-    for interrupt in (KeyboardInterrupt, SystemExit, CancelledError):
 
-        class Raises(Exception):
-            def __str__(self) -> str:
-                raise interrupt()
+    class Raises(Exception):
+        def __str__(self) -> str:
+            raise KeyboardInterrupt()
 
-        h = harness(capture=cap)
-        ex = h.m.execution(program="p")
-        with pytest.raises(interrupt):
-            ex.fail(Raises())
+    h = harness(capture=cap)
+    ex = h.m.execution(program="p")
+    with pytest.raises(KeyboardInterrupt):
+        ex.fail(Raises())
 
 
 def test_an_own_name_or_message_wins_over_the_class_and_str() -> None:

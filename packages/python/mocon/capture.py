@@ -13,7 +13,6 @@ stream can raise costs that one value and never the call.
 
 from __future__ import annotations
 
-from asyncio import CancelledError
 
 import hashlib
 import re
@@ -21,9 +20,9 @@ import json
 from dataclasses import dataclass
 from typing import Any, MutableMapping
 
-#: See ``_core._INTERRUPT``: a real interrupt is this process being stopped, not a program
-#: describing itself, so it is re-raised rather than contained.
-_INTERRUPT = (KeyboardInterrupt, SystemExit, CancelledError)
+#: See ``_core._INTERRUPT``: only a real Ctrl-C, because a program must never be able to choose the
+#: host's exit code or make an uncancelled task report itself cancelled.
+_INTERRUPT = (KeyboardInterrupt,)
 
 #: Bytes of JSON kept per value. Under every SDK, collector and backend limit we know of.
 DEFAULT_CAP = 1 << 13

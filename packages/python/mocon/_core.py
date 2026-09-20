@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import inspect
 
-from asyncio import CancelledError
 
 import functools
 import inspect
@@ -84,7 +83,7 @@ def _host_attributes(given: Mapping[str, Any] | None) -> dict[str, Any]:
         return out
     try:
         for key, value in given.items():
-            if not isinstance(key, str) or not key.startswith(_RESERVED):
+            if isinstance(key, str) and not key.startswith(_RESERVED) and key != "error.type":
                 out[key] = value
     except _INTERRUPT:
         raise
@@ -205,7 +204,7 @@ class CodeMode:
 class Execution:
     """One dispatch of one program. Never the session, the conversation or the container."""
 
-    __slots__ = ("_m", "span", "context", "_id", "_notes", "_started_at", "_seq", "_ended", "_open", "_token", "_lock")
+    __slots__ = ("_m", "span", "context", "_id", "_notes", "_started_at", "_seq", "_ended", "_open", "_swept", "_token", "_lock")
 
     def __init__(
         self,
@@ -228,6 +227,8 @@ class Execution:
         self._m = emitter
         self._notes: dict[str, dict[str, Any]] = {}
         self._open: list[Crossing] = []
+        #: Set once the second sweep has run, after which nothing would drain ``_open`` again.
+        self._swept = False
         self._seq = 0
         self._ended = False
         # A host serving dispatches on a thread pool has two threads in here at once. The lock
@@ -353,6 +354,7 @@ class Execution:
         # still records when the host settles it, which is 5.
         for crossing in list(self._open):
             crossing._abandon()
+        self._swept = True
         write_notes(attrs, self._notes)
         _mark(attrs, self._m._marks.execution, self._m._observed, self._m._relayed)
         self.span.set_attributes(attrs)
@@ -415,10 +417,12 @@ class Execution:
             start_time=start_time,
         )
         with self._lock:
-            # Tracked even once the execution has ended, so one opened re-entrantly from inside a
-            # capture is closed by the second sweep rather than leaking. A genuinely late crossing
-            # finds the sweep already done and settles on its own.
-            self._open.append(crossing)
+            # Tracked until the sweep is DONE, not until `_ended` is latched: one opened re-entrantly
+            # from inside a capture falls in that window. After the sweep nothing would drain this
+            # again, so a late crossing is not retained at all: it is the host's to settle, and
+            # holding it would grow the list for the process's life.
+            if not self._swept:
+                self._open.append(crossing)
         return crossing
 
     def _release(self, crossing: "Crossing") -> None:
@@ -744,12 +748,20 @@ def _input_from(input: Callable[..., Any] | None, target_took_first: bool, args:
     return UNSET if not rest else rest
 
 
-#: Raised to stop this process, never by a program describing itself. Containing these is what made
-#: the host uninterruptible: a real SIGINT or SIGTERM arriving while the emitter held a
-#: program-authored value was swallowed, and the program chooses how long it holds it. They are
-#: re-raised, and the cost is that a program raising one of them can fail its own call, which it
-#: could do anyway. ``CancelledError`` is here for the same reason: a cancelled task must cancel.
-_INTERRUPT = (KeyboardInterrupt, SystemExit, CancelledError)
+#: The ONE thing re-raised from a guard around program-authored code, and the line is drawn here
+#: because the two mistakes have very different costs.
+#:
+#: Containing ``KeyboardInterrupt`` made the host uninterruptible: a real SIGINT arriving while the
+#: emitter held a program-authored value was swallowed, for as long as the program cared to hold it.
+#: So it is re-raised, and a program can fail its own call by raising one, which it could do anyway.
+#:
+#: ``SystemExit`` and ``CancelledError`` are NOT here, and putting them here was worse than the bug
+#: it fixed. A value whose property raises ``SystemExit(42)`` terminated the host with an exit code
+#: the PROGRAM chose. A ``CancelledError`` made an uncancelled task report itself cancelled, which is
+#: telemetry changing control flow rather than describing it. Neither is a signal: real cancellation
+#: arrives at an await, and this capture path is synchronous, so containing them here costs nothing
+#: real.
+_INTERRUPT = (KeyboardInterrupt,)
 
 
 def _message_of(cause: Any) -> str | None:

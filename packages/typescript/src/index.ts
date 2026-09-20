@@ -341,6 +341,8 @@ class ExecutionSpan implements ExecutionHandle {
   readonly context: Context;
   readonly crossing: ExecutionHandle["crossing"];
   private readonly open = new Set<CrossingSpan>();
+  /** Set once the second sweep has run, after which nothing would drain `open` again. */
+  private swept = false;
   /** Repeated onto every crossing: parentage carries a span id, never the id in the host's logs. */
   private readonly ownId: string;
   private readonly notes: Notes = {};
@@ -433,6 +435,7 @@ class ExecutionSpan implements ExecutionHandle {
     // and its span was never exported. A crossing opened after `end` RETURNS is a different case and
     // still records when the host settles it, which is 5.
     for (const crossing of [...this.open]) crossing.abandon();
+    this.swept = true;
     writeNotes(attrs, this.notes);
     mark(attrs, this.marks.execution, this.host);
     this.span.setAttributes(attrs);
@@ -491,10 +494,11 @@ class ExecutionSpan implements ExecutionHandle {
     const usable = typeof given === "number" && Number.isInteger(given) && given > 0;
     const seq = usable ? given : this.ordered ? ++this.seq : undefined;
     const crossing = new CrossingSpan(this.tracer, this.declared, this.capture, this.context, this, target, seq, this.ownId, this.marks, this.host, this.meters, o);
-    // Tracked even when the execution has ended, so one opened re-entrantly from inside a capture
-    // is closed by the second sweep rather than leaking. `end` has already returned by the time a
-    // genuinely late crossing is started, so that one finds an empty set and settles on its own.
-    this.open.add(crossing);
+    // Tracked until the sweep is DONE, not until `ended` is latched: one opened re-entrantly from
+    // inside a capture falls in that window and is closed by the second sweep. After the sweep
+    // nothing would ever drain this again, so a late crossing is not retained at all: it is the
+    // host's to settle, and holding it would grow the set for the process's life.
+    if (!this.swept) this.open.add(crossing);
     return crossing;
   }
 }

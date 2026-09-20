@@ -211,11 +211,21 @@ class _Interrupt:
         raise self.kind()
 
 
-@pytest.mark.parametrize("kind", [KeyboardInterrupt, SystemExit, CancelledError])
-def test_an_interrupt_is_the_one_thing_that_does_reach_the_caller(kind: type[BaseException]) -> None:
-    """The deliberate exception to the property above. Containing these made the host
-    uninterruptible for as long as a program cared to hold a value, which is worse than a program
-    being able to fail its own call."""
+def test_a_real_ctrl_c_is_the_one_thing_that_does_reach_the_caller() -> None:
+    """The deliberate exception to the property above. Containing it made the host uninterruptible
+    for as long as a program cared to hold a value, which is worse than a program being able to fail
+    its own call."""
     _, m = _fresh()
-    with pytest.raises(kind):
-        m.execution(program="p").complete(result=_Interrupt(kind))
+    with pytest.raises(KeyboardInterrupt):
+        m.execution(program="p").complete(result=_Interrupt(KeyboardInterrupt))
+
+
+@pytest.mark.parametrize("kind", [SystemExit, CancelledError])
+def test_a_program_cannot_exit_the_host_or_fake_a_cancellation(kind: type[BaseException]) -> None:
+    """These two were briefly treated as interrupts, and that was worse than the bug it fixed.
+    ``SystemExit`` let a program-authored property choose the host's EXIT CODE. ``CancelledError``
+    made an uncancelled task report itself cancelled, which is telemetry changing control flow
+    rather than describing it. Real cancellation arrives at an await and this path is synchronous."""
+    exporter, m = _fresh()
+    m.execution(program="p").complete(result=_Interrupt(kind))
+    assert exporter.get_finished_spans(), "contained it but lost the span"

@@ -204,6 +204,11 @@ function errorShape(v: object): object | undefined {
   return out;
 }
 
+/** Captures that may nest through program-authored code before one is refused. */
+const MAX_REENTRY = 8;
+
+let depth = 0;
+
 /** One shape per error FOR ONE WALK, so the walker's identity check sees a cycle as a cycle. */
 let shapes = new WeakMap<object, object>();
 
@@ -294,11 +299,18 @@ function walk(root: unknown, limit: number, readBound: number, buffer: Buffer): 
  * Saved and restored rather than cleared, since a capture can re-enter through a getter.
  */
 function scoped<T>(run: () => T): T {
+  // Bounded, and this is the whole reason the depth is tracked. A re-entering capture gets a fresh
+  // map, so a wide error rebuilds its full descriptor copy at every level and every level stays
+  // live: without a ceiling that is the round-one heap bomb again, one frame up, and it ends as a
+  // process abort rather than a contained value. `Capture.value` reads the throw as a redaction.
+  if (depth >= MAX_REENTRY) throw new RangeError("mocon: capture re-entered too deeply");
   const outer = shapes;
   shapes = new WeakMap<object, object>();
+  depth++;
   try {
     return run();
   } finally {
+    depth--;
     shapes = outer;
   }
 }
