@@ -1,6 +1,6 @@
 # mocon specification
 
-- `otel-code-mode.md`, the semantic conventions for code-mode execution in OpenTelemetry. Two spans, a
+- `otel-code-mode.md`, the specification for code-mode execution in OpenTelemetry. Two spans, a
   capability declaration saying what a host can and cannot observe, per-field provenance separating
   what the host saw from what the program claimed, and two closed vocabularies. Appendix A carries
   the invariants the whole design rests on, derived by profiling nineteen implementations.

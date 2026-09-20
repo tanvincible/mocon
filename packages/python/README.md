@@ -1,7 +1,7 @@
 # mocon (Python)
 
 OpenTelemetry for code-mode MCP servers.
-The conventions are in [`spec/otel-code-mode.md`](../../spec/otel-code-mode.md); this is the Python
+The specification is in [`spec/otel-code-mode.md`](../../spec/otel-code-mode.md); this is the Python
 emitter, a port of [`mocon`](../typescript) that writes the same attribute names and values.
 
 In code mode an agent submits a *program* instead of calling one tool. The host runs it in a

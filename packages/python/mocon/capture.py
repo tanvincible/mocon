@@ -3,7 +3,7 @@ way to say a value on a record was shortened or removed: the SDK's own length li
 and ``dropped_attributes_count`` speaks only for attributes dropped whole. So the note is minted
 here.
 
-Values are Opt-In. With ``values`` off nothing is serialized at all, which is both the conventions'
+Values are Opt-In. With ``values`` off nothing is serialized at all, which is both the spec's
 default and the cheap path: an absent Opt-In attribute says nothing, and claims nothing.
 
 Serializing one of these values runs program-authored code: a property, a ``__getattr__``, a

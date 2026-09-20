@@ -1,7 +1,7 @@
 {
   "name": "mocon-workspace",
   "private": true,
-  "description": "The mocon semantic conventions for code-mode execution, and their reference emitter on the OpenTelemetry API.",
+  "description": "The mocon specification for code-mode execution, and its reference emitter on the OpenTelemetry API.",
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "engines": {

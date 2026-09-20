@@ -24,7 +24,7 @@ sitting in your trace looking exactly like one it did, or that an absence of cal
 this particular host. Every panel here shows one of those.
 
 This is also the part a team cannot hand-roll and keep. A hand-rolled dashboard is built once for
-one server and transfers to nothing. This one works on any host that follows the conventions, which
+one server and transfers to nothing. This one works on any host that follows the specification, which
 is the only real return on standardising anything.
 
 ## Panels

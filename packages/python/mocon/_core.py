@@ -31,7 +31,7 @@ from .provenance import label, labels
 NAME = "mocon"
 VERSION = "0.1.0"
 #: The version of ``spec/otel-code-mode.md`` these spans are written against.
-CONVENTIONS_VERSION = "0.1.0"
+SPEC_VERSION = "0.1.0"
 
 Disposition = Literal["completed", "failed", "terminated", "abandoned"]
 Outcome = Literal["output", "error", "abandoned"]

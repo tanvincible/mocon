@@ -9,7 +9,7 @@ description = "OpenTelemetry for code-mode MCP servers."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT OR Apache-2.0" }
-keywords = ["opentelemetry", "mcp", "code-mode", "observability", "semantic-conventions"]
+keywords = ["opentelemetry", "mcp", "code-mode", "observability", "tracing"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",

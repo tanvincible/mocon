@@ -327,7 +327,7 @@ test("an execution ends once: a second end is a no-op, not a second span", () =>
   assert.equal(h.one("execute_code").attributes["code_mode.execution.disposition"], "completed");
 });
 
-test("a capability the conventions close is refused at construction, before any span exists", () => {
+test("a capability the specification closes is refused at construction, before any span exists", () => {
   assert.throws(() => codeMode({ capabilities: { observes_crossings: "most" } as never }), RangeError);
   assert.throws(() => codeMode({ capabilities: { observes_crossings: "all" } as never }), TypeError, "unmediated_egress is required");
   assert.throws(() => codeMode({ capabilities: { observes_crossings: "all", unmediated_egress: false } }), RangeError, "an edge is required when the host mediates");
