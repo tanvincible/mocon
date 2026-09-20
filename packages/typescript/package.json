@@ -1,5 +1,5 @@
 {
-  "name": "@mocon/core",
+  "name": "@tanvincible/mocon",
   "version": "0.1.0",
   "description": "OpenTelemetry for code-mode MCP servers.",
   "license": "MIT OR Apache-2.0",

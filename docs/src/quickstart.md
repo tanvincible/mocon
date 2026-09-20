@@ -15,7 +15,7 @@ similar. Take the outermost one, the thing the sandbox actually holds.
 ## 2. Instance
 
 ```ts
-import { codeMode } from "@mocon/core";
+import { codeMode } from "@tanvincible/mocon";
 
 export const observed = codeMode({
   capabilities: {

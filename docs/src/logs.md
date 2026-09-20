@@ -4,7 +4,7 @@ Standing up a collector and a trace backend is a real decision. If your telemetr
 logs, that's a lot more work than the two wrappers. You don't have to do it.
 
 ```ts
-import { codeMode, logTracer } from "@mocon/core";
+import { codeMode, logTracer } from "@tanvincible/mocon";
 
 const observed = codeMode({
   capabilities: { /* same as before */ },

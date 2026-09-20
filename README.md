@@ -35,8 +35,8 @@ Not on npm or PyPI yet. Until then:
 
 ```sh
 git clone https://github.com/tanvincible/mocon
-cd mocon && npm install && npm run build && npm pack -w @mocon/core && cd ..
-npm install ./mocon/mocon-core-0.1.0.tgz @opentelemetry/api
+cd mocon && npm install && npm run build && npm pack -w @tanvincible/mocon && cd ..
+npm install ./mocon/tanvincible-mocon-0.1.0.tgz @opentelemetry/api
 ```
 
 Python is shorter, because pip builds a path install properly:
@@ -55,7 +55,7 @@ what publishing does, minus the registry.
 Two wrappers. That's the whole integration.
 
 ```ts
-import { codeMode } from "@mocon/core";
+import { codeMode } from "@tanvincible/mocon";
 
 const observed = codeMode({
   capabilities: {

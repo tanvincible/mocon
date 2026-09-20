@@ -2,8 +2,8 @@
 
 ```sh
 git clone https://github.com/tanvincible/mocon
-cd mocon && npm install && npm run build && npm pack -w @mocon/core && cd ..
-npm install ./mocon/mocon-core-0.1.0.tgz @opentelemetry/api
+cd mocon && npm install && npm run build && npm pack -w @tanvincible/mocon && cd ..
+npm install ./mocon/tanvincible-mocon-0.1.0.tgz @opentelemetry/api
 ```
 
 Yes, that is four steps to install one package, and no, there is no shorter one until this is on
