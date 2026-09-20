@@ -507,3 +507,24 @@ def test_a_hook_key_end_does_not_take_costs_that_key_and_not_the_answer() -> Non
     assert crossing.attributes["code_mode.crossing.outcome"] == "error"
     assert crossing.attributes["error.type"] == "capability_error"
     assert crossing.attributes["code_mode.error.body"] == '{"ok":false}'
+
+
+def test_a_crossing_opened_from_inside_a_capture_is_closed_not_leaked() -> None:
+    """Capturing runs program-authored code, and that code can reach the handle it is being captured
+    for. One opened there missed the sweep that closes open crossings, and nothing later would ever
+    close it."""
+
+    class Reenter:
+        def __init__(self, ex: Any) -> None:
+            self.ex = ex
+
+        @property
+        def __dict__(self) -> dict[str, Any]:  # type: ignore[override]
+            self.ex.crossing("from_inside")
+            return {"x": 1}
+
+    h = harness(capture=capture.CapturePolicy(values=True))
+    ex = h.m.execution(program="p")
+    ex.complete(result=Reenter(ex))
+    names = [s.name for s in h.spans()]
+    assert any(n.startswith("execute_tool from_inside") for n in names), names

@@ -427,6 +427,12 @@ class ExecutionSpan implements ExecutionHandle {
       // closed-vocabulary host-observed value and never the program's words.
       this.span.setStatus({ code: SpanStatusCode.ERROR, message: type });
     }
+    // Swept a SECOND time. Capturing a value runs program-authored code, and that code can reach
+    // the handle it is being captured for and open a crossing. One opened here missed the sweep
+    // above, and nothing later would ever close it: the handle stayed live and recording forever
+    // and its span was never exported. A crossing opened after `end` RETURNS is a different case and
+    // still records when the host settles it, which is 5.
+    for (const crossing of [...this.open]) crossing.abandon();
     writeNotes(attrs, this.notes);
     mark(attrs, this.marks.execution, this.host);
     this.span.setAttributes(attrs);
@@ -485,7 +491,10 @@ class ExecutionSpan implements ExecutionHandle {
     const usable = typeof given === "number" && Number.isInteger(given) && given > 0;
     const seq = usable ? given : this.ordered ? ++this.seq : undefined;
     const crossing = new CrossingSpan(this.tracer, this.declared, this.capture, this.context, this, target, seq, this.ownId, this.marks, this.host, this.meters, o);
-    if (!this.ended) this.open.add(crossing);
+    // Tracked even when the execution has ended, so one opened re-entrantly from inside a capture
+    // is closed by the second sweep rather than leaking. `end` has already returned by the time a
+    // genuinely late crossing is started, so that one finds an empty set and settles on its own.
+    this.open.add(crossing);
     return crossing;
   }
 }

@@ -346,6 +346,13 @@ class Execution:
             # 4.1: the description is the one field that cannot carry a provenance label, so it
             # carries a closed-vocabulary host-observed value and never the program's words.
             self.span.set_status(Status(StatusCode.ERROR, error))
+        # Swept a SECOND time. Capturing a value runs program-authored code, and that code can
+        # reach the handle it is being captured for and open a crossing. One opened there missed the
+        # sweep above and nothing later would close it: the handle stayed live forever and its span
+        # was never exported. A crossing opened after this method RETURNS is a different case and
+        # still records when the host settles it, which is 5.
+        for crossing in list(self._open):
+            crossing._abandon()
         write_notes(attrs, self._notes)
         _mark(attrs, self._m._marks.execution, self._m._observed, self._m._relayed)
         self.span.set_attributes(attrs)
@@ -408,8 +415,10 @@ class Execution:
             start_time=start_time,
         )
         with self._lock:
-            if not self._ended:
-                self._open.append(crossing)
+            # Tracked even once the execution has ended, so one opened re-entrantly from inside a
+            # capture is closed by the second sweep rather than leaking. A genuinely late crossing
+            # finds the sweep already done and settles on its own.
+            self._open.append(crossing)
         return crossing
 
     def _release(self, crossing: "Crossing") -> None:

@@ -361,3 +361,29 @@ test("a host cannot set the dimension the duration histograms are split by", () 
   assert.equal(span.attributes["error.type"], undefined);
   assert.equal(span.attributes["team"], "billing");
 });
+
+test("a crossing opened from inside a capture is closed, not leaked", () => {
+  // Capturing runs program-authored code, and that code can reach the handle it is being captured
+  // for. One opened there missed the sweep that closes open crossings, and nothing later would ever
+  // close it: never exported, and its handle reported recording forever.
+  const h = harness();
+  const ex = h.m.execution.start({ program: "p" });
+  let opened: ReturnType<typeof ex.crossing.start> | undefined;
+  ex.complete({ result: { toJSON() { opened = ex.crossing.start({ target: "from_inside" }); return 1; } } });
+
+  const names = h.spans().map((s) => s.name);
+  assert.ok(names.some((n) => n.startsWith("execute_tool from_inside")), `never exported: ${names.join(", ")}`);
+  assert.equal(opened?.span.isRecording(), false);
+});
+
+test("a crossing opened after the execution ended still records when it settles", () => {
+  // The other half of the rule above: `end` has already returned here, so this one is the host's to
+  // settle and must not be swept out from under it.
+  const h = harness();
+  const ex = h.m.execution.start({ program: "p", id: "exec_late" });
+  ex.complete();
+  ex.crossing.start({ target: "orders.ship" }).output(1);
+  const late = h.spans().find((s) => s.name.startsWith("execute_tool orders.ship")) as ReadableSpan;
+  assert.equal(late.attributes["code_mode.crossing.outcome"], "output");
+  assert.equal(late.attributes["code_mode.execution.id"], "exec_late");
+});
