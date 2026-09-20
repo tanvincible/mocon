@@ -628,10 +628,19 @@ def _settle(crossing: Crossing, end: Callable[[BridgeAnswer], Any] | None, answe
         try:
             given = end(answer)
             if isinstance(given, Mapping):
-                outcome = given.get("outcome")
-                crossing.end(outcome, **{k: v for k, v in given.items() if k != "outcome"})
+                # The hook says what it wants CHANGED, not what the whole end is, so whatever it
+                # leaves out is filled from the answer. A bridge answering `{"ok": False}` needs
+                # only the outcome overridden and still wants the envelope recorded as the reason.
+                payload = answer.error if answer.threw else answer.value
+                outcome = given.get("outcome") or ("error" if answer.threw else "output")
+                rest = {k: v for k, v in given.items() if k != "outcome"}
+                if outcome == "error":
+                    rest = {"error_type": "capability_error", "message": _message_of(payload), "error_body": payload, **rest}
+                elif outcome == "output":
+                    rest = {"output": payload, **rest}
+                crossing.end(outcome, **rest)
                 return
-        except Exception:
+        except BaseException:
             # `end` validates before it touches the span, so the crossing is still open below.
             pass
     if answer.threw:
@@ -698,18 +707,19 @@ def _message_of(cause: Any) -> str | None:
     """The message by shape, matching the TypeScript emitter: anything carrying a non-empty string
     ``message`` has one, not only an exception. Reading it runs program-authored code, so every
     path here is guarded and a hostile ``__str__`` costs the message rather than the call."""
-    if isinstance(cause, str):
-        return cause or None
-    if isinstance(cause, BaseException):
-        try:
-            return str(cause) or None
-        except Exception:
-            return None
     try:
+        if isinstance(cause, str):
+            return cause or None
+        if isinstance(cause, BaseException):
+            return str(cause) or None
         message = getattr(cause, "message", None)
-    except Exception:
+        return message if isinstance(message, str) and message else None
+    except BaseException:
+        # Every line above runs program-authored code, `isinstance` included: it reads __class__,
+        # and CPython suppresses only AttributeError from that read, so a raising __class__ property
+        # escapes an inner guard placed any deeper. BaseException rather than Exception, because a
+        # program that raises KeyboardInterrupt is not the host being interrupted.
         return None
-    return message if isinstance(message, str) and message else None
 
 
 def _put(attrs: MutableMapping[str, Any], key: str, value: Any) -> None:

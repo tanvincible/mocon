@@ -178,7 +178,14 @@ function resolve(v: object | bigint, key: string | number): unknown {
  */
 function errorShape(v: object): object | undefined {
   if (!isNativeError(v)) return undefined;
+  const cached = shapes.get(v);
+  if (cached !== undefined) return cached;
   const out: Record<string, unknown> = {};
+  // Registered BEFORE it is filled, and this is what makes a cyclic error terminate. The walker
+  // finds a cycle by object identity, so handing it a fresh object per visit means an error holding
+  // itself never matches itself: it recurses to the depth limit, rebuilding the shape at every
+  // level, and a wide enough error exhausts the heap and takes the process with it.
+  shapes.set(v, out);
   // These two lead, and they are the whole point: on a V8 error `message` is an OWN NON-ENUMERABLE
   // property and `name` lives on the prototype, so neither is written by a walk over enumerable
   // keys. Reading them here runs a getter a program may have authored, which `quiet` contains.
@@ -196,6 +203,9 @@ function errorShape(v: object): object | undefined {
   defineProperties(out, own);
   return out;
 }
+
+/** One shape per error, so the walker's identity check sees a cycle through an error as a cycle. */
+const shapes = new WeakMap<object, object>();
 
 /** One property of a value the program may have authored: a throwing getter costs the field. */
 function quiet(v: object, key: string): unknown {

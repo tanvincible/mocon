@@ -67,16 +67,27 @@ def _exception(e: BaseException) -> dict[str, Any]:
     ``code_mode.error.body`` would carry a hash of nothing while asserting it captured the error.
     The class name and the message are what make it readable, so they lead. ``str`` on an exception
     a program raised runs that program's ``__str__``, which is contained here rather than lost."""
-    out: dict[str, Any] = {"name": type(e).__name__}
     try:
-        message = str(e)
-    except Exception:
-        message = ""
-    if message:
+        members = dict(getattr(e, "__dict__", None) or {})
+    except BaseException:
+        members = {}
+    # An own `name` or `message` wins over the class and `str`, matching the TypeScript emitter,
+    # where reading the property finds the own value when there is one. Dropping them instead
+    # deletes the only reason a bridge that sets them had for setting them.
+    out: dict[str, Any] = {}
+    name = members.pop("name", None)
+    out["name"] = name if isinstance(name, str) and name else type(e).__name__
+    message = members.pop("message", None)
+    if not (isinstance(message, str) and message):
+        try:
+            message = str(e)
+        except BaseException:
+            # `str` on an exception a program raised runs that program's `__str__`, and BaseException
+            # rather than Exception because that is the guard a hostile program steps around.
+            message = None
+    if isinstance(message, str) and message:
         out["message"] = message
-    for key, value in (getattr(e, "__dict__", None) or {}).items():
-        if key not in ("name", "message"):
-            out[key] = value
+    out.update(members)
     return out
 
 
@@ -151,7 +162,7 @@ class Capture:
             return
         try:
             encoded = self._encode(value)
-        except Exception:
+        except BaseException:
             # Serializing runs program-authored code: a property, a __getattr__, a __dict__ that
             # lies, and a cycle raises by design. 7 calls a value the host could not serialize one
             # it dropped by its own policy, which is `redacted`. This is an ordinary path, not a

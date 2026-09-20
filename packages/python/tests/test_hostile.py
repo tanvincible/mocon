@@ -368,3 +368,85 @@ def test_a_message_is_read_from_anything_carrying_one() -> None:
         ex = h.m.execution(program="p")
         ex.fail(raised)
         assert h.one("execute_code").attributes.get("code_mode.error.message") == expected
+
+
+def test_a_raising_dunder_class_costs_the_message_rather_than_the_call() -> None:
+    """``isinstance`` reads ``__class__``, and CPython suppresses only ``AttributeError`` from that
+    read, so a raising ``__class__`` escapes a guard placed any deeper than the whole function."""
+
+    class ClassRaises:
+        @property
+        def __class__(self) -> type:  # type: ignore[override]
+            raise RuntimeError("TRAP __class__")
+
+    h = harness(capture=capture.CapturePolicy(values=True))
+    ex = h.m.execution(program="p")
+    ex.fail(ClassRaises())
+    assert h.one("execute_code").attributes["code_mode.execution.disposition"] == "failed"
+
+
+def test_a_str_raising_a_base_exception_is_contained() -> None:
+    """``except Exception`` is the guard a hostile program steps around, so every guard on a path
+    that runs program-authored code catches ``BaseException``."""
+
+    class StrBase(Exception):
+        def __str__(self) -> str:
+            raise KeyboardInterrupt("TRAP")
+
+    cap = capture.CapturePolicy(values=True)
+    h = harness(capture=cap)
+    ex = h.m.execution(program="p")
+    ex.fail(StrBase())
+    assert h.one("execute_code").attributes["code_mode.error.body"] == '{"name":"StrBase"}'
+
+    h = harness(capture=cap)
+    ex = h.m.execution(program="p")
+    ex.instrument(lambda: StrBase())()  # a bridge that RETURNS the hostile value
+    ex.complete()
+
+
+def test_an_own_name_or_message_wins_over_the_class_and_str() -> None:
+    """Matching the TypeScript emitter, where reading the property finds the own value. Dropping
+    them deletes the only reason a bridge that set them had for setting them."""
+
+    class Shadow(Exception):
+        def __init__(self) -> None:
+            super().__init__("")
+            self.name = "UpstreamTimeout"
+            self.message = "gateway 504"
+            self.code = 504
+
+    h = harness(capture=capture.CapturePolicy(values=True))
+    ex = h.m.execution(program="p")
+    ex.fail(Shadow())
+    body = h.one("execute_code").attributes["code_mode.error.body"]
+    assert body == '{"name":"UpstreamTimeout","message":"gateway 504","code":504}'
+
+
+def test_an_end_hook_names_what_it_changes_here_too() -> None:
+    """The same rule as the TypeScript emitter, so the recipe in the documentation produces the same
+    span in both languages rather than one that records a failure with nothing about why."""
+    cap = capture.CapturePolicy(values=True)
+
+    h = harness(capture=cap)
+    ex = h.m.execution(program="p")
+    ex.instrument(
+        lambda: {"ok": False, "error": {"code": "rate_limited"}},
+        end=lambda a: {"outcome": "error", "error_type": "capability_error", "dispatched": True}
+        if not a.threw and not a.value["ok"]
+        else None,
+    )()
+    ex.complete()
+    crossing = h.one("execute_tool")
+    assert crossing.attributes["code_mode.crossing.outcome"] == "error"
+    assert crossing.attributes["error.type"] == "capability_error"
+    assert crossing.attributes["code_mode.error.body"] == '{"ok":false,"error":{"code":"rate_limited"}}'
+
+    h = harness(capture=cap)
+    ex = h.m.execution(program="p")
+    ex.instrument(lambda: {"rows": 3}, end=lambda a: {"dispatched": True})()
+    ex.complete()
+    crossing = h.one("execute_tool")
+    assert crossing.attributes["code_mode.crossing.outcome"] == "output"
+    assert crossing.attributes["gen_ai.tool.call.result"] == '{"rows":3}'
+    assert crossing.attributes["code_mode.crossing.dispatched"] is True

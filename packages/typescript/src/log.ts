@@ -22,6 +22,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { types } from "node:util";
 import type { Attributes, Context, HrTime, Span, SpanContext, SpanOptions, SpanStatus, TimeInput, Tracer } from "@opentelemetry/api";
 import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import { isEncoded } from "./capture.js";
@@ -197,10 +198,16 @@ function decode(text: string): unknown {
   }
 }
 
+const { isDate } = types;
+
 function millis(time: TimeInput | undefined): number | undefined {
   if (time === undefined) return undefined;
   if (typeof time === "number") return time;
-  if (time instanceof Date) return time.getTime();
+  // `isDate` rather than `instanceof Date`: a Date built inside a sandbox belongs to that realm and
+  // fails the identity check here. Anything that is neither reads as no time rather than destructuring
+  // a value that is not a pair, which threw `time is not iterable` straight into the caller.
+  if (isDate(time)) return time.getTime();
+  if (!Array.isArray(time)) return undefined;
   const [seconds, nanos] = time as HrTime;
   return seconds * 1000 + nanos / 1e6;
 }

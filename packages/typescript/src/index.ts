@@ -99,7 +99,7 @@ function readChannels(outputs: Record<string, unknown>): Array<[string, unknown]
   return pairs;
 }
 
-const { isPromise } = types;
+const { isPromise, isDate } = types;
 const promiseThen = Promise.prototype.then;
 
 /** Epoch time as OpenTelemetry's `[seconds, nanoseconds]`, at `performance.now()`'s resolution. */
@@ -368,7 +368,7 @@ class ExecutionSpan implements ExecutionHandle {
     const parent = o.parent ?? activeContext.active();
     this.span = this.tracer.startSpan(
       o.tool === undefined ? "execute_code" : "execute_code " + o.tool,
-      { kind: o.kind === "local" ? SpanKind.INTERNAL : SpanKind.SERVER, attributes, startTime: o.startTime },
+      { kind: o.kind === "local" ? SpanKind.INTERNAL : SpanKind.SERVER, attributes, startTime: this.startedAt },
       parent,
     );
     this.context = trace.setSpan(parent, this.span);
@@ -595,7 +595,9 @@ function settleCrossing<A extends unknown[]>(crossing: CrossingHandle, end: Inst
         // says a call failed while carrying nothing about why.
         const payload = answer.threw ? answer.error : answer.value;
         const outcome = given.outcome ?? (answer.threw ? "error" : "output");
-        if (outcome === "error") crossing.end({ message: messageOf(payload), errorBody: payload, ...given, outcome });
+        // `errorType` is part of the default too. Without it a hook naming only `dispatched` turns a
+        // `capability_error` into `_OTHER`, which is a facet most backends group by.
+        if (outcome === "error") crossing.end({ errorType: "capability_error", message: messageOf(payload), errorBody: payload, ...given, outcome });
         else if (outcome === "output") crossing.end({ output: payload, ...given, outcome });
         else crossing.end(given);
         return;
@@ -710,7 +712,11 @@ function elapsed(from: HrTime, to: HrTime): number {
 
 function toHrTime(time: TimeInput): HrTime {
   if (Array.isArray(time)) return time;
-  const ms = time instanceof Date ? time.getTime() : (time as number);
+  // `isDate` rather than `instanceof Date`, for the same reason the error check is by shape: a Date
+  // made inside a sandbox belongs to that realm. Read as a number it becomes NaN, and the span then
+  // disagrees with the duration histogram by the whole interval.
+  const ms = isDate(time) ? time.getTime() : Number(time);
+  if (!Number.isFinite(ms)) return hrNow();
   const seconds = Math.trunc(ms / 1000);
   return [seconds, Math.round((ms - seconds * 1000) * 1e6)];
 }

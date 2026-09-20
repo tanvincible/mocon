@@ -247,3 +247,58 @@ test("a hook that only adds an attribute keeps the output it did not mention", a
   assert.equal(crossing.attributes["gen_ai.tool.call.result"], '{"rows":3}');
   assert.equal(crossing.attributes["code_mode.crossing.dispatched"], true);
 });
+
+test("an error that holds itself is a cycle, not a heap bomb", () => {
+  // The shape is memoized per error so the walker's identity scan sees the cycle. Without that it
+  // recursed to the depth limit rebuilding the shape at every level, and a wide enough error
+  // exhausted the heap and took the process with it rather than costing the value.
+  const h = harness();
+  const e = new Error("boom") as Error & Record<string, unknown>;
+  e["self"] = e;
+  for (let i = 0; i < 20000; i++) e["k" + i] = i;
+
+  const started = process.hrtime.bigint();
+  h.m.execution.start({ program: "p" }).fail(e);
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+
+  const span = h.spans()[0] as ReadableSpan;
+  assert.deepEqual(note(span)["code_mode.error.body"], { redacted: true });
+  assert.equal(span.attributes["code_mode.error.body"], undefined);
+  // Generous, because it is a cliff and not a slope: the defect took seconds, the fix takes tens of
+  // milliseconds, and nothing lands in between.
+  assert.ok(ms < 2000, `cyclic error took ${ms.toFixed(0)}ms`);
+});
+
+test("a cycle reached through an error, and two errors holding each other, both terminate", () => {
+  const cases: Array<[string, () => unknown]> = [
+    ["an error inside an envelope", () => { const e = new Error("c") as Error & Record<string, unknown>; e["self"] = e; return { wrapped: e }; }],
+    ["two errors holding each other", () => { const a = new Error("a") as Error & Record<string, unknown>; const b = new Error("b") as Error & Record<string, unknown>; a["other"] = b; b["other"] = a; return a; }],
+  ];
+  for (const [what, make] of cases) {
+    const h = harness();
+    h.m.execution.start({ program: "p" }).fail(make());
+    assert.deepEqual(note(h.spans()[0] as ReadableSpan)["code_mode.error.body"], { redacted: true }, what);
+  }
+});
+
+test("a hook that names one field keeps the error class the default would have set", async () => {
+  const h = harness();
+  await h.m.execution.run({ program: "p" }, async (execution) => {
+    const call = execution.instrument(() => { throw new Error("upstream"); }, { end: () => ({ dispatched: true }) });
+    try { call(); } catch { /* the caller's own error, rethrown */ }
+  });
+  const crossing = h.spans().find((s) => s.name.startsWith("execute_tool")) as ReadableSpan;
+  // Without the default merged in this read `_OTHER`, which is a facet most backends group by.
+  assert.equal(crossing.attributes["error.type"], "capability_error");
+});
+
+test("a time from another realm is read as a time, not as NaN", () => {
+  const h = harness();
+  const elsewhere = vm.runInNewContext("new Date(Date.now() - 5000)") as Date;
+  assert.equal(elsewhere instanceof Date, false);
+  const ex = h.m.execution.start({ program: "p", startTime: elsewhere });
+  ex.complete();
+  const span = h.spans()[0] as ReadableSpan;
+  const seconds = span.duration[0] + span.duration[1] / 1e9;
+  assert.ok(seconds > 4 && seconds < 7, `duration was ${seconds}s`);
+});
