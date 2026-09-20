@@ -18,7 +18,9 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
   ],
   "publishConfig": {
     "access": "public"
@@ -36,5 +38,26 @@
     "@opentelemetry/api-logs": {
       "optional": true
     }
-  }
+  },
+  "author": "tanvincible",
+  "homepage": "https://tanvincible.github.io/mocon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tanvincible/mocon.git",
+    "directory": "packages/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/tanvincible/mocon/issues"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otel",
+    "mcp",
+    "model-context-protocol",
+    "code-mode",
+    "observability",
+    "tracing",
+    "semantic-conventions",
+    "provenance"
+  ]
 }

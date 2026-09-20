@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "moconpy"
+name = "pymocon"
 version = "0.1.0"
 description = "Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API."
 readme = "README.md"
@@ -29,3 +29,11 @@ packages = ["mocon"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[project.urls]
+Homepage = "https://tanvincible.github.io/mocon"
+Source = "https://github.com/tanvincible/mocon"
+Issues = "https://github.com/tanvincible/mocon/issues"
+
+[tool.hatch.build]
+include = ["mocon/**", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
