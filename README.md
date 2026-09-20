@@ -1,21 +1,23 @@
 # mocon
 
-OpenTelemetry for code-mode MCP servers.
+**OpenTelemetry for code-mode MCP servers.**
 
-In code mode the agent submits a **program** instead of one structured tool call. The server runs it
-in a sandbox, and from inside the program the server's tools are reached through a bridge. From
-outside, that whole run is one opaque tool call: the calls the program made, what it passed, what
-came back, and whether the server could see any of it are all invisible.
+In code mode the agent doesn't call your tools. It sends you a **program**, you run it in a sandbox,
+and the program calls your tools from inside. From the outside that whole run is one opaque tool
+call. Which tools it used, what it passed, what came back, how long each took, whether any of it
+failed: none of it is recorded, and nothing in OpenTelemetry describes it.
 
-mocon is an OpenTelemetry attribute specification that makes it visible, and a small emitter that
-implements it. Two wrappers give you all three signals: traces for the shape of one run, metrics
-for questions across many, and a log record that shows work in flight. OpenTelemetry is the wire
-format rather than an export target, so there is no format here for anyone to learn and no
-destination of ours to wire.
+mocon is the missing vocabulary, plus a small emitter for it in TypeScript and Python.
+
+<p align="center">
+  <img src="./docs/src/assets/demo.svg" alt="A code-mode run: one execute_code span with four execute_tool spans under it, one of them failed" width="840">
+</p>
+
+That's `node examples/demo.mjs`, and it needs no SDK, no collector and no backend to produce.
 
 ## Install
 
-**Not published to npm yet.** Clone it and install the package directory:
+Not on npm or PyPI yet. Until then:
 
 ```sh
 git clone https://github.com/tanvincible/mocon
@@ -23,93 +25,109 @@ cd mocon && npm install && npm run build && npm pack -w mocon && cd ..
 npm install ./mocon/mocon-0.1.0.tgz @opentelemetry/api
 ```
 
-Yes, that is four steps to install one package, and no, there is no shorter one until this is on
-npm. `npm install github:tanvincible/mocon` looks right and installs the workspace root under the
-name `mocon-workspace` with nothing built. Installing the package directory looks right and fails to
-build, because npm does not install a path dependency's own build tools. Packing a tarball is what
-publishing does, minus the registry.
+Python is shorter, because pip builds a path install properly:
 
-`@opentelemetry/api` is a peer dependency you install yourself. You also need an OpenTelemetry SDK
-and an exporter configured in your application, as for any OpenTelemetry instrumentation. **Without
-a registered tracer provider the API is a no-op and nothing is emitted, silently, with exit code
-zero.** That is OpenTelemetry's behaviour rather than ours, and it is the single most common way an
-integration produces nothing at all.
+```sh
+pip install ./mocon/packages/python
+```
 
-**No trace pipeline, and no appetite for one?** Pass `logTracer(record => logger.info(record))` and
-every span becomes a flat record in the logger you already run: the same vocabulary, the same
-provenance labels, the same join key, no SDK and no backend. The same host code moves to real
-tracing later by passing a different tracer.
-
-If you do want a trace pipeline, the code change is the small half.
-[Rollout](https://tanvincible.github.io/mocon/rollout.html) has the order that avoids making the
-day you merge worse than the day before: destination first, code last.
+Four steps for npm is four too many, and there's no shorter one that works. `npm install
+github:tanvincible/mocon` installs the workspace root with nothing built. Installing the package
+directory fails, because npm won't install a path dependency's own build tools. Packing a tarball is
+what publishing does, minus the registry.
 
 ## Use
 
-Two wrappers. That is the whole integration.
+Two wrappers. That's the whole integration.
 
 ```ts
 import { codeMode } from "mocon";
 
 const observed = codeMode({
   capabilities: {
-    observes_crossings: "all",   // every call through our bridge is recorded
-    unmediated_egress: false,    // the program has no path out we cannot see
+    observes_crossings: "all",   // every call the program makes comes through our bridge
+    unmediated_egress: false,    // and it has no other way out
     crossing_edge: "invocation", // spans describe what the program asked for
     attested: ["crossing.target", "crossing.input", "crossing.output"],
   },
 });
 
-// One: around the handler that runs the program.
+// One: around the handler that runs a submitted program.
 return observed.execution.run({ program: source, tool: "execute" }, (execution) => {
-  // Two: around the function the sandbox calls to reach you.
+  // Two: around the function you give the sandbox to reach you.
   const callTool = execution.instrument(bridge.callTool);
   return runInSandbox(source, { callTool });
 });
 ```
 
-You get one `execute_code` span per dispatch and one `execute_tool` span per call the program made,
-correctly parented, in whatever backend you already run.
+Python is the same shape with a context manager:
 
-## Contribution
+```python
+from mocon import CodeMode, Capabilities
 
-OpenTelemetry already models spans, parentage and duration. Three things it has no answer for, and
-they are why this exists.
+observed = CodeMode(Capabilities(observes_crossings="all", unmediated_egress=False,
+                                 crossing_edge="invocation", attested=["crossing.target"]))
 
-- **Provenance.** A code-mode program is agent-written and can lie, and many hosts build their
-  telemetry out of what that program printed. Every value carries its class, so a reader can tell
-  what the host observed from what the program claimed. Nothing in OpenTelemetry's data model does
-  this.
-- **The capability declaration.** Without it, no crossing spans means either the program made no
-  calls or the host is blind to them, and those are opposite conclusions.
-- **Closed vocabularies.** Four execution dispositions and three crossing outcomes, so a consumer
-  can be written once and work everywhere. Span status collapses them to two, which is why the
-  attributes are normative and the status is a display hint.
+with observed.execution(program=source, tool="execute") as execution:
+    call_tool = execution.instrument(bridge.call_tool)
+    return run_in_sandbox(source, call_tool)
+```
+
+Both emit the same attribute names and the same values. That's checked by a harness that runs one
+scenario through both and diffs every attribute.
+
+## Output
+
+One `execute_code` span per dispatch, one `execute_tool` span per call the program made, correctly
+parented, in whatever backend you already run. Plus two duration histograms and a log record for work
+in flight, each inert until you configure a provider for it.
+
+**No trace pipeline, and no appetite for one?** Pass `logTracer(record => logger.info(record))` and
+every span becomes a flat record in the logger you already have. Same vocabulary, same join key, no
+SDK and no backend. Moving to real tracing later is a different tracer, not different host code.
+
+**Careful:** mocon emits through the OpenTelemetry API and never the SDK, so if nothing in your app
+registers a tracer provider, the API is a silent no-op. No spans, no error, exit code zero. That's
+OpenTelemetry's own behaviour, and it is the most common reason a first integration looks dead.
+
+## Why it exists
+
+OpenTelemetry already has spans, parentage and duration. Three things it has no answer for:
+
+**Provenance.** A code-mode program is agent-written and can lie, and many hosts build their
+telemetry out of what that program printed. Every value carries its class, so a reader can tell what
+the host *observed* from what the program *claimed*.
+
+**The capability declaration.** Without it, no crossing spans means either the program made no calls
+or your host is blind to them. Those are opposite conclusions and a reader cannot tell them apart.
+
+**Closed vocabularies.** Four execution dispositions and three crossing outcomes, so one consumer can
+be written once and work everywhere. Span status collapses them to two.
 
 ## Documentation
 
-**<https://tanvincible.github.io/mocon>** is the full guide: how to set it up, what the output looks
-like, what goes wrong, the API, and the specification.
+**<https://tanvincible.github.io/mocon>** is the full guide: setup, what the output looks like, what
+goes wrong, the API, the attribute reference, and the specification.
 
 Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
 
 ## Repository
 
-- `spec/otel-code-mode.md` is the specification. It ends with the fifteen things it cannot do and
-  the open questions it has not settled.
-- `packages/typescript` is `mocon`, the reference emitter, on the OpenTelemetry API only.
-- `bench/trace.mjs` measures what it costs against the SDK's own floor.
-- `collector/` and `dashboards/` are optional examples. Everything is ordinary OpenTelemetry, so use
-  whatever backend and dashboards you already run.
-- `docs/` is the mdBook source for the site above.
+| | |
+|---|---|
+| `spec/otel-code-mode.md` | the specification, ending with what it cannot do and what it has not settled |
+| `packages/typescript` | `mocon`, on the OpenTelemetry API only |
+| `packages/python` | `pymocon`, the same conventions, imported as `mocon` |
+| `packages/python/parity` | runs one scenario through both and diffs every attribute |
+| `examples/demo.mjs` | the run in the picture above |
+| `bench/trace.mjs` | what it costs against the SDK's own floor |
+| `collector/`, `dashboards/` | optional examples; it is ordinary OpenTelemetry, so use what you have |
 
-Status: Development. The specification is a draft, `code_mode.*` is a namespace this project owns and
-nobody else has agreed to, and the `gen_ai.*` and `mcp.*` attributes it reuses are themselves
-Development upstream with no compatibility guarantee.
+## Status
 
-This project previously specified a JSON Lines record format with its own schema, conformance suite
-and viewer. It was retired in favour of this one; section 14 of the specification records
-what that move gave up, and the history is in git.
+Development. The specification is a draft. `code_mode.*` is a namespace this project owns and nobody
+else has agreed to, and the `gen_ai.*` and `mcp.*` attributes it reuses are themselves Development
+upstream with no compatibility guarantee.
 
 ## License
 

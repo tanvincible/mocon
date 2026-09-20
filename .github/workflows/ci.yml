@@ -16,6 +16,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # The demo is the picture on the front page, so it has to keep running.
+      - run: npm run demo
 
   # The install has been broken three times and nobody noticed, because every other job tests the
   # library from inside the repository that builds it. This one is a stranger: a directory that is
