@@ -9,31 +9,59 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@tanvincible/mocon"><img src="https://img.shields.io/npm/v/@tanvincible/mocon?color=0891b2&label=npm" alt="npm"></a>
   <a href="https://tanvincible.github.io/mocon"><img src="https://img.shields.io/badge/docs-tanvincible.github.io%2Fmocon-0891b2" alt="Documentation"></a>
-  <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-0891b2" alt="MIT OR Apache-2.0"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-0891b2" alt="MIT OR Apache--2.0"></a>
 </p>
 
-In code mode the agent doesn't call your tools. It sends you a **program**, you run it in a sandbox,
-and the program calls your tools from inside. From the outside that whole run is one opaque tool
-call. Which tools it used, what it passed, what came back, how long each took, whether any of it
-failed: none of it is recorded, and nothing in OpenTelemetry describes it.
+mocon is a set of OpenTelemetry attributes for servers that run agent-written programs, and a small
+emitter for them in TypeScript and Python.
 
-mocon is the missing vocabulary, plus a small emitter for it in TypeScript and Python.
+It is an attempt to make a code-mode run observable in the stack you already have, rather than
+something every server ends up logging its own way.
+
+This project is early. The specification is a draft. Attribute names will change.
+
+## Overview
+
+In code mode the agent does not call your tools.
+
+It sends you a program. You run it in a sandbox, and the program calls your tools from inside.
+
+From the outside, that whole run is one tool call. Which tools it used, what it passed, what came
+back, how long each took, whether any of it failed: none of it is recorded.
+
+OpenTelemetry already has spans, parentage and duration, so most of the shape exists. What it has no
+answer for is:
+
+* whether the host saw a call, or is repeating what the program said about it
+* whether no calls recorded means no calls happened, or means the host is blind
+* what to call the four ways a run can end
+
+mocon is those three things written down, plus the code that emits them.
 
 <p align="center">
   <img src="./docs/src/assets/demo.svg" alt="A code-mode run traced: an execute_code span, four execute_tool spans with their arguments and results, a 16kB result truncated with its real size and hash, and a declined payment" width="880">
 </p>
 
-An order failed and the trace says why, without anyone adding a log line. You can see the arguments
-the agent's program chose, what each tool gave back, and the error that stopped it. The 16 kB search
-result did not fit on a span, so it was cut at 96 bytes and the note carries its real size and a
-hash of the whole thing: it is still identifiable, and nothing silently vanished.
+An order failed, and the trace says why, with nobody adding a log line.
 
-That is a real run of `examples/server.mjs`, a whole code-mode server, sandbox and all. The durations
-are what its tools actually took and the byte counts are what the values actually weighed. It needs
-no SDK, no collector and no backend.
+That is a real run of `examples/server.mjs`, a whole code-mode server with a sandbox in it. The
+durations are what its tools took. The 16 kB search result did not fit on a span, so it was cut at
+96 bytes and the note carries the real size and a hash of the whole value.
 
-**Payloads are opt-in and off by default**, because they are agent-written arguments and target data.
-The example turns them on with `capture: { values: true, cap: 96 }`. Decide that one deliberately.
+## Core idea
+
+Two spans.
+
+* **execution**, one per program you run
+* **crossing**, one per call that program made back to you
+
+Then one rule about every value on them:
+
+> a reader must be able to tell what the host observed from what the program claimed
+
+A code-mode program is written by a model and can say anything. Plenty of hosts build their
+telemetry out of what that program printed. So each value carries its class, and the host declares
+up front how much it can actually see.
 
 ## Install
 
@@ -41,20 +69,21 @@ The example turns them on with `capture: { values: true, cap: 96 }`. Decide that
 npm install @tanvincible/mocon @opentelemetry/api
 ```
 
-`@opentelemetry/api` is a peer dependency, so you pick the version.
+`@opentelemetry/api` is a peer dependency, so you choose the version.
 
-Python isn't on PyPI yet, so it comes from a clone:
+Python is not on PyPI yet. For now it comes from a clone:
 
 ```sh
 git clone https://github.com/tanvincible/mocon
 pip install ./mocon/packages/python
 ```
 
-The distribution will be `pymocon` and the import is `mocon` either way.
+The distribution will be `pymocon`, because `mocon` on PyPI is an unrelated project. The import is
+`mocon` either way.
 
 ## Use
 
-Two wrappers. That's the whole integration.
+Two wrappers. That is the whole integration.
 
 ```ts
 import { codeMode } from "@tanvincible/mocon";
@@ -76,7 +105,7 @@ return observed.execution.run({ program: source, tool: "execute" }, (execution) 
 });
 ```
 
-Python is the same shape with a context manager:
+Python is the same shape, with a context manager:
 
 ```python
 from mocon import CodeMode, Capabilities
@@ -89,69 +118,135 @@ with observed.execution(program=source, tool="execute") as execution:
     return run_in_sandbox(source, call_tool)
 ```
 
-Both emit the same attribute names and the same values. That's checked by a harness that runs one
-scenario through both and diffs every attribute.
+Both emit the same names and the same values. A harness runs one scenario through each and diffs
+every attribute, so that is checked rather than claimed.
 
 ## Output
 
-One `execute_code` span per dispatch, one `execute_tool` span per call the program made, correctly
-parented, in whatever backend you already run. Plus two duration histograms and a log record for work
-in flight, each inert until you configure a provider for it.
+Three signals, each inert until your application configures a provider for it:
 
-**No trace pipeline, and no appetite for one?** Pass `logTracer(record => logger.info(record))` and
-every span becomes a flat record in the logger you already have. Same vocabulary, same join key, no
-SDK and no backend. Moving to real tracing later is a different tracer, not different host code.
+* **traces**, one `execute_code` span per run and one `execute_tool` span per call
+* **metrics**, two duration histograms
+* **logs**, a record when a run starts and another when it ends
 
-**Careful:** mocon emits through the OpenTelemetry API and never the SDK, so if nothing in your app
-registers a tracer provider, the API is a silent no-op. No spans, no error, exit code zero. That's
+No trace pipeline, and no appetite for one? Pass `logTracer(record => logger.info(record))` and each
+span becomes a flat record in the logger you already run. Same attributes, same join key, no SDK and
+no backend. Moving to real tracing later is a different tracer, not different host code.
+
+One thing to know before you start.
+
+mocon emits through the OpenTelemetry API and never the SDK. If nothing in your application
+registers a tracer provider, the API does nothing. No spans, no error, exit code zero. That is
 OpenTelemetry's own behaviour, and it is the most common reason a first integration looks dead.
 
-## Why it exists
+## Design principles
 
-OpenTelemetry already has spans, parentage and duration. Three things it has no answer for:
+- **Nothing of ours on the wire**  
+OpenTelemetry is the format, not an export target. There is no schema to learn and no destination of
+ours to configure.
 
-**Provenance.** A code-mode program is agent-written and can lie, and many hosts build their
-telemetry out of what that program printed. Every value carries its class, so a reader can tell what
-the host *observed* from what the program *claimed*.
+- **Absence must not lie**  
+A missing span should never read as a fact. A host that cannot see something says so, and forgetting
+to declare something under-claims rather than over-claims.
 
-**The capability declaration.** Without it, no crossing spans means either the program made no calls
-or your host is blind to them. Those are opposite conclusions and a reader cannot tell them apart.
+- **The emitter never fails the request**  
+Every value it touches was written by a model. A hostile one costs you that value, never the call.
 
-**Closed vocabularies.** Four execution dispositions and three crossing outcomes, so one consumer can
-be written once and work everywhere. Span status collapses them to two.
+- **Payloads are off by default**  
+Arguments and results are agent-written code and target data. Capturing them is a decision you make
+deliberately, not one you inherit.
 
-## Documentation
+- **Two wrappers, no framework**  
+One around the handler, one around the bridge. No config file, no background thread, nothing kept
+between requests.
 
-**<https://tanvincible.github.io/mocon>** is the full guide: setup, what the output looks like, what
-goes wrong, the API, the attribute reference, and the specification.
+## What mocon is not
 
-Build it locally with `npm run docs`, or `npm run docs:serve` to open it.
+It is intentionally limited in scope.
+
+It is not:
+
+* a backend, a collector, or a dashboard
+* an SDK, or a replacement for one
+* a sandbox, or anything that stops a program doing something
+* a general MCP tracing library, since ordinary tool calls are already covered upstream
+
+It is a vocabulary for one shape of problem, and the smallest emitter that produces it.
+
+## Current status
+
+**v0.1.0, pre-1.0, and the attribute names will move.**
+
+What works today:
+
+* **Both languages, checked against each other.** A parity harness runs one scenario through the
+  TypeScript and Python emitters and diffs every attribute. They agree on all of them except number
+  formatting, which no rule can fix and which the specification marks as permanent.
+* **All three signals**, with metrics and log records inert unless you configure a provider.
+* **`logTracer`**, so this runs with a logger and nothing else.
+* **Payload capture that survives hostile input.** Cycles, throwing getters, errors from another
+  realm, values larger than memory. Three adversarial rounds went at this and what they found is
+  fixed.
+* **A specification** in `spec/otel-code-mode.md` that ends with seventeen things it cannot do.
+
+What is missing, and will bite you before anything else does:
+
+* **Python is not published.** It installs from a clone until `pymocon` is on PyPI.
+* **The TypeScript package needs Node.** It uses `Buffer`, `node:crypto` and `node:util`, so it will
+  not run on Workers, Deno or in a browser. The attributes are runtime-neutral even where this
+  package is not.
+* **`code_mode.*` is a namespace this project owns and nobody else has agreed to.** The `gen_ai.*`
+  and `mcp.*` attributes it reuses are themselves Development upstream, with no compatibility
+  guarantee.
+* **Nobody outside has used it.** Every trial so far was run by the author.
+
+The version is the point. Pin it exactly.
+
+## Non-goals
+
+For now, mocon does not aim to:
+
+* model anything outside a code-mode run
+* ship a backend, a storage format, or a query language
+* support hosts that cannot place code on either side of the sandbox boundary
+* grow attributes faster than someone can be persuaded to adopt them
 
 ## Repository
 
 | | |
 |---|---|
-| `spec/otel-code-mode.md` | the specification, ending with what it cannot do and what it has not settled |
-| `packages/typescript` | `mocon`, on the OpenTelemetry API only |
-| `packages/python` | `pymocon`, the same conventions, imported as `mocon` |
+| `spec/otel-code-mode.md` | the specification, ending with its limits and its open questions |
+| `packages/typescript` | `@tanvincible/mocon`, on the OpenTelemetry API only |
+| `packages/python` | `pymocon`, the same attributes, imported as `mocon` |
 | `packages/python/parity` | runs one scenario through both and diffs every attribute |
-| `examples/server.mjs` | a working code-mode server with mocon in it, and the run pictured above |
+| `examples/server.mjs` | a working code-mode server, and the run pictured above |
 | `examples/record.mjs` | regenerates that picture from a real run, so it cannot drift |
 | `bench/trace.mjs` | what it costs against the SDK's own floor |
-| `collector/`, `dashboards/` | optional examples; it is ordinary OpenTelemetry, so use what you have |
+| `collector/`, `dashboards/` | optional examples, since it is all ordinary OpenTelemetry |
 
-Releasing is `npm run release:npm`, which builds first and targets the package rather than the
-workspace root. Plain `npm publish` at the root fails with a confusing error, because the root is
-private and carries no version.
+Docs are at **<https://tanvincible.github.io/mocon>**. Build them with `npm run docs`, or
+`npm run docs:serve` to open them. Releasing is `npm run release:npm`, which builds first and aims at
+the package rather than the workspace root.
 
-## Status
+## Getting involved
 
-Development, and `0.1.0` means it. The specification is a draft, `code_mode.*` is a namespace this
-project owns and nobody else has agreed to, and the `gen_ai.*` and `mcp.*` attributes it reuses are
-themselves Development upstream with no compatibility guarantee.
+If you run a code-mode server, the useful thing is to try wiring this into it and tell me where the
+model does not fit. That is the part no amount of testing here settles.
 
-The npm package is `@tanvincible/mocon` rather than `mocon`, because npm rejects that name as too
-close to `mocha` and `motion`.
+You can also:
+
+* read `spec/otel-code-mode.md` and argue with it
+* say an attribute is missing, or that one of them earns nothing
+* open an issue for anything that was confusing on a first read
+
+## Final note
+
+mocon is an experiment, but a serious one.
+
+The aim is for the vocabulary to outlive this implementation.
+
+If a code-mode server somewhere emits these attributes without ever installing this package, that is
+the outcome worth having.
 
 ## License
 
