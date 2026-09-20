@@ -17,6 +17,52 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  # The install has been broken three times and nobody noticed, because every other job tests the
+  # library from inside the repository that builds it. This one is a stranger: a directory that is
+  # not the repo, a clone with nothing built, and the literal command the README gives a reader.
+  # Four blind integration trials died on this exact condition.
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the way a reader is told to, from outside the repository
+        run: |
+          mkdir -p "$RUNNER_TEMP/stranger"
+          cd "$RUNNER_TEMP/stranger"
+          npm init -y
+          npm install "$GITHUB_WORKSPACE/source/packages/typescript" @opentelemetry/api
+      - name: Import it by name and emit a span
+        run: |
+          cd "$RUNNER_TEMP/stranger"
+          node --input-type=module -e '
+            import { codeMode, logTracer } from "mocon";
+            const out = [];
+            const m = codeMode({
+              capabilities: { observes_crossings: "some", unmediated_egress: true, crossing_edge: "invocation", attested: [] },
+              tracer: logTracer({ write: (r) => out.push(r) }),
+            });
+            m.execution.start({ program: "x" }).complete();
+            if (out[0]?.name !== "execute_code") throw new Error("no span: " + JSON.stringify(out));
+            console.log("installed, imported, emitted");
+          '
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The same for Python, from its own stranger directory
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install "$GITHUB_WORKSPACE/source/packages/python"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/venv/bin/python" -c '
+          from mocon import CodeMode, Capabilities
+          print("installed, imported")
+          '
+
   docs:
     runs-on: ubuntu-latest
     steps:
