@@ -1,9 +1,9 @@
 # Overview
 
-**mocon shows you what a code-mode server actually did, using the observability tools you already
-have.**
+**OpenTelemetry for code-mode MCP servers.**
 
-If that already makes sense, jump to [Install](./install.md). If not, here's the whole problem in a
+It shows you what one of these servers actually did, in the observability stack you already run. If
+that already makes sense, jump to [Install](./install.md). If not, here's the whole problem in a
 page.
 
 ## The problem

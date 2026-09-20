@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pymocon"
 version = "0.1.0"
-description = "Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API."
+description = "OpenTelemetry for code-mode MCP servers."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT OR Apache-2.0" }

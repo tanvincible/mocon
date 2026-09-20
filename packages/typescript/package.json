@@ -1,7 +1,7 @@
 {
   "name": "mocon",
   "version": "0.1.0",
-  "description": "Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API.",
+  "description": "OpenTelemetry for code-mode MCP servers.",
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "sideEffects": false,

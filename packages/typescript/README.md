@@ -1,6 +1,6 @@
 # mocon
 
-Shows you what a code-mode MCP server actually did, using the observability tools you already have.
+OpenTelemetry for code-mode MCP servers.
 
 **Full documentation: <https://tanvincible.github.io/mocon>**
 

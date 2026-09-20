@@ -1,6 +1,6 @@
 # mocon
 
-mocon makes code-mode MCP servers debuggable, in the observability stack you already run.
+OpenTelemetry for code-mode MCP servers.
 
 In code mode the agent submits a **program** instead of one structured tool call. The server runs it
 in a sandbox, and from inside the program the server's tools are reached through a bridge. From

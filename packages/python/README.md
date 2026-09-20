@@ -1,6 +1,6 @@
 # mocon (Python)
 
-Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API.
+OpenTelemetry for code-mode MCP servers.
 The conventions are in [`spec/otel-code-mode.md`](../../spec/otel-code-mode.md); this is the Python
 emitter, a port of [`mocon`](../typescript) that writes the same attribute names and values.
 

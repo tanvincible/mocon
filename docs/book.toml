@@ -1,6 +1,6 @@
 [book]
 title = "mocon"
-description = "Semantic conventions for observing code-mode MCP servers, and a reference emitter."
+description = "OpenTelemetry for code-mode MCP servers."
 authors = ["tanvincible"]
 language = "en"
 src = "src"
