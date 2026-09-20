@@ -1,8 +1,8 @@
 /**
- * Drives the TypeScript emitter (packages/trace/src) through parity/scenario.json and prints a
+ * Drives the TypeScript emitter (packages/typescript/src) through parity/scenario.json and prints a
  * canonical JSON dump of every span, plus the metric points, on stdout.
  *
- * Read-only against packages/trace: it imports the source and nothing else.
+ * Read-only against packages/typescript: it imports the source and nothing else.
  *
  *   node --import tsx packages/python/parity/emit.mjs
  */
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { metrics } from "@opentelemetry/api";
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { InMemoryMetricExporter, MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { codeMode } from "../../trace/src/index.js";
+import { codeMode } from "../../typescript/src/index.js";
 
 const scenario = JSON.parse(readFileSync(fileURLToPath(new URL("./scenario.json", import.meta.url)), "utf8"));
 

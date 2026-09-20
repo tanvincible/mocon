@@ -1,5 +1,5 @@
 {
-  "name": "@mocon/trace",
+  "name": "@mocon/otel",
   "version": "0.1.0",
   "description": "Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API.",
   "license": "MIT OR Apache-2.0",

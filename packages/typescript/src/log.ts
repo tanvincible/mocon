@@ -67,7 +67,7 @@ const KINDS: Record<SpanKind, LogRecord["kind"]> = {
 export function logTracer(options: LogTracerOptions | LogTracerOptions["write"]): Tracer {
   const o = typeof options === "function" ? { write: options } : options;
   if (o === null || typeof o !== "object" || typeof o.write !== "function") {
-    throw new TypeError("@mocon/trace: logTracer needs a write function");
+    throw new TypeError("@mocon/otel: logTracer needs a write function");
   }
   return new LogTracer(o.write, o.raw === true);
 }

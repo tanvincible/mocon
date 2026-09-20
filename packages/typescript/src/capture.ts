@@ -64,10 +64,10 @@ export class Capture {
   private readonly encoder: Encoder;
 
   constructor(policy: CapturePolicy | undefined) {
-    if (policy !== undefined && (policy === null || typeof policy !== "object")) throw new TypeError("@mocon/trace: capture must be an object");
+    if (policy !== undefined && (policy === null || typeof policy !== "object")) throw new TypeError("@mocon/otel: capture must be an object");
     // A key this version does not read would be a withholding rule that silently never applies.
     for (const key of Object.keys(policy ?? {})) {
-      if (key !== "values" && key !== "cap" && key !== "programCap" && key !== "measure") throw new RangeError(`@mocon/trace: unknown capture policy key "${key}"`);
+      if (key !== "values" && key !== "cap" && key !== "programCap" && key !== "measure") throw new RangeError(`@mocon/otel: unknown capture policy key "${key}"`);
     }
     this.values = policy?.values === true;
     this.cap = positive(policy?.cap, DEFAULT_CAP, "cap");
@@ -149,6 +149,6 @@ export function writeNotes(attrs: Attributes, notes: Notes): void {
 
 function positive(given: unknown, fallback: number, name: string): number {
   if (given === undefined) return fallback;
-  if (typeof given !== "number" || !Number.isInteger(given) || given < 1) throw new RangeError(`@mocon/trace: capture ${name} must be a positive integer`);
+  if (typeof given !== "number" || !Number.isInteger(given) || given < 1) throw new RangeError(`@mocon/otel: capture ${name} must be a positive integer`);
   return given;
 }

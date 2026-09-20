@@ -13,7 +13,7 @@
 
 import { BasicTracerProvider, BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { codeMode } from "../packages/trace/dist/index.js";
+import { codeMode } from "../packages/typescript/dist/index.js";
 
 const provider = new BasicTracerProvider();
 provider.addSpanProcessor(new BatchSpanProcessor(new OTLPTraceExporter({ url: "http://localhost:4318/v1/traces" })));

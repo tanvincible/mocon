@@ -2,7 +2,7 @@
 
 Traces, metrics and log records for code-mode MCP servers, on the OpenTelemetry API.
 The conventions are in [`spec/otel-code-mode.md`](../../spec/otel-code-mode.md); this is the Python
-emitter, a port of [`@mocon/trace`](../trace) that writes the same attribute names and values.
+emitter, a port of [`@mocon/otel`](../typescript) that writes the same attribute names and values.
 
 In code mode an agent submits a *program* instead of calling one tool. The host runs it in a
 sandbox, and from inside, the program reaches the host's tools through a bridge. From outside, the

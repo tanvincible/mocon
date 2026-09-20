@@ -1,5 +1,5 @@
 /**
- * What `@mocon/trace` costs on a request path, against the floor of the OpenTelemetry SDK producing
+ * What `@mocon/otel` costs on a request path, against the floor of the OpenTelemetry SDK producing
  * the same spans with no emitter at all. The difference between the two is what this package adds;
  * the floor itself is what any OpenTelemetry instrumentation pays and is not ours to reduce.
  *
@@ -9,7 +9,7 @@
 
 import { SpanKind } from "@opentelemetry/api";
 import { BasicTracerProvider, BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { codeMode } from "../packages/trace/dist/index.js";
+import { codeMode } from "../packages/typescript/dist/index.js";
 
 const drop = { export(_spans, done) { done({ code: 0 }); }, shutdown() { return Promise.resolve(); } };
 const provider = new BasicTracerProvider();

@@ -14,7 +14,7 @@
 import { type Attributes, type Histogram, type Meter, metrics } from "@opentelemetry/api";
 import type { Attestation } from "./declare.js";
 
-const NAME = "@mocon/trace";
+const NAME = "@mocon/otel";
 const VERSION = "0.1.0";
 
 export class Meters {

@@ -1,4 +1,4 @@
-# @mocon/trace
+# @mocon/otel
 
 Shows you what a code-mode MCP server actually did, using the observability tools you already have.
 
@@ -22,7 +22,7 @@ Not on npm yet, so it installs from the repo.
 ## Use
 
 ```ts
-import { codeMode } from "@mocon/trace";
+import { codeMode } from "@mocon/otel";
 
 const observed = codeMode({
   capabilities: {

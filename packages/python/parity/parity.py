@@ -1,6 +1,6 @@
 """Are the two emitters the same emitter?
 
-Runs packages/trace (TypeScript) and packages/python (Python) over parity/scenario.json, then diffs
+Runs packages/typescript (TypeScript) and packages/python (Python) over parity/scenario.json, then diffs
 the canonical span dumps attribute by attribute. Nothing is normalised except what MUST differ: span
 and trace ids, and a minted execution id. Timestamps are fixed by the scenario, so start, end and
 duration are compared rather than waved through.
